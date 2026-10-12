@@ -7,9 +7,10 @@ use std::path::{Component, Path, PathBuf};
 
 use ratatui::widgets::ListState;
 
+use crate::archive::{self, EntryKind};
 use crate::input::Command;
 use crate::model::filespec::Filespec;
-use crate::model::tree::{FileEntry, NodeId, ROOT, Tree, VisibleRow};
+use crate::model::tree::{FileEntry, FileKind, NodeId, ROOT, Tree, VisibleRow};
 use crate::ops::Source;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,11 +51,45 @@ pub struct Pane {
     /// Altura útil das listas no último desenho (para PgUp/PgDn).
     pub tree_page: usize,
     pub file_page: usize,
+    /// Com um ZIP/TAR aberto: o caminho dele (raiz da árvore virtual)...
+    pub archive: Option<PathBuf>,
+    /// ...e a janela como estava antes de abri-lo, para voltar com Esc.
+    pub outer: Option<Box<Pane>>,
 }
 
 impl Pane {
     pub fn new(root: PathBuf) -> Self {
-        let tree = Tree::new(root);
+        Self::with_tree(Tree::new(root))
+    }
+
+    /// Janela mostrando o conteúdo de um arquivo compactado.
+    pub fn from_archive(path: &Path) -> std::io::Result<Self> {
+        let mut reader = archive::Reader::open(path)?;
+        let listing = reader
+            .list()?
+            .into_iter()
+            .map(|e| {
+                let file = (e.kind != EntryKind::Dir).then(|| FileEntry {
+                    name: e.path.file_name().unwrap_or_default().to_os_string(),
+                    size: e.size,
+                    modified: e.modified,
+                    mode: e.mode,
+                    kind: match e.kind {
+                        EntryKind::File => FileKind::File,
+                        EntryKind::Symlink => FileKind::Symlink,
+                        _ => FileKind::Other,
+                    },
+                    tagged: false,
+                });
+                (e.path, file)
+            })
+            .collect();
+        let mut pane = Self::with_tree(Tree::from_listing(path.to_path_buf(), listing));
+        pane.archive = Some(path.to_path_buf());
+        Ok(pane)
+    }
+
+    fn with_tree(tree: Tree) -> Self {
         let rows = tree.visible_rows();
         let mut pane = Pane {
             tree,
@@ -67,6 +102,8 @@ impl Pane {
             filespec: Filespec::default(),
             tree_page: 1,
             file_page: 1,
+            archive: None,
+            outer: None,
         };
         pane.refresh_files();
         pane

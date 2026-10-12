@@ -25,6 +25,7 @@ Sem argumento, abre o diretório atual.
 | `F` | Filespec: filtro de arquivos | idem |
 | `F2` | relê o diretório do disco | idem |
 | `V` | | visualiza o arquivo (texto/hex) |
+| `O` | | abre um ZIP/TAR como diretório |
 | `L` | Log: abre outro diretório na janela | |
 | `C` | Compare: compara com a outra janela e marca | |
 | F8 | divide a tela em duas janelas (ou volta a uma) | idem |
@@ -76,6 +77,14 @@ Datas com até 2 segundos de diferença contam como iguais (FAT/exFAT).
 Para sincronizar: `C` `B` `A` e depois Alt+C (copiar com caminhos), que já
 sugere a outra janela como destino.
 
+**Arquivos compactados:** `O` na janela de arquivos abre `.zip`, `.jar`,
+`.war`, `.apk`, `.tar`, `.tar.gz` ou `.tgz` como uma árvore, somente leitura:
+navegação, Filespec, Branch, Showall, tags, View e Compare funcionam dentro
+dele, e Copy (inclusive Ctrl+C e Alt+C com caminhos) extrai os arquivos.
+`Esc` na árvore fecha o arquivo e volta para onde estava. Por segurança,
+entradas com `..` ou caminho absoluto são ignoradas, e links simbólicos
+dentro de arquivos compactados nunca são extraídos.
+
 **Menus Ctrl/Alt:** como no ZTree, o rodapé mostra só os comandos de uma
 tecla. **F9** alterna para o menu de Ctrl, depois o de Alt, e volta. Com um
 desses menus aberto pelo F9, a próxima letra vale como Ctrl+letra ou
@@ -117,6 +126,8 @@ Na árvore, `+` no conector (`├─+`) indica um diretório recolhido que tem s
 - `src/input.rs` — mapeamento tecla → comando
 - `src/ui.rs` — desenho da tela (ratatui)
 - `src/viewer.rs` — visualizador texto/hex
+- `src/archive.rs` — leitura de ZIP/TAR
+- `src/model/compare.rs` — regras do Compare
 - `src/model/filespec.rs` — filtro de arquivos
 - `src/ops/` — copiar, mover e apagar, em passos (progresso, conflitos, cancelamento)
 

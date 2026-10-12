@@ -41,7 +41,8 @@ impl Viewer {
         Ok(Self::from_bytes(path, size, data))
     }
 
-    fn from_bytes(path: PathBuf, size: u64, data: Vec<u8>) -> Self {
+    /// Visualiza bytes já lidos (ex.: uma entrada de um arquivo compactado).
+    pub fn from_bytes(path: PathBuf, size: u64, data: Vec<u8>) -> Self {
         let mode = if looks_binary(&data) {
             ViewMode::Hex
         } else {

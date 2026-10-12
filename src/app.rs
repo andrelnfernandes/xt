@@ -13,13 +13,14 @@ use std::time::Duration;
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, ModifierKeyCode};
 
+use crate::archive;
 use crate::input::{self, Command, LineEvent, LineInput};
 use crate::model::compare::{self, CompareMode};
 use crate::model::filespec::Filespec;
 use crate::model::tree::{LogJob, NodeId, ROOT};
 use crate::ops::{self, Answer, OpKind, Operation, Source};
 pub use crate::pane::{FileView, Focus, Pane};
-use crate::viewer::Viewer;
+use crate::viewer::{self, Viewer};
 
 /// Leitura em andamento e o que fazer quando ela terminar.
 pub struct Job {
@@ -324,6 +325,19 @@ impl App {
 
     pub fn apply(&mut self, cmd: Command) {
         let in_files = self.focus == Focus::Files;
+        let writes = matches!(
+            cmd,
+            Command::Move { .. }
+                | Command::Delete { .. }
+                | Command::Rename
+                | Command::Attributes { .. }
+                | Command::MakeDir
+                | Command::Log
+        );
+        if writes && self.archive.is_some() {
+            self.message = Some("Archives are read-only (use Copy to extract)".into());
+            return;
+        }
         match cmd {
             Command::Quit => self.ask(ConfirmKind::Quit, "Quit xt?".into()),
             Command::SwitchWindow => match self.focus {
@@ -340,7 +354,9 @@ impl App {
                 let current = self.current_path().to_string_lossy().into_owned();
                 self.open_prompt(PromptKind::Log, "LOG directory: ".into(), &current);
             }
-            Command::Back => self.back_to_tree(),
+            Command::Back if in_files => self.back_to_tree(),
+            Command::Back => self.close_archive(),
+            Command::Open => self.open_archive(),
             Command::Filespec => {
                 let text = self.filespec.text().to_string();
                 self.open_prompt(PromptKind::Filespec, "FILESPEC: ".into(), &text);
@@ -540,9 +556,43 @@ impl App {
             self.active = 0;
             return;
         }
-        let mut pane = Pane::new(self.tree.path(ROOT));
-        pane.goto(&self.current_path());
+        // Dentro de um arquivo compactado, a nova janela mostra o disco.
+        let base = self.outer.as_deref().unwrap_or(self);
+        let mut pane = Pane::new(base.tree.path(ROOT));
+        pane.goto(&base.current_path());
         self.panes.push(pane);
+    }
+
+    /// `O`: abre o ZIP/TAR sob o cursor como se fosse um diretório.
+    fn open_archive(&mut self) {
+        let Some(f) = self.selected_file() else {
+            return;
+        };
+        let path = self.file_path(f);
+        if self.archive.is_some() {
+            self.message = Some("Archives inside archives are not supported".into());
+        } else if archive::Kind::detect(&path).is_none() {
+            self.message = Some("Not an archive (zip, jar, tar, tar.gz, tgz)".into());
+        } else {
+            match Pane::from_archive(&path) {
+                Ok(pane) => {
+                    let outer = std::mem::replace(self.deref_mut(), pane);
+                    self.outer = Some(Box::new(outer));
+                }
+                Err(e) => self.message = Some(format!("Cannot open archive: {e}")),
+            }
+        }
+    }
+
+    /// Esc na árvore de um arquivo compactado: volta para onde estava.
+    fn close_archive(&mut self) {
+        if let Some(outer) = self.outer.take() {
+            *self.deref_mut() = *outer;
+            // O disco pode ter mudado enquanto o arquivo estava aberto.
+            let current = self.current();
+            self.tree.rescan(current);
+            self.after_change();
+        }
     }
 
     /// Log: abre `path` na janela ativa. Se ele está dentro da árvore atual,
@@ -603,7 +653,13 @@ impl App {
                 // na próxima vez, a partir de outro diretório.
                 self.last_dest = Some(dest.to_string_lossy().into_owned());
                 let paths_from = paths.then_some(base.as_path());
-                Operation::transfer(kind, sources, &dest, paths_from).map(|op| self.start_op(op))
+                let archive = self.archive.clone();
+                Operation::transfer(kind, sources, &dest, paths_from)
+                    .and_then(|op| match &archive {
+                        Some(path) => op.reading_archive(path),
+                        None => Ok(op),
+                    })
+                    .map(|op| self.start_op(op))
             }
             PromptKind::RenameFile(path) => self.rename_file(&path, &text),
             PromptKind::RenameDir(id) => self.rename_dir(id, &text),
@@ -796,7 +852,20 @@ impl App {
         let Some(f) = self.selected_file() else {
             return;
         };
-        match Viewer::open(self.file_path(f)) {
+        let path = self.file_path(f);
+        let viewer = match &self.archive {
+            Some(root) => {
+                let entry = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
+                let size = self.file(f).size;
+                archive::Reader::open(root).and_then(|mut r| {
+                    let mut data = Vec::new();
+                    r.extract(&entry, &mut data, viewer::MAX_BYTES)?;
+                    Ok(Viewer::from_bytes(path, size, data))
+                })
+            }
+            None => Viewer::open(path),
+        };
+        match viewer {
             Ok(v) => self.viewer = Some(v),
             Err(e) => self.message = Some(format!("Cannot view file: {e}")),
         }
@@ -1458,5 +1527,77 @@ mod tests {
         press(&mut app, KeyCode::Esc);
         assert!(app.confirm.is_none());
         assert!(tagged(&app).is_empty());
+    }
+
+    /// Raiz com um p.zip (src/a.rs, README) ao lado de a.rs e b.txt.
+    fn archive_setup() -> (tempfile::TempDir, App) {
+        let (tmp, _) = sample();
+        crate::archive::tests::make_zip(&tmp.path().join("p.zip"));
+        let mut app = App::new(tmp.path().to_path_buf());
+        press(&mut app, KeyCode::Enter);
+        let i = names(&app).iter().position(|n| n == "p.zip").unwrap();
+        app.file_state.select(Some(i));
+        (tmp, app)
+    }
+
+    #[test]
+    fn opens_browses_and_closes_archives() {
+        let (tmp, mut app) = archive_setup();
+        press(&mut app, KeyCode::Char('o'));
+        assert_eq!(
+            app.archive.as_deref(),
+            Some(tmp.path().join("p.zip").as_path())
+        );
+        assert_eq!(app.focus, Focus::Tree);
+        assert_eq!(names(&app), ["README"]);
+
+        // Ver uma entrada sem extrair nada para o disco.
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Char('v'));
+        assert_eq!(app.viewer.as_ref().unwrap().visible_lines(1)[0], "leia-me");
+        press(&mut app, KeyCode::Esc);
+
+        // Escrever é proibido dentro do arquivo.
+        press(&mut app, KeyCode::Char('d'));
+        assert!(app.confirm.is_none());
+        assert!(app.message.as_deref().unwrap().contains("read-only"));
+
+        // Esc na árvore volta exatamente para onde estava.
+        press(&mut app, KeyCode::Esc);
+        press(&mut app, KeyCode::Esc);
+        assert!(app.archive.is_none());
+        assert_eq!(app.current_path(), tmp.path());
+    }
+
+    #[test]
+    fn copies_out_of_archives() {
+        let (tmp, mut app) = archive_setup();
+        press(&mut app, KeyCode::Char('o'));
+        app.apply(Command::Branch);
+        ctrl(&mut app, 't');
+        alt(&mut app, 'c');
+        let out = tmp.path().join("out");
+        fs::create_dir(&out).unwrap();
+        answer_prompt(&mut app, out.to_str().unwrap());
+        assert!(app.message.as_deref().unwrap().starts_with("Copied 2 of 2"));
+        assert_eq!(
+            fs::read_to_string(out.join("src/a.rs")).unwrap(),
+            "fn a() {}"
+        );
+        assert!(out.join("README").exists());
+    }
+
+    #[test]
+    fn open_rejects_non_archives() {
+        let (_tmp, mut app) = sample();
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Char('o'));
+        assert!(app.archive.is_none());
+        assert!(
+            app.message
+                .as_deref()
+                .unwrap()
+                .starts_with("Not an archive")
+        );
     }
 }

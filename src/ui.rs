@@ -83,6 +83,9 @@ fn draw_pane(frame: &mut Frame, pane: &mut Pane, active: bool, split: bool, area
                     " {} ",
                     fit_tail(&pane.current_path().to_string_lossy(), width)
                 )
+            } else if let Some(archive) = &pane.archive {
+                let name = archive.file_name().unwrap_or_default().to_string_lossy();
+                format!(" Archive: {name} (read-only) ")
             } else {
                 " Tree ".to_string()
             };
@@ -377,6 +380,24 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
     };
 
     match app.menu_mode() {
+        MenuMode::Normal if tree && app.archive.is_some() => (
+            menu_words(
+                "ARCHIVE",
+                &[
+                    "Branch", "Compare", "Filespec", "Invert", "Showall", "Tag", "Untag", "Quit",
+                ],
+            ),
+            menu_line(
+                "",
+                &[
+                    ("Esc", "close archive"),
+                    ("←→", "close/open"),
+                    ("Enter", "files (Copy extracts)"),
+                    ("F8", "split"),
+                    ("F9", "Ctrl/Alt menus"),
+                ],
+            ),
+        ),
         MenuMode::Normal if tree => (
             menu_words(
                 "DIR",
@@ -408,6 +429,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                     "Filespec",
                     "Invert",
                     "Move",
+                    "Open",
                     "Rename",
                     "Showall",
                     "Tag",

@@ -64,6 +64,9 @@ pub struct Totals {
 
 pub struct Tree {
     nodes: Vec<DirNode>,
+    /// Árvore de um arquivo compactado: tudo já vem lido e nada é relido
+    /// do disco.
+    is_virtual: bool,
 }
 
 /// Leitura de um ramo inteiro feita aos poucos, para a interface poder
@@ -103,8 +106,58 @@ impl Tree {
                 scanned: false,
                 error: None,
             }],
+            is_virtual: false,
         };
         tree.expand(ROOT);
+        tree
+    }
+
+    /// Árvore virtual a partir de uma listagem: caminhos relativos a `root`
+    /// e, para cada um, o arquivo (`Some`) ou um diretório (`None`).
+    /// Diretórios que só aparecem no caminho de um arquivo são criados.
+    pub fn from_listing(root: PathBuf, listing: Vec<(PathBuf, Option<FileEntry>)>) -> Self {
+        let mut tree = Tree {
+            nodes: vec![DirNode {
+                name: root.into_os_string(),
+                parent: None,
+                children: Vec::new(),
+                files: Vec::new(),
+                expanded: true,
+                scanned: true,
+                error: None,
+            }],
+            is_virtual: true,
+        };
+        for (path, file) in listing {
+            let dirs = match file {
+                Some(_) => path.parent().unwrap_or(Path::new("")),
+                None => path.as_path(),
+            };
+            let mut cur = ROOT;
+            for name in dirs.iter() {
+                let found = find_child(&tree, cur, name);
+                cur = match found {
+                    Some(c) => c,
+                    None => {
+                        let c = tree.add_node(name.to_os_string(), cur);
+                        tree.nodes[c].scanned = true;
+                        tree.nodes[cur].children.push(c);
+                        c
+                    }
+                };
+            }
+            if let Some(file) = file {
+                tree.nodes[cur].files.push(file);
+            }
+        }
+        for node in &mut tree.nodes {
+            node.files.sort_by_key(|f| sort_key(&f.name));
+        }
+        for i in 0..tree.nodes.len() {
+            let mut children = std::mem::take(&mut tree.nodes[i].children);
+            children.sort_by_key(|&c| sort_key(&tree.nodes[c].name));
+            tree.nodes[i].children = children;
+        }
         tree
     }
 
@@ -125,7 +178,7 @@ impl Tree {
 
     /// Lê o diretório do disco, se ainda não foi lido.
     pub fn scan(&mut self, id: NodeId) {
-        if self.nodes[id].scanned {
+        if self.nodes[id].scanned || self.is_virtual {
             return;
         }
         self.nodes[id].scanned = true;
@@ -162,7 +215,7 @@ impl Tree {
     /// Relê um diretório já logado (re-log). Subdiretórios que continuam
     /// existindo mantêm o que já foi lido abaixo deles; arquivos mantêm a tag.
     pub fn rescan(&mut self, id: NodeId) {
-        if !self.nodes[id].scanned {
+        if !self.nodes[id].scanned || self.is_virtual {
             return;
         }
         let path = self.path(id);
@@ -387,6 +440,14 @@ fn read_dir_entries(path: &Path) -> std::io::Result<(Vec<OsString>, Vec<FileEntr
     Ok((dirs, files))
 }
 
+fn find_child(tree: &Tree, parent: NodeId, name: &std::ffi::OsStr) -> Option<NodeId> {
+    tree.nodes[parent]
+        .children
+        .iter()
+        .copied()
+        .find(|&c| tree.nodes[c].name == name)
+}
+
 fn sort_key(name: &OsString) -> String {
     name.to_string_lossy().to_lowercase()
 }
@@ -536,6 +597,44 @@ mod tests {
         assert_eq!(tree.path(deep), tmp.path().join("b/deep"));
         assert_eq!(tree.find(&tmp.path().join("nope")), None);
         assert_eq!(tree.find(Path::new("/elsewhere")), None);
+    }
+
+    #[test]
+    fn builds_virtual_tree_from_listing() {
+        let file = |name: &str, size| FileEntry {
+            name: name.into(),
+            size,
+            modified: None,
+            mode: 0o644,
+            kind: FileKind::File,
+            tagged: false,
+        };
+        let listing = vec![
+            (PathBuf::from("z.txt"), Some(file("z.txt", 1))),
+            (PathBuf::from("src/deep/b.rs"), Some(file("b.rs", 2))),
+            (PathBuf::from("src/a.rs"), Some(file("a.rs", 3))),
+            (PathBuf::from("empty"), None),
+        ];
+        let mut tree = Tree::from_listing(PathBuf::from("/x/p.zip"), listing);
+        assert_eq!(names(&tree, &tree.node(ROOT).children), ["empty", "src"]);
+        let src = tree.find(Path::new("/x/p.zip/src")).unwrap();
+        assert_eq!(tree.node(src).files[0].name, "a.rs");
+        let deep = tree.find(Path::new("/x/p.zip/src/deep")).unwrap();
+        assert_eq!(tree.path(deep), Path::new("/x/p.zip/src/deep"));
+        assert_eq!(
+            tree.logged_totals(),
+            Totals {
+                dirs: 4,
+                files: 3,
+                bytes: 6
+            }
+        );
+
+        // Nada é lido do disco: nem scan, nem re-log.
+        tree.rescan(ROOT);
+        tree.expand(src);
+        assert!(tree.node(ROOT).error.is_none());
+        assert_eq!(tree.node(ROOT).files.len(), 1);
     }
 
     #[test]

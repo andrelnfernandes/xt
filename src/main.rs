@@ -3,6 +3,7 @@
 //! Uso: `xt [diretório]` (padrão: diretório atual)
 
 mod app;
+mod archive;
 mod input;
 mod model;
 mod ops;

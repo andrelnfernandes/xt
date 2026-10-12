@@ -26,6 +26,8 @@ pub enum Command {
     Log,
     /// Compara com o diretório da outra janela e marca arquivos.
     Compare,
+    /// Abre um ZIP/TAR como se fosse um diretório.
+    Open,
     Back,
     Filespec,
     Showall,
@@ -129,11 +131,14 @@ pub fn map_key(key: KeyEvent, focus: Focus) -> Option<Command> {
             KeyCode::Char('m') => Some(MakeDir),
             KeyCode::Char('l') => Some(Log),
             KeyCode::Char('c') => Some(Compare),
+            // Fecha o arquivo compactado aberto.
+            KeyCode::Esc => Some(Back),
             _ => None,
         },
         Focus::Files => match key {
             KeyCode::Esc | KeyCode::Left => Some(Back),
             KeyCode::Char('v') => Some(View),
+            KeyCode::Char('o') => Some(Open),
             KeyCode::Char('c') => Some(Copy {
                 tagged: false,
                 paths: false,

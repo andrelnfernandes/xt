@@ -5,11 +5,14 @@
 //! copiados em blocos para um temporário, que só no fim substitui o destino:
 //! um cancelamento ou erro nunca deixa um destino pela metade.
 
+use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read, Write};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant};
+
+use crate::archive;
 
 const CHUNK: usize = 1024 * 1024;
 
@@ -69,6 +72,14 @@ enum Overwrite {
     Never,
 }
 
+/// Origem dos arquivos quando eles saem de dentro de um ZIP/TAR.
+struct ArchiveSource {
+    reader: archive::Reader,
+    /// Caminho do arquivo compactado: raiz dos caminhos virtuais.
+    root: PathBuf,
+    entries: HashMap<PathBuf, archive::Entry>,
+}
+
 /// Cópia de um arquivo em andamento.
 struct Transfer {
     reader: File,
@@ -91,6 +102,8 @@ pub struct Operation {
     pub done_bytes: u64,
     pub total_bytes: u64,
     pub errors: Vec<String>,
+    /// Os arquivos de origem estão dentro deste arquivo compactado.
+    archive: Option<ArchiveSource>,
     /// Só para testes: finge que origem e destino estão em discos diferentes.
     #[cfg(test)]
     force_cross_device: bool,
@@ -171,7 +184,30 @@ impl Operation {
             errors: Vec::new(),
             #[cfg(test)]
             force_cross_device: false,
+            archive: None,
         }
+    }
+
+    /// Indica que as origens são caminhos virtuais dentro de `archive`
+    /// (ex.: `/x/p.zip/src/a.rs`). Só cópia: arquivos compactados são
+    /// somente leitura.
+    pub fn reading_archive(mut self, archive: &Path) -> Result<Self, String> {
+        if self.kind != OpKind::Copy {
+            return Err("Archives are read-only".into());
+        }
+        let mut reader = archive::Reader::open(archive).map_err(|e| e.to_string())?;
+        let entries = reader
+            .list()
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .map(|e| (e.path.clone(), e))
+            .collect();
+        self.archive = Some(ArchiveSource {
+            reader,
+            root: archive.to_path_buf(),
+            entries,
+        });
+        Ok(self)
     }
 
     pub fn total_files(&self) -> usize {
@@ -281,12 +317,18 @@ impl Operation {
             return;
         }
 
-        let src_meta = match fs::symlink_metadata(&item.src) {
-            Ok(m) => m,
-            Err(e) => return self.fail(&item.src, e),
+        // Dentro de um arquivo compactado não há metadados no disco.
+        let src_meta = match self.archive {
+            Some(_) => None,
+            None => match fs::symlink_metadata(&item.src) {
+                Ok(m) => Some(m),
+                Err(e) => return self.fail(&item.src, e),
+            },
         };
         if let Ok(dst_meta) = fs::symlink_metadata(&item.dst) {
-            if (dst_meta.dev(), dst_meta.ino()) == (src_meta.dev(), src_meta.ino()) {
+            if let Some(src_meta) = &src_meta
+                && (dst_meta.dev(), dst_meta.ino()) == (src_meta.dev(), src_meta.ino())
+            {
                 return self.fail(&item.src, "source and destination are the same file");
             }
             if dst_meta.is_dir() {
@@ -310,6 +352,10 @@ impl Operation {
         {
             return self.fail(parent, e);
         }
+
+        let Some(src_meta) = src_meta else {
+            return self.extract_item(&item);
+        };
 
         if self.kind == OpKind::Move {
             match self.rename(&item.src, &item.dst) {
@@ -353,6 +399,37 @@ impl Operation {
             }
         } else {
             self.fail(&item.src, "special files are not supported");
+        }
+    }
+
+    /// Extrai uma entrada do arquivo compactado para o destino, via
+    /// temporário, com as permissões e a data guardadas no arquivo.
+    fn extract_item(&mut self, item: &Item) {
+        let source = self.archive.as_mut().expect("archive source");
+        let entry = item.src.strip_prefix(&source.root).unwrap_or(&item.src);
+        let info = source.entries.get(entry).cloned();
+        let tmp = tmp_path(&item.dst);
+        let result = (|| {
+            let mut file = File::create(&tmp)?;
+            source.reader.extract(entry, &mut file, u64::MAX)?;
+            if let Some(info) = &info {
+                file.set_permissions(fs::Permissions::from_mode(info.mode))?;
+                if let Some(t) = info.modified {
+                    file.set_modified(t)?;
+                }
+            }
+            drop(file);
+            fs::rename(&tmp, &item.dst)
+        })();
+        match result {
+            Ok(()) => {
+                self.done_bytes += item.size;
+                self.finish_item();
+            }
+            Err(e) => {
+                let _ = fs::remove_file(&tmp);
+                self.fail(&item.src, e);
+            }
         }
     }
 
@@ -748,6 +825,52 @@ mod tests {
             fs::metadata(b.join("big.bin")).unwrap().len(),
             CHUNK as u64 * 3 + 10
         );
+    }
+
+    #[test]
+    fn extracts_from_archives_with_or_without_paths() {
+        let (tmp, _a, b) = setup();
+        let zip = tmp.path().join("p.zip");
+        archive::tests::make_zip(&zip);
+        let virt = |p: &str| Source {
+            path: zip.join(p),
+            size: 0,
+        };
+
+        let sources = vec![virt("src/a.rs"), virt("README")];
+        let mut op = Operation::transfer(OpKind::Copy, sources, &b, Some(&zip))
+            .unwrap()
+            .reading_archive(&zip)
+            .unwrap();
+        run(&mut op);
+        assert_eq!(op.done_files, 2, "{:?}", op.errors);
+        assert_eq!(fs::read_to_string(b.join("src/a.rs")).unwrap(), "fn a() {}");
+        let mode = fs::metadata(b.join("README")).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o755);
+        assert!(no_temp_files(&b));
+
+        // Archives são somente leitura.
+        let moving = Operation::transfer(OpKind::Move, vec![virt("README")], &b, None).unwrap();
+        assert!(moving.reading_archive(&zip).is_err());
+    }
+
+    #[test]
+    fn never_extracts_symlinks_from_archives() {
+        let (tmp, _a, b) = setup();
+        let tar = tmp.path().join("p.tar");
+        archive::tests::make_tar(&tar, false);
+        let link = Source {
+            path: tar.join("etc-link"),
+            size: 0,
+        };
+        let mut op = Operation::transfer(OpKind::Copy, vec![link], &b, None)
+            .unwrap()
+            .reading_archive(&tar)
+            .unwrap();
+        run(&mut op);
+        assert_eq!(op.errors.len(), 1);
+        assert!(fs::symlink_metadata(b.join("etc-link")).is_err());
+        assert!(no_temp_files(&b));
     }
 
     #[test]
