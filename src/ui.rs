@@ -19,7 +19,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Clear, List, ListItem, ListState, Paragraph};
 
-use crate::app::{App, FileView, Focus, MenuMode, Pane};
+use crate::app::{self, App, FileView, Focus, MenuMode, Pane};
 use crate::config::{self, formats, theme};
 use crate::model::tree::{FileEntry, FileKind};
 use crate::ops::Operation;
@@ -323,21 +323,26 @@ fn draw_stats(frame: &mut Frame, app: &App, area: Rect) {
 fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
     let bold = Style::new().add_modifier(Modifier::BOLD);
     let lines = if let Some(prompt) = &app.prompt {
-        let col = area.x + (prompt.label.chars().count() + prompt.input.cursor) as u16;
-        frame.set_cursor_position((col.min(area.right().saturating_sub(1)), area.y));
-        let mut help = vec![("Enter", "accept"), ("Esc", "cancel"), ("Ctrl+U", "clear")];
-        if prompt.toggles_paths() {
-            help.push(("F6", "with/without paths"));
-        }
-        if prompt.label.starts_with("FILESPEC") {
-            help.push(("e.g.", "*.rs *.toml -*.bak"));
-        }
+        prompt_lines(frame, prompt, area)
+    } else if let Some(job) = &app.search_job {
+        let name = job
+            .current()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         vec![
             Line::from(vec![
-                Span::styled(prompt.label.clone(), bold),
-                Span::raw(prompt.input.text.clone()),
+                Span::styled(
+                    format!("Searching {} of {}: ", job.done() + 1, job.total()),
+                    bold,
+                ),
+                Span::raw(name),
+                Span::styled(
+                    format!("   {} found", job.found),
+                    Style::new().fg(theme().dim),
+                ),
             ]),
-            menu_line("", &help),
+            menu_line("", &[("Esc", "cancel")]),
         ]
     } else if let Some(confirm) = &app.confirm {
         // Pergunta numa linha e opções na outra, para caminhos longos não
@@ -513,6 +518,47 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
             ),
         ),
     }
+}
+
+/// Prompt no rodapé: o rótulo, o texto digitado (com o cursor) e as teclas.
+fn prompt_lines(frame: &mut Frame, prompt: &app::Prompt, area: Rect) -> Vec<Line<'static>> {
+    let bold = Style::new().add_modifier(Modifier::BOLD);
+    let col = area.x + (prompt.label.chars().count() + prompt.input.cursor) as u16;
+    frame.set_cursor_position((col.min(area.right().saturating_sub(1)), area.y));
+    let mut help = vec![("Enter", "accept"), ("Esc", "cancel"), ("Ctrl+U", "clear")];
+    if prompt.toggles_paths() {
+        help.push(("F6", "with/without paths"));
+    }
+    if prompt.is_search() {
+        help.push(("F2", "match case"));
+        help.push(("F4", "text/hex"));
+        help.push(("↑↓", "history"));
+    }
+    if prompt.label.starts_with("FILESPEC") {
+        help.push(("e.g.", "*.rs *.toml -*.bak"));
+    }
+    vec![
+        Line::from(vec![
+            Span::styled(prompt.label.clone(), bold),
+            Span::raw(prompt.input.text.clone()),
+        ]),
+        menu_line("", &help),
+    ]
+}
+
+/// Linha do visualizador com o trecho encontrado destacado.
+fn highlighted(line: String, mark: Option<(usize, usize)>) -> Line<'static> {
+    let Some((s, e)) = mark else {
+        return Line::from(line);
+    };
+    let chars: Vec<char> = line.chars().collect();
+    let (s, e) = (s.min(chars.len()), e.min(chars.len()));
+    let part = |a: usize, b: usize| chars[a..b].iter().collect::<String>();
+    Line::from(vec![
+        Span::raw(part(0, s)),
+        Span::styled(part(s, e), highlight(true).add_modifier(Modifier::BOLD)),
+        Span::raw(part(e, chars.len())),
+    ])
 }
 
 /// Rodapé durante Copy/Move/Delete: arquivo atual e barra de progresso,
@@ -734,6 +780,10 @@ fn draw_settings(frame: &mut Frame, s: &Settings) {
 }
 
 fn draw_viewer(frame: &mut Frame, app: &mut App) {
+    let tagged = app
+        .tagged_view
+        .as_ref()
+        .map(|tv| (tv.index + 1, tv.items.len()));
     let Some(v) = &mut app.viewer else { return };
     let [header, body, menu] = Layout::vertical([
         Constraint::Length(1),
@@ -756,14 +806,21 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
             Style::new().fg(theme().error),
         ));
     }
+    if let Some((i, n)) = tagged {
+        title.push(Span::styled(
+            format!("  [tagged {i} of {n}]"),
+            Style::new().fg(theme().key),
+        ));
+    }
     frame.render_widget(Line::from(title), header);
 
     let inner = panel("", false).inner(body);
     v.page = inner.height as usize;
+    v.width = inner.width as usize;
     let lines: Vec<Line> = v
-        .visible_lines(inner.height as usize)
+        .visible(inner.height as usize)
         .into_iter()
-        .map(Line::from)
+        .map(|(line, mark)| highlighted(line, mark))
         .collect();
     let mode = match v.mode {
         ViewMode::Text => " TEXT ",
@@ -781,21 +838,40 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
         ViewMode::Hex => format!("Offset {:08X}", v.top * viewer::HEX_WIDTH),
     };
     let percent = ((v.top + v.page).min(total) * 100) / total;
-    frame.render_widget(
-        Paragraph::new(vec![
+    let note = v.note.clone();
+    let lines = if let Some(prompt) = &app.prompt {
+        prompt_lines(frame, prompt, menu)
+    } else {
+        let mut words = vec!["Find", "Backward", "Hex"];
+        if tagged.is_some() {
+            words.extend(["Next", "Prev", "Untag"]);
+        }
+        let mut first = menu_words("VIEW", &words);
+        first.spans.extend(
             menu_line(
-                "VIEW",
+                "",
                 &[
-                    ("↑↓ PgUp/PgDn", "scroll"),
-                    ("←→", "pan"),
-                    ("H", "hex/text"),
+                    ("/ \\", "find here"),
+                    ("Space", "next hit"),
                     ("Esc", "close"),
                 ],
+            )
+            .spans
+            .into_iter()
+            .skip(1),
+        );
+        let second = match note {
+            Some(n) => Line::styled(
+                format!("{:9}{n}", ""),
+                Style::new()
+                    .fg(theme().message)
+                    .add_modifier(Modifier::BOLD),
             ),
-            Line::from(format!("{:9}{position}  ({percent}%)", "")),
-        ]),
-        menu,
-    );
+            None => Line::from(format!("{:9}{position}  ({percent}%)", "")),
+        };
+        vec![first, second]
+    };
+    frame.render_widget(Paragraph::new(lines), menu);
 }
 
 fn key(k: &str) -> Span<'static> {

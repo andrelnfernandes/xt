@@ -10,6 +10,7 @@ mod keymap;
 mod model;
 mod ops;
 mod pane;
+mod search;
 mod settings;
 mod shell;
 mod state;

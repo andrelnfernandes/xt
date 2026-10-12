@@ -186,6 +186,16 @@ const COMMANDS: &[(&str, Command, &str)] = &[
         Command::Settings,
         "configuration: options and theme",
     ),
+    (
+        "search_tagged",
+        Command::SearchTagged,
+        "search text in tagged files (untags the others)",
+    ),
+    (
+        "view_tagged",
+        Command::ViewTagged,
+        "view tagged files (N/P: next/previous, Space: next hit)",
+    ),
     ("help", Command::Help, "this help"),
     ("quit", Command::Quit, "quit"),
 ];
@@ -257,6 +267,8 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("alt+m", Files, "move_tagged_paths"),
     ("alt+f5", Files, "open_archive"),
     ("ctrl+o", Files, "open_tagged"),
+    ("ctrl+s", Files, "search_tagged"),
+    ("ctrl+v", Files, "view_tagged"),
     ("alt+c", Tree, "compare_branch"),
     ("a", Files, "attributes"),
     ("c", Files, "copy"),
@@ -472,7 +484,15 @@ impl Keymap {
             "\nFIXED KEYS\n  \
              F9                      Ctrl/Alt menus; the next letter gets the modifier\n  \
              F6                      in Copy/Move of tagged files: with/without paths\n  \
-             ↑, ↓                    in prompts: history\n",
+             ↑, ↓                    in prompts: history\n  \
+             F2, F4                  in search prompts: match case, text/hex\n\n\
+             VIEWER (V, Ctrl+V)\n  \
+             F / B                   find from the start / backward from the end\n  \
+             /, S / \\                find from this page forward / backward\n  \
+             Space, + / -            next hit (in Ctrl+V, continues in the next files)\n  \
+             N / P, Alt+Home/End     next / previous / first / last tagged file\n  \
+             U                       untag the file being viewed\n  \
+             H                       hex / text\n",
         );
         out
     }

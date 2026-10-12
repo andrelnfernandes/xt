@@ -79,7 +79,9 @@ corrigido, para não apagar o que você escreveu).
 | `F` | Filespec: filtro de arquivos | idem |
 | Alt+S | ordena os arquivos: nome, extensão, data, tamanho; ordem | idem |
 | F3 (ou F2) | relê o diretório do disco | idem |
-| `V` | | visualiza o arquivo (texto/hex) |
+| `V` | | visualiza o arquivo (texto/hex, com busca) |
+| Ctrl+S | | procura um texto nos marcados e desmarca os que não o têm |
+| Ctrl+V | | visualiza os marcados em sequência |
 | `O` | | abre o arquivo no programa padrão (`xdg-open`) |
 | Ctrl+O | | abre os arquivos marcados no programa padrão |
 | Alt+F5 | | abre um ZIP/TAR como diretório |
@@ -217,7 +219,24 @@ apagado). A raiz da árvore não pode sofrer Prune.
 
 **Visualizador:** setas/PgUp/PgDn/Home/End rolam, ←→ deslocam na horizontal,
 `H` alterna texto/hex, `Esc` fecha. Arquivos binários abrem em hex.
-Arquivos acima de 16 MiB mostram só o começo.
+Arquivos acima de 16 MiB mostram só o começo. Busca, como no ZTreeWin:
+**F** procura do início, **B** para trás a partir do fim, **/** (ou S) a
+partir da página atual e **\\** para trás a partir dela; **Espaço**
+continua na mesma direção, **+** e **-** escolhem a direção. O trecho achado
+fica destacado.
+
+**Procurar nos marcados (Ctrl+S) e visualizá-los (Ctrl+V):** Ctrl+S procura
+um texto em todos os arquivos marcados da lista e **desmarca os que não o
+contêm**, com progresso e `Esc` para parar. Ctrl+V abre os que sobraram no
+visualizador, um depois do outro: **N**ext e **P**rev trocam de arquivo
+(Alt+Home/Alt+End: primeiro/último) e **U** desmarca o atual. O termo é o
+mesmo nas duas buscas: depois de um Ctrl+S, o **Espaço** no Ctrl+V já vai
+para o próximo trecho, passando para o próximo marcado quando o arquivo
+acaba. Nos prompts de busca, **F2** liga/desliga diferenciar maiúsculas
+(sem diferenciar, acentos também contam: `AÇÃO` acha `ação`) e **F4** troca
+entre texto e hex (pares como `4d 5a`). Um `*` no meio do termo casa
+qualquer coisa na mesma linha (`erro*disco`); um termo nunca atravessa uma
+quebra de linha. Funciona também dentro de ZIP/TAR.
 
 Na árvore, `+` no conector (`├─+`) indica um diretório recolhido que tem subdiretórios.
 
@@ -278,7 +297,8 @@ configuração (Alt+F10).
 | Recurso | No ZTreeWin | No xt |
 |---|---|---|
 | Filespec | regras próprias, filtros por data, tamanho e atributo, filespec invertido | glob (`*`, `?`, `[abc]`), exclusão com `-`, sem filtros por data/tamanho/atributo |
-| Visualizador | modos Alpha, Dump, Hex, Junk e Wrap; busca; conjuntos de caracteres; edição hex | texto (UTF-8) ou hex, sem busca nem quebra de linha; até 16 MiB |
+| Visualizador | modos Alpha, Dump, Hex, Junk e Wrap; conjuntos de caracteres; edição hex; marcadores; auto-scroll | texto (UTF-8) ou hex, com a busca do ZTreeWin (F, B, /, \\, Espaço, + e -), sem quebra de linha; até 16 MiB |
+| Ctrl+S | texto, hex ou Unicode; busca só no índice de ZIPs | texto ou hex |
 | Attributes | atributos do Windows (R, A, S, H) | permissões do Unix em octal (`644`); sem dono/grupo |
 | Sort | Name, Ext, Date, Time, Length, Alpha, nuMber, Size, Value, Unsorted; Charset; same/diff na tela dividida | Name, Ext, Date, Size, crescente/decrescente, Path first; cada janela tem a sua ordem |
 | Compare | opções Identical, Unique, Newer, Older, Size, Binary, Case; filtro de exibição | marca únicos, mais novos, mais antigos, idênticos, diferentes ou únicos+mais novos; sem comparação binária |
@@ -322,8 +342,8 @@ Todas as teclas podem ser trocadas em `[keys]` no `config.toml`.
   marcar/desmarcar o ramo (Ctrl+F7/F8), marcar por atributo (Alt+T/U),
   navegação por Treespec (`\`), busca ao digitar (spell search), janela de
   estatísticas (`?`), troca de drive (`<` e `>`).
-- **Arquivos:** Open em nova janela de terminal (Alt+O), New date (N), Batch (Ctrl+B/Alt+B), busca no conteúdo dos
-  marcados (Ctrl+S), JFC (J, comparar o conteúdo de dois arquivos), ZAAP
+- **Arquivos:** Open em nova janela de terminal (Alt+O), New date (N),
+  Batch (Ctrl+B/Alt+B), JFC (J, comparar o conteúdo de dois arquivos), ZAAP
   (Y), sHortcut (H), Print (P), modos de exibição (Alt+F: várias colunas,
   só nomes), Rename com máscara, localizar e trocar e mudança de maiúsculas,
   dono/grupo (chown), Megaview e Autoview (F7), juntar marcados entre as

@@ -7,6 +7,7 @@
 
 use std::collections::HashSet;
 use std::fs;
+use std::io::BufRead;
 use std::ops::{Deref, DerefMut};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
@@ -23,11 +24,12 @@ use crate::model::filespec::Filespec;
 use crate::model::sort::{Sort, SortKey};
 use crate::model::tree::{LogJob, NodeId, ROOT};
 use crate::ops::{self, Answer, OpKind, Operation, Source};
-pub use crate::pane::{FileView, Focus, Pane};
+pub use crate::pane::{FileRef, FileView, Focus, Pane};
+use crate::search::{self, Pattern, SearchJob, SearchSpec};
 use crate::settings::{Outcome, Settings};
 use crate::shell::{self, External};
 use crate::state::{self, History};
-use crate::viewer::{self, Viewer};
+use crate::viewer::{self, Action as ViewerAction, SearchFrom, Viewer};
 
 /// Leitura em andamento e o que fazer quando ela terminar.
 pub struct Job {
@@ -78,6 +80,16 @@ enum PromptKind {
     Chmod(Vec<PathBuf>),
     Log,
     Execute,
+    /// Ctrl+S: termo a procurar nos marcados (F2 e F4 mudam as opções).
+    SearchTagged {
+        spec: SearchSpec,
+    },
+    /// Busca dentro do visualizador.
+    ViewerSearch {
+        spec: SearchSpec,
+        forward: bool,
+        from: SearchFrom,
+    },
     /// Confirmação de um Prune: o texto digitado tem de ser `word`.
     Prune {
         root: PathBuf,
@@ -96,12 +108,41 @@ impl PromptKind {
             PromptKind::Log => "log",
             PromptKind::Execute => "execute",
             PromptKind::MakeDir(_) => "mkdir",
+            PromptKind::SearchTagged { .. } | PromptKind::ViewerSearch { .. } => "search",
             PromptKind::Chmod(_) => "chmod",
             PromptKind::RenameFile(_) | PromptKind::RenameDir(_) | PromptKind::Prune { .. } => {
                 return None;
             }
         })
     }
+}
+
+impl PromptKind {
+    fn search_spec_mut(&mut self) -> Option<&mut SearchSpec> {
+        match self {
+            PromptKind::SearchTagged { spec } | PromptKind::ViewerSearch { spec, .. } => Some(spec),
+            _ => None,
+        }
+    }
+
+    fn search_label(&self) -> Option<String> {
+        Some(match self {
+            PromptKind::SearchTagged { spec } => {
+                format!("SEARCH tagged files ({}): ", spec.mode_label())
+            }
+            PromptKind::ViewerSearch { spec, forward, .. } => {
+                let dir = if *forward { "FIND" } else { "FIND backward" };
+                format!("{dir} ({}): ", spec.mode_label())
+            }
+            _ => return None,
+        })
+    }
+}
+
+/// Visualização dos marcados (Ctrl+V): os arquivos e qual está aberto.
+pub struct TaggedView {
+    pub items: Vec<(FileRef, PathBuf)>,
+    pub index: usize,
 }
 
 /// Entradas guardadas por tipo de prompt.
@@ -111,6 +152,14 @@ impl Prompt {
     /// O prompt de Copy/Move de marcados aceita F6 (com/sem caminhos).
     pub fn toggles_paths(&self) -> bool {
         matches!(self.kind, PromptKind::Transfer { tagged: true, .. })
+    }
+
+    /// Prompts de busca aceitam F2 (maiúsculas) e F4 (texto/hex).
+    pub fn is_search(&self) -> bool {
+        matches!(
+            self.kind,
+            PromptKind::SearchTagged { .. } | PromptKind::ViewerSearch { .. }
+        )
     }
 }
 
@@ -166,6 +215,12 @@ pub struct App {
     /// Mensagem mostrada até a próxima tecla.
     pub message: Option<String>,
     pub job: Option<Job>,
+    /// Ctrl+S em andamento.
+    pub search_job: Option<SearchJob<FileRef>>,
+    /// Último termo procurado (Ctrl+S e visualizador usam o mesmo, para o
+    /// Espaço no Ctrl+V continuar a busca feita com Ctrl+S).
+    pub search: Option<SearchSpec>,
+    pub tagged_view: Option<TaggedView>,
     /// Copy/Move/Delete em andamento.
     pub op: Option<Operation>,
     pub viewer: Option<Viewer>,
@@ -223,6 +278,9 @@ impl App {
             confirm: None,
             message: None,
             job: None,
+            search_job: None,
+            search: None,
+            tagged_view: None,
             op: None,
             viewer: None,
             last_dest: None,
@@ -324,7 +382,9 @@ impl App {
 
     /// Há trabalho em andamento que não depende do usuário.
     pub fn busy(&self) -> bool {
-        self.job.is_some() || self.op.as_ref().is_some_and(|op| op.conflict.is_none())
+        self.job.is_some()
+            || self.search_job.is_some()
+            || self.op.as_ref().is_some_and(|op| op.conflict.is_none())
     }
 
     /// Menu a mostrar no rodapé.
@@ -379,12 +439,6 @@ impl App {
             }
             return;
         }
-        if let Some(viewer) = &mut self.viewer {
-            if !viewer.handle_key(key) {
-                self.viewer = None;
-            }
-            return;
-        }
         if let Some(settings) = &mut self.settings {
             match settings.handle_key(key) {
                 Outcome::Stay => {}
@@ -423,7 +477,29 @@ impl App {
             }
             return;
         }
+        if let Some(job) = &self.search_job {
+            if key.code == KeyCode::Esc {
+                self.message = Some(format!(
+                    "Search cancelled after {} of {} files",
+                    job.done(),
+                    job.total()
+                ));
+                self.search_job = None;
+            }
+            return;
+        }
         if let Some(prompt) = &mut self.prompt {
+            if matches!(key.code, KeyCode::F(2) | KeyCode::F(4))
+                && let Some(spec) = prompt.kind.search_spec_mut()
+            {
+                if key.code == KeyCode::F(2) {
+                    spec.case_sensitive = !spec.case_sensitive;
+                } else {
+                    spec.hex = !spec.hex;
+                }
+                prompt.label = prompt.kind.search_label().unwrap_or_default();
+                return;
+            }
             if key.code == KeyCode::F(6)
                 && let PromptKind::Transfer {
                     kind,
@@ -445,6 +521,11 @@ impl App {
                 LineEvent::Cancel => self.prompt = None,
                 LineEvent::Editing => {}
             }
+            return;
+        }
+        if let Some(viewer) = &mut self.viewer {
+            let action = viewer.handle_key(key);
+            self.viewer_action(action);
             return;
         }
         if key.code == KeyCode::F(9) {
@@ -525,6 +606,16 @@ impl App {
             Command::Back if in_files => self.back_to_tree(),
             Command::Back => self.close_archive(),
             Command::OpenArchive => self.open_archive(),
+            Command::SearchTagged => {
+                if self.sources_or_warn(true).is_some() {
+                    let spec = self.search.clone().unwrap_or_else(|| SearchSpec::new(""));
+                    let text = spec.text.clone();
+                    let kind = PromptKind::SearchTagged { spec };
+                    let label = kind.search_label().unwrap_or_default();
+                    self.open_prompt(kind, label, &text);
+                }
+            }
+            Command::ViewTagged => self.view_tagged(),
             Command::OpenWith { tagged } => self.open_with(tagged),
             Command::CompareBranch => self.ask_compare(true),
             Command::Parent => {
@@ -643,6 +734,19 @@ impl App {
 
     /// Avança o trabalho em andamento por no máximo `budget`.
     pub fn tick(&mut self, budget: Duration) {
+        if let Some(job) = &mut self.search_job {
+            let pane = &mut self.panes[self.active];
+            for (f, found) in job.step(budget) {
+                if !found {
+                    pane.tree.file_mut(f.dir, f.idx).tagged = false;
+                }
+            }
+            if job.is_done() {
+                self.message = Some(job.summary());
+                self.search_job = None;
+            }
+            return;
+        }
         if let Some(op) = &mut self.op {
             op.step(budget);
             if op.is_done() {
@@ -1007,6 +1111,19 @@ impl App {
                 self.refresh_files();
             }),
             PromptKind::Log => self.log(&text),
+            PromptKind::SearchTagged { mut spec } => {
+                spec.text = text;
+                self.start_search(spec)
+            }
+            PromptKind::ViewerSearch {
+                mut spec,
+                forward,
+                from,
+            } => {
+                spec.text = text;
+                self.viewer_search(spec, forward, Some(from));
+                Ok(())
+            }
             PromptKind::Prune {
                 root,
                 word,
@@ -1263,22 +1380,221 @@ impl App {
         let Some(f) = self.selected_file() else {
             return;
         };
-        let path = self.file_path(f);
-        let viewer = match &self.archive {
-            Some(root) => {
-                let entry = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
-                let size = self.file(f).size;
-                archive::Reader::open(root).and_then(|mut r| {
-                    let mut data = Vec::new();
-                    r.extract(&entry, &mut data, viewer::MAX_BYTES)?;
-                    Ok(Viewer::from_bytes(path, size, data))
-                })
-            }
-            None => Viewer::open(path),
-        };
-        match viewer {
+        self.tagged_view = None;
+        match self.load_viewer(self.file_path(f), self.file(f).size) {
             Ok(v) => self.viewer = Some(v),
             Err(e) => self.message = Some(format!("Cannot view file: {e}")),
+        }
+    }
+
+    /// Abre `path` no visualizador (de dentro do ZIP/TAR, se for o caso).
+    fn load_viewer(&self, path: PathBuf, size: u64) -> std::io::Result<Viewer> {
+        match &self.archive {
+            Some(root) => {
+                let entry = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
+                let mut data = Vec::new();
+                archive::Reader::open(root)?.extract(&entry, &mut data, viewer::MAX_BYTES)?;
+                Ok(Viewer::from_bytes(path, size, data))
+            }
+            None => Viewer::open(path),
+        }
+    }
+
+    /// Lê o conteúdo de um arquivo para a busca: do disco, ou de dentro do
+    /// ZIP/TAR aberto.
+    fn content_opener(&self) -> search::Opener {
+        match self.archive.clone() {
+            Some(root) => Box::new(move |path: &Path| {
+                let entry = path.strip_prefix(&root).unwrap_or(path).to_path_buf();
+                let mut data = Vec::new();
+                archive::Reader::open(&root)?.extract(&entry, &mut data, u64::MAX)?;
+                Ok(Box::new(std::io::Cursor::new(data)) as Box<dyn BufRead>)
+            }),
+            None => Box::new(search::open_file),
+        }
+    }
+
+    /// Os marcados da lista, com os caminhos.
+    fn tagged_items(&self) -> Vec<(FileRef, PathBuf)> {
+        self.files
+            .iter()
+            .copied()
+            .filter(|&f| self.file(f).tagged)
+            .map(|f| (f, self.file_path(f)))
+            .collect()
+    }
+
+    /// Ctrl+S: procura nos marcados, aos poucos, desmarcando os que não têm
+    /// o termo.
+    fn start_search(&mut self, spec: SearchSpec) -> Result<(), String> {
+        let job = SearchJob::new(spec.clone(), self.tagged_items(), self.content_opener())?;
+        self.search = Some(spec);
+        self.search_job = Some(job);
+        self.tick(Duration::from_millis(30));
+        Ok(())
+    }
+
+    /// Ctrl+V: abre o primeiro marcado; N/P passam pelos outros.
+    fn view_tagged(&mut self) {
+        let items = self.tagged_items();
+        if items.is_empty() {
+            self.message = Some("No tagged files".into());
+            return;
+        }
+        self.tagged_view = Some(TaggedView { items, index: 0 });
+        if !self.show_tagged(0) {
+            self.tagged_view = None;
+        }
+    }
+
+    /// Mostra o marcado `index` no visualizador, mantendo o tamanho da tela.
+    fn show_tagged(&mut self, index: usize) -> bool {
+        let Some((f, path)) = self
+            .tagged_view
+            .as_ref()
+            .and_then(|tv| tv.items.get(index).cloned())
+        else {
+            return false;
+        };
+        let size = self.tree.node(f.dir).files.get(f.idx).map_or(0, |e| e.size);
+        match self.load_viewer(path, size) {
+            Ok(mut v) => {
+                if let Some(old) = &self.viewer {
+                    (v.page, v.width) = (old.page, old.width);
+                }
+                self.viewer = Some(v);
+                if let Some(tv) = &mut self.tagged_view {
+                    tv.index = index;
+                }
+                true
+            }
+            Err(e) => {
+                let msg = format!("Cannot view file: {e}");
+                match &mut self.viewer {
+                    Some(v) => v.note = Some(msg),
+                    None => self.message = Some(msg),
+                }
+                false
+            }
+        }
+    }
+
+    fn viewer_action(&mut self, action: ViewerAction) {
+        let position = self
+            .tagged_view
+            .as_ref()
+            .map(|tv| (tv.index, tv.items.len()));
+        match action {
+            ViewerAction::None => {}
+            ViewerAction::Close => {
+                self.viewer = None;
+                self.tagged_view = None;
+            }
+            ViewerAction::Next | ViewerAction::Prev | ViewerAction::First | ViewerAction::Last => {
+                let Some((i, n)) = position else {
+                    return;
+                };
+                let target = match action {
+                    ViewerAction::Next => (i + 1).min(n - 1),
+                    ViewerAction::Prev => i.saturating_sub(1),
+                    ViewerAction::First => 0,
+                    _ => n - 1,
+                };
+                if target != i {
+                    self.show_tagged(target);
+                } else if let Some(v) = &mut self.viewer {
+                    let edge = if target == 0 { "First" } else { "Last" };
+                    v.note = Some(format!("{edge} tagged file"));
+                }
+            }
+            ViewerAction::Untag => {
+                let Some(f) = self
+                    .tagged_view
+                    .as_ref()
+                    .and_then(|tv| tv.items.get(tv.index))
+                    .map(|(f, _)| *f)
+                else {
+                    return;
+                };
+                self.tree.file_mut(f.dir, f.idx).tagged = false;
+                if let Some(v) = &mut self.viewer {
+                    v.note = Some("Untagged".into());
+                }
+            }
+            ViewerAction::Search { forward, from } => {
+                let spec = self.search.clone().unwrap_or_else(|| SearchSpec::new(""));
+                let text = spec.text.clone();
+                let kind = PromptKind::ViewerSearch {
+                    spec,
+                    forward,
+                    from,
+                };
+                let label = kind.search_label().unwrap_or_default();
+                self.open_prompt(kind, label, &text);
+            }
+            ViewerAction::Continue { forward } => {
+                let dir = forward.unwrap_or_else(|| self.viewer.as_ref().is_none_or(|v| v.forward));
+                match self.search.clone() {
+                    Some(spec) => self.viewer_search(spec, dir, None),
+                    None => self.viewer_action(ViewerAction::Search {
+                        forward: dir,
+                        from: SearchFrom::Page,
+                    }),
+                }
+            }
+        }
+    }
+
+    /// Procura no arquivo aberto; no Ctrl+V, se não houver mais nele,
+    /// segue para os próximos marcados (ou os anteriores, para trás).
+    fn viewer_search(&mut self, spec: SearchSpec, forward: bool, from: Option<SearchFrom>) {
+        let pattern = match Pattern::new(&spec) {
+            Ok(p) => p,
+            Err(e) => {
+                if let Some(v) = &mut self.viewer {
+                    v.note = Some(e);
+                }
+                return;
+            }
+        };
+        let text = spec.text.clone();
+        self.search = Some(spec);
+        let Some(viewer) = &mut self.viewer else {
+            return;
+        };
+        let found = match from {
+            Some(from) => viewer.search(&pattern, forward, from),
+            None => viewer.search_next(&pattern, forward),
+        };
+        if found {
+            return;
+        }
+        if let Some(tv) = &self.tagged_view {
+            let candidates: Vec<(usize, PathBuf)> = if forward {
+                (tv.index + 1..tv.items.len())
+                    .map(|i| (i, tv.items[i].1.clone()))
+                    .collect()
+            } else {
+                (0..tv.index)
+                    .rev()
+                    .map(|i| (i, tv.items[i].1.clone()))
+                    .collect()
+            };
+            let open = self.content_opener();
+            for (i, path) in candidates {
+                let has = open(&path)
+                    .and_then(|r| pattern.matches_reader(r))
+                    .unwrap_or(false);
+                if has && self.show_tagged(i) {
+                    if let Some(v) = &mut self.viewer {
+                        v.search(&pattern, forward, SearchFrom::Edge);
+                    }
+                    return;
+                }
+            }
+        }
+        if let Some(v) = &mut self.viewer {
+            v.note = Some(format!("\"{text}\" not found"));
         }
     }
 }
@@ -2369,5 +2685,151 @@ mod tests {
         assert_eq!(app.current(), ROOT);
         assert_eq!(app.focus, Focus::Files);
         assert_eq!(names(&app), ["a.rs", "b.txt"]);
+    }
+
+    /// Três arquivos; "senha" aparece em dois deles, duas vezes no primeiro.
+    fn search_setup() -> (tempfile::TempDir, App) {
+        let tmp = tempfile::tempdir().unwrap();
+        write(
+            tmp.path().join("1.txt"),
+            "linha\na SENHA aqui\noutra\nsenha de novo\n",
+        )
+        .unwrap();
+        write(tmp.path().join("2.txt"), "nada a ver\n").unwrap();
+        write(tmp.path().join("3.txt"), "\n\n\nsó a senha no fim\n").unwrap();
+        let mut app = App::new(tmp.path().to_path_buf());
+        press(&mut app, KeyCode::Enter);
+        ctrl(&mut app, 't');
+        (tmp, app)
+    }
+
+    fn viewer_space(app: &mut App) -> (String, Option<usize>) {
+        press(app, KeyCode::Char(' '));
+        let v = app.viewer.as_ref().unwrap();
+        let name = v.path.file_name().unwrap().to_string_lossy().into_owned();
+        (name, v.hit.map(|h| h.line))
+    }
+
+    #[test]
+    fn ctrl_s_then_ctrl_v_then_space_walks_the_hits() {
+        let (_tmp, mut app) = search_setup();
+        ctrl(&mut app, 's');
+        let label = app.prompt.as_ref().unwrap().label.clone();
+        assert_eq!(label, "SEARCH tagged files (text, ignore case): ");
+        type_text(&mut app, "senha");
+        press(&mut app, KeyCode::Enter);
+        while app.busy() {
+            app.tick(Duration::from_millis(50));
+        }
+        assert_eq!(tagged(&app), ["1.txt", "3.txt"], "2.txt was untagged");
+        assert!(
+            app.message
+                .as_deref()
+                .unwrap()
+                .starts_with("2 of 3 tagged files contain")
+        );
+
+        // Ctrl+V e Espaço: usa o termo do Ctrl+S e atravessa os arquivos.
+        ctrl(&mut app, 'v');
+        assert_eq!(app.tagged_view.as_ref().unwrap().items.len(), 2);
+        assert_eq!(viewer_space(&mut app), ("1.txt".into(), Some(1)));
+        assert_eq!(viewer_space(&mut app), ("1.txt".into(), Some(3)));
+        assert_eq!(viewer_space(&mut app), ("3.txt".into(), Some(3)));
+        let (_, hit) = viewer_space(&mut app);
+        assert_eq!(hit, Some(3), "no more hits: stays");
+        assert!(
+            app.viewer
+                .as_ref()
+                .unwrap()
+                .note
+                .as_deref()
+                .unwrap()
+                .contains("not found")
+        );
+
+        // Para trás volta para o arquivo anterior.
+        press(&mut app, KeyCode::Char('-'));
+        let v = app.viewer.as_ref().unwrap();
+        assert_eq!(v.path.file_name().unwrap(), "1.txt");
+        assert_eq!(v.hit.map(|h| h.line), Some(3));
+    }
+
+    #[test]
+    fn ctrl_v_next_prev_and_untag() {
+        let (_tmp, mut app) = search_setup();
+        ctrl(&mut app, 'v');
+        let current = |app: &App| {
+            let v = app.viewer.as_ref().unwrap();
+            v.path.file_name().unwrap().to_string_lossy().into_owned()
+        };
+        assert_eq!(current(&app), "1.txt");
+        press(&mut app, KeyCode::Char('n'));
+        assert_eq!(current(&app), "2.txt");
+        press(&mut app, KeyCode::Char('u'));
+        app.handle_key(KeyEvent::new(KeyCode::End, KeyModifiers::ALT));
+        assert_eq!(current(&app), "3.txt");
+        press(&mut app, KeyCode::Char('n'));
+        assert_eq!(
+            app.viewer.as_ref().unwrap().note.as_deref(),
+            Some("Last tagged file")
+        );
+        press(&mut app, KeyCode::Esc);
+        assert!(app.viewer.is_none() && app.tagged_view.is_none());
+        assert_eq!(tagged(&app), ["1.txt", "3.txt"]);
+    }
+
+    #[test]
+    fn viewer_find_prompt_and_options() {
+        let (_tmp, mut app) = search_setup();
+        press(&mut app, KeyCode::Char('v')); // só o 1.txt
+        press(&mut app, KeyCode::Char('f'));
+        assert!(
+            app.prompt
+                .as_ref()
+                .unwrap()
+                .label
+                .starts_with("FIND (text, ignore case)")
+        );
+        press(&mut app, KeyCode::F(2));
+        assert!(app.prompt.as_ref().unwrap().label.contains("match case"));
+        type_text(&mut app, "SENHA");
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(app.viewer.as_ref().unwrap().hit.map(|h| h.line), Some(1));
+        // Diferenciando maiúsculas, o "senha" da linha 3 não conta.
+        press(&mut app, KeyCode::Char(' '));
+        assert_eq!(app.viewer.as_ref().unwrap().hit.map(|h| h.line), Some(1));
+
+        // O termo e as opções voltam no próximo Ctrl+S.
+        press(&mut app, KeyCode::Esc);
+        ctrl(&mut app, 's');
+        let prompt = app.prompt.as_ref().unwrap();
+        assert_eq!(prompt.input.text, "SENHA");
+        assert!(prompt.label.contains("match case"));
+    }
+
+    #[test]
+    fn search_can_be_cancelled_and_needs_tags() {
+        let (_tmp, mut app) = search_setup();
+        ctrl(&mut app, 'u');
+        ctrl(&mut app, 's');
+        assert!(app.prompt.is_none());
+        assert_eq!(app.message.as_deref(), Some("No tagged files"));
+        ctrl(&mut app, 'v');
+        assert!(app.viewer.is_none());
+    }
+
+    #[test]
+    fn searches_inside_archives() {
+        let (_tmp, mut app) = archive_setup();
+        alt_f5(&mut app);
+        app.apply(Command::Branch);
+        ctrl(&mut app, 't');
+        ctrl(&mut app, 's');
+        type_text(&mut app, "fn a");
+        press(&mut app, KeyCode::Enter);
+        while app.busy() {
+            app.tick(Duration::from_millis(50));
+        }
+        assert_eq!(tagged(&app), ["a.rs"]);
     }
 }

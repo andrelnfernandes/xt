@@ -47,6 +47,10 @@ pub enum Command {
     Prune,
     /// F12 / Alt+F10: tela de configuração.
     Settings,
+    /// Ctrl+S: procura um texto nos marcados e desmarca os que não o têm.
+    SearchTagged,
+    /// Ctrl+V: visualiza os marcados, um depois do outro.
+    ViewTagged,
     Back,
     Filespec,
     Showall,
