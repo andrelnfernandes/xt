@@ -90,6 +90,11 @@ enum PromptKind {
         forward: bool,
         from: SearchFrom,
     },
+    /// Treespec: o cursor da árvore segue o que é digitado; Esc volta
+    /// para `origin`.
+    Treespec {
+        origin: NodeId,
+    },
     /// Confirmação de um Prune: o texto digitado tem de ser `word`.
     Prune {
         root: PathBuf,
@@ -106,6 +111,7 @@ impl PromptKind {
             PromptKind::Filespec => "filespec",
             PromptKind::Transfer { .. } => "destination",
             PromptKind::Log => "log",
+            PromptKind::Treespec { .. } => "treespec",
             PromptKind::Execute => "execute",
             PromptKind::MakeDir(_) => "mkdir",
             PromptKind::SearchTagged { .. } | PromptKind::ViewerSearch { .. } => "search",
@@ -488,6 +494,15 @@ impl App {
             }
             return;
         }
+        if let Some(Prompt {
+            kind: PromptKind::Treespec { origin },
+            ..
+        }) = &self.prompt
+        {
+            let origin = *origin;
+            self.treespec_key(key, origin);
+            return;
+        }
         if let Some(prompt) = &mut self.prompt {
             if matches!(key.code, KeyCode::F(2) | KeyCode::F(4))
                 && let Some(spec) = prompt.kind.search_spec_mut()
@@ -549,6 +564,17 @@ impl App {
                 key.modifiers |= KeyModifiers::ALT;
             }
             _ => {}
+        }
+        // Shift+letra (e dígitos): pula para o próximo nome que começa com
+        // ela, como no ZTreeWin.
+        if let KeyCode::Char(c) = key.code
+            && !key
+                .modifiers
+                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+            && (c.is_uppercase() || c.is_ascii_digit())
+        {
+            self.spell_jump(c);
+            return;
         }
         if let Some(cmd) = self.keymap.lookup(key, self.focus) {
             self.apply(cmd);
@@ -616,6 +642,7 @@ impl App {
                 }
             }
             Command::ViewTagged => self.view_tagged(),
+            Command::Treespec => self.start_treespec(),
             Command::OpenWith { tagged } => self.open_with(tagged),
             Command::CompareBranch => self.ask_compare(true),
             Command::Parent => {
@@ -981,6 +1008,80 @@ impl App {
         }
     }
 
+    /// `\`: abre o prompt do Treespec com o caminho atual. No Branch e no
+    /// Showall, vai direto para o diretório do arquivo selecionado.
+    fn start_treespec(&mut self) {
+        if self.view != FileView::Dir {
+            if let Some(f) = self.selected_file() {
+                let name = self.file(f).name.clone();
+                self.view = FileView::Dir;
+                self.show_node(f.dir);
+                self.refresh_files();
+                if let Some(i) = self.files.iter().position(|&r| self.file(r).name == name) {
+                    self.file_state.select(Some(i));
+                }
+            }
+            return;
+        }
+        let mut text = self.current_path().to_string_lossy().into_owned();
+        if !text.ends_with('/') {
+            text.push('/');
+        }
+        let origin = self.current();
+        self.open_prompt(PromptKind::Treespec { origin }, "TREESPEC: ".into(), &text);
+    }
+
+    /// Teclas no prompt do Treespec: `/` ou `\` completam e descem um
+    /// nível, Tab/Shift+Tab completam e depois trocam de irmão, Esc volta.
+    fn treespec_key(&mut self, key: KeyEvent, origin: NodeId) {
+        let Some(prompt) = &mut self.prompt else {
+            return;
+        };
+        let text = prompt.input.text.clone();
+        let new_text = match key.code {
+            KeyCode::Char('/' | '\\') => {
+                let mut t = self.treespec_complete(&text).unwrap_or(text.clone());
+                if !t.ends_with('/') {
+                    t.push('/');
+                }
+                Some(t)
+            }
+            KeyCode::Tab | KeyCode::BackTab => {
+                let forward = key.code == KeyCode::Tab;
+                match self.treespec_complete(&text) {
+                    Some(t) if t != text => Some(t),
+                    _ => self.treespec_sibling(&text, forward),
+                }
+            }
+            _ => None,
+        };
+        let Some(prompt) = &mut self.prompt else {
+            return;
+        };
+        let text = match new_text {
+            Some(t) => {
+                prompt.input = LineInput::new(&t).with_history(prompt.input.history());
+                t
+            }
+            None => match prompt.input.handle_key(key) {
+                LineEvent::Submit => {
+                    let prompt = self.prompt.take().unwrap();
+                    self.submit(prompt.kind, prompt.input.text);
+                    return;
+                }
+                LineEvent::Cancel => {
+                    self.prompt = None;
+                    self.show_node(origin);
+                    return;
+                }
+                LineEvent::Editing => prompt.input.text.clone(),
+            },
+        };
+        if let Some(id) = self.treespec_target(&text) {
+            self.show_node(id);
+        }
+    }
+
     /// `O`: abre o arquivo (ou os marcados) no programa padrão do sistema.
     /// Dentro de um arquivo compactado, extrai antes para uma pasta
     /// temporária (apagada ao sair do xt).
@@ -1111,6 +1212,12 @@ impl App {
                 self.refresh_files();
             }),
             PromptKind::Log => self.log(&text),
+            // A navegação já aconteceu enquanto digitava; fora da árvore,
+            // vira um Log.
+            PromptKind::Treespec { .. } => match self.treespec_target(&text) {
+                Some(_) => Ok(()),
+                None => self.log(&text),
+            },
             PromptKind::SearchTagged { mut spec } => {
                 spec.text = text;
                 self.start_search(spec)
@@ -2831,5 +2938,102 @@ mod tests {
             app.tick(Duration::from_millis(50));
         }
         assert_eq!(tagged(&app), ["a.rs"]);
+    }
+
+    fn treespec_setup() -> (tempfile::TempDir, App, String) {
+        let tmp = tempfile::tempdir().unwrap();
+        for d in ["Docs/rust/src", "Docs/notes", "downloads"] {
+            create_dir_all(tmp.path().join(d)).unwrap();
+        }
+        write(tmp.path().join("Docs/rust/src/main.rs"), "").unwrap();
+        let app = App::new(tmp.path().to_path_buf());
+        let root = tmp.path().to_string_lossy().into_owned();
+        (tmp, app, root)
+    }
+
+    fn current_name(app: &App) -> String {
+        app.tree
+            .node(app.current())
+            .name
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    #[test]
+    fn treespec_navigates_while_typing() {
+        let (_tmp, mut app, root) = treespec_setup();
+        press(&mut app, KeyCode::Char('\\'));
+        assert_eq!(app.prompt.as_ref().unwrap().input.text, format!("{root}/"));
+        type_text(&mut app, "do");
+        assert_eq!(current_name(&app), "Docs", "cursor follows the typing");
+        type_text(&mut app, "/");
+        assert_eq!(
+            app.prompt.as_ref().unwrap().input.text,
+            format!("{root}/Docs/")
+        );
+        type_text(&mut app, "r\\s");
+        assert_eq!(
+            app.prompt.as_ref().unwrap().input.text,
+            format!("{root}/Docs/rust/s")
+        );
+        assert_eq!(current_name(&app), "src");
+        press(&mut app, KeyCode::Enter);
+        assert!(app.prompt.is_none());
+        assert_eq!(current_name(&app), "src");
+        assert_eq!(names(&app), ["main.rs"]);
+    }
+
+    #[test]
+    fn treespec_tab_cycles_and_esc_returns() {
+        let (_tmp, mut app, root) = treespec_setup();
+        press(&mut app, KeyCode::Char('\\'));
+        type_text(&mut app, "do");
+        press(&mut app, KeyCode::Tab);
+        assert_eq!(
+            app.prompt.as_ref().unwrap().input.text,
+            format!("{root}/Docs")
+        );
+        press(&mut app, KeyCode::Tab);
+        assert_eq!(current_name(&app), "downloads");
+        press(&mut app, KeyCode::BackTab);
+        assert_eq!(current_name(&app), "Docs");
+        press(&mut app, KeyCode::Esc);
+        assert!(app.prompt.is_none());
+        assert_eq!(app.current(), ROOT, "back to where it started");
+    }
+
+    #[test]
+    fn treespec_outside_the_tree_logs() {
+        let (_tmp, mut app, _root) = treespec_setup();
+        let other = tempfile::tempdir().unwrap();
+        press(&mut app, KeyCode::Char('\\'));
+        ctrl(&mut app, 'u');
+        type_text(&mut app, other.path().to_str().unwrap());
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(app.tree.path(ROOT), fs::canonicalize(other.path()).unwrap());
+    }
+
+    #[test]
+    fn treespec_in_branch_goes_to_the_file() {
+        let (_tmp, mut app, _root) = treespec_setup();
+        app.apply(Command::Branch);
+        assert_eq!(names(&app), ["main.rs"]);
+        press(&mut app, KeyCode::Char('\\'));
+        assert!(app.prompt.is_none());
+        assert_eq!(app.view, FileView::Dir);
+        assert_eq!(current_name(&app), "src");
+        assert_eq!(app.file(app.selected_file().unwrap()).name, "main.rs");
+    }
+
+    #[test]
+    fn shift_letter_jumps_instead_of_running_commands() {
+        let (_tmp, mut app, _root) = treespec_setup();
+        app.handle_key(KeyEvent::new(KeyCode::Char('D'), KeyModifiers::SHIFT));
+        assert_eq!(current_name(&app), "Docs");
+        app.handle_key(KeyEvent::new(KeyCode::Char('D'), KeyModifiers::SHIFT));
+        assert_eq!(current_name(&app), "downloads");
+        // Minúscula continua sendo comando (d = Delete).
+        press(&mut app, KeyCode::Char('d'));
+        assert!(app.confirm.is_some());
     }
 }

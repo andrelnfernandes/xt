@@ -74,6 +74,8 @@ corrigido, para não apagar o que você escreveu).
 | Backspace | diretório pai | mostra os arquivos do diretório pai |
 | Espaço | desce uma linha | idem |
 | `*` | loga e expande o ramo inteiro | |
+| `\` | Treespec: vai a um diretório digitando o caminho | idem (no Branch/Showall: vai ao diretório do arquivo) |
+| Shift+letra, 0–9 | próximo diretório que começa com ela | próximo arquivo que começa com ela |
 | `B` | Branch: arquivos do ramo inteiro (loga antes) | idem |
 | `S` | Showall: arquivos de tudo o que foi logado | idem |
 | `F` | Filespec: filtro de arquivos | idem |
@@ -148,6 +150,15 @@ alterna crescente/decrescente e **P**ath first agrupa por diretório no
 Branch/Showall. A ordem atual aparece no título da janela de arquivos (ex.:
 `Size↓`) e o cursor fica no mesmo arquivo. A ordem inicial vem de `sort` e
 `sort_descending` na configuração; novas janelas (F8, Log) herdam a atual.
+
+**Treespec (`\`):** abre um prompt com o caminho atual; enquanto você digita,
+o cursor da árvore vai para o primeiro diretório que começa com o que foi
+digitado (sem diferenciar maiúsculas). `/` ou `\` completam o nome e descem
+um nível; Tab e Shift+Tab completam e depois passam para o próximo/anterior
+diretório do mesmo nível; Backspace volta níveis; Enter confirma; Esc volta
+para onde estava. ↑ traz o histórico (salvo entre execuções). Um caminho fora
+da árvore vira um Log ao confirmar. No Branch/Showall, `\` vai direto ao
+diretório do arquivo selecionado, com ele em destaque.
 
 **Edit e eXecute:** `E` abre o arquivo no editor (`$VISUAL`, `$EDITOR`, o
 `editor` do Debian/Ubuntu ou `vi`). `X` pede uma linha de comando e a roda com
@@ -340,7 +351,8 @@ Todas as teclas podem ser trocadas em `[keys]` no `config.toml`.
   Ctrl+Backspace), Hide (Alt+H), Info (Alt+I), Wash (Alt+W), Volume
   (Ctrl+V), KByte (Alt+K), F5/F6 (esconder níveis de subdiretórios),
   marcar/desmarcar o ramo (Ctrl+F7/F8), marcar por atributo (Alt+T/U),
-  navegação por Treespec (`\`), busca ao digitar (spell search), janela de
+  Treespec em modo de edição (F5, curingas) e pastas especiais (F6), busca
+  ao digitar com prompt (`|`) e modo ativo, janela de
   estatísticas (`?`), troca de drive (`<` e `>`).
 - **Arquivos:** Open em nova janela de terminal (Alt+O), New date (N),
   Batch (Ctrl+B/Alt+B), JFC (J, comparar o conteúdo de dois arquivos), ZAAP

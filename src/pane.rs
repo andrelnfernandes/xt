@@ -247,11 +247,21 @@ impl Pane {
     /// Leva o cursor da árvore até `path`, lendo e expandindo o caminho.
     /// Para no último diretório existente; devolve se chegou ao destino.
     pub fn goto(&mut self, path: &Path) -> bool {
-        let Ok(rel) = path.strip_prefix(self.tree.path(ROOT)) else {
-            return false;
-        };
+        match self.walk(path) {
+            Some((id, reached)) => {
+                self.show_node(id);
+                reached
+            }
+            None => false,
+        }
+    }
+
+    /// Acha o diretório de `path` na árvore, lendo do disco o que faltar.
+    /// Devolve o mais fundo que existe e se chegou até o fim; `None` se o
+    /// caminho está fora da árvore.
+    fn walk(&mut self, path: &Path) -> Option<(NodeId, bool)> {
+        let rel = path.strip_prefix(self.tree.path(ROOT)).ok()?;
         let mut cur = ROOT;
-        let mut reached = true;
         for comp in rel.components() {
             let Component::Normal(name) = comp else {
                 continue;
@@ -264,18 +274,130 @@ impl Pane {
                 .find(|&&c| self.tree.node(c).name == name)
             {
                 Some(&child) => cur = child,
-                None => {
-                    reached = false;
-                    break;
+                None => return Some((cur, false)),
+            }
+        }
+        Some((cur, true))
+    }
+
+    /// Põe o cursor da árvore em `id`, expandindo o caminho até ele.
+    pub fn show_node(&mut self, id: NodeId) {
+        self.tree.reveal(id);
+        self.tree.scan(id);
+        if self.current() != id {
+            self.refresh_rows(id);
+            self.file_state.select(Some(0));
+            self.refresh_files();
+        }
+    }
+
+    /// Treespec: o diretório para um caminho digitado pela metade, onde o
+    /// último pedaço é o começo de um nome (`/home/an` → `/home/andre`).
+    pub fn treespec_target(&mut self, text: &str) -> Option<NodeId> {
+        let (dir, partial) = split_partial(text);
+        let (node, reached) = self.walk(Path::new(dir))?;
+        if !reached || partial.is_empty() {
+            return Some(node);
+        }
+        Some(self.treespec_match(node, partial).unwrap_or(node))
+    }
+
+    /// Primeiro subdiretório de `parent` cujo nome começa com `partial`
+    /// (sem diferenciar maiúsculas). Ocultos só se o começo for um ponto.
+    fn treespec_match(&self, parent: NodeId, partial: &str) -> Option<NodeId> {
+        let partial = partial.to_lowercase();
+        self.treespec_choices(parent, &partial)
+            .into_iter()
+            .find(|&c| {
+                self.tree
+                    .node(c)
+                    .name
+                    .to_string_lossy()
+                    .to_lowercase()
+                    .starts_with(&partial)
+            })
+    }
+
+    fn treespec_choices(&self, parent: NodeId, partial: &str) -> Vec<NodeId> {
+        let show_hidden = self.tree.show_hidden || partial.starts_with('.');
+        self.tree
+            .node(parent)
+            .children
+            .iter()
+            .copied()
+            .filter(|&c| show_hidden || !is_hidden(&self.tree.node(c).name))
+            .collect()
+    }
+
+    /// Completa o último pedaço com o nome do diretório que ele indica.
+    pub fn treespec_complete(&mut self, text: &str) -> Option<String> {
+        let (dir, partial) = split_partial(text);
+        if partial.is_empty() {
+            return None;
+        }
+        let (parent, true) = self.walk(Path::new(dir))? else {
+            return None;
+        };
+        let target = self.treespec_match(parent, partial)?;
+        Some(format!(
+            "{dir}{}",
+            self.tree.node(target).name.to_string_lossy()
+        ))
+    }
+
+    /// Troca o último pedaço pelo próximo (ou anterior) diretório do mesmo
+    /// nível (Tab / Shift+Tab).
+    pub fn treespec_sibling(&mut self, text: &str, forward: bool) -> Option<String> {
+        let (dir, partial) = split_partial(text);
+        let (parent, true) = self.walk(Path::new(dir))? else {
+            return None;
+        };
+        let choices = self.treespec_choices(parent, partial);
+        if choices.is_empty() {
+            return None;
+        }
+        let pos = choices
+            .iter()
+            .position(|&c| self.tree.node(c).name.to_string_lossy() == partial);
+        let next = match (pos, forward) {
+            (None, true) => 0,
+            (None, false) => choices.len() - 1,
+            (Some(i), true) => (i + 1) % choices.len(),
+            (Some(i), false) => (i + choices.len() - 1) % choices.len(),
+        };
+        Some(format!(
+            "{dir}{}",
+            self.tree.node(choices[next]).name.to_string_lossy()
+        ))
+    }
+
+    /// Shift+letra: próximo diretório (na árvore) ou arquivo (na lista)
+    /// cujo nome começa com `c`, dando a volta no fim.
+    pub fn spell_jump(&mut self, c: char) {
+        let c = c.to_lowercase().next().unwrap_or(c);
+        let starts = |name: &std::ffi::OsStr| name.to_string_lossy().to_lowercase().starts_with(c);
+        match self.focus {
+            Focus::Tree => {
+                let n = self.rows.len();
+                let cur = self.tree_state.selected().unwrap_or(0);
+                if let Some(i) = (1..=n)
+                    .map(|k| (cur + k) % n)
+                    .find(|&i| starts(&self.tree.node(self.rows[i].id).name))
+                {
+                    self.select_row(i);
+                }
+            }
+            Focus::Files => {
+                let n = self.files.len();
+                let cur = self.file_state.selected().unwrap_or(0);
+                if let Some(i) = (1..=n)
+                    .map(|k| (cur + k) % n)
+                    .find(|&i| starts(&self.file(self.files[i]).name))
+                {
+                    self.file_state.select(Some(i));
                 }
             }
         }
-        self.tree.reveal(cur);
-        self.tree.scan(cur);
-        self.refresh_rows(cur);
-        self.file_state.select(Some(0));
-        self.refresh_files();
-        reached
     }
 
     pub fn apply_tree(&mut self, cmd: Command) {
@@ -383,6 +505,14 @@ impl Pane {
     }
 }
 
+/// "/home/an" → ("/home/", "an"); "/home/" → ("/home/", "").
+fn split_partial(text: &str) -> (&str, &str) {
+    match text.rfind('/') {
+        Some(i) => (&text[..=i], &text[i + 1..]),
+        None => ("", text),
+    }
+}
+
 /// Nova posição de um cursor numa lista de `len` itens.
 pub fn move_cursor(cmd: Command, pos: usize, len: usize, page: usize) -> usize {
     if len == 0 {
@@ -434,6 +564,63 @@ mod tests {
         std::fs::remove_file(tmp.path().join("d")).unwrap();
         pane.rescan_paths(&[tmp.path()]);
         assert_eq!(pane.file_state.selected(), Some(2));
+    }
+
+    #[test]
+    fn treespec_follows_what_is_typed() {
+        let tmp = tempfile::tempdir().unwrap();
+        for d in ["Docs/rust", "Docs/notes", "downloads", ".config/xt"] {
+            create_dir_all(tmp.path().join(d)).unwrap();
+        }
+        let root = tmp.path().to_string_lossy().into_owned();
+        let mut pane = Pane::new(tmp.path().to_path_buf());
+        let name = |pane: &Pane, id| pane.tree.node(id).name.to_string_lossy().into_owned();
+
+        let id = pane.treespec_target(&format!("{root}/do")).unwrap();
+        assert_eq!(name(&pane, id), "Docs", "case-insensitive, first in order");
+        let id = pane.treespec_target(&format!("{root}/dow")).unwrap();
+        assert_eq!(name(&pane, id), "downloads");
+        let id = pane.treespec_target(&format!("{root}/Docs/n")).unwrap();
+        assert_eq!(name(&pane, id), "notes");
+        let id = pane.treespec_target(&format!("{root}/.c")).unwrap();
+        assert_eq!(name(&pane, id), ".config");
+        // Nada casa: fica no diretório de cima.
+        let id = pane.treespec_target(&format!("{root}/zz")).unwrap();
+        assert_eq!(id, ROOT);
+        assert!(pane.treespec_target("/fora/da/arvore").is_none());
+
+        assert_eq!(
+            pane.treespec_complete(&format!("{root}/do")),
+            Some(format!("{root}/Docs"))
+        );
+        let next = pane
+            .treespec_sibling(&format!("{root}/Docs"), true)
+            .unwrap();
+        assert_eq!(next, format!("{root}/downloads"));
+        let wrap = pane.treespec_sibling(&next, true).unwrap();
+        assert_eq!(wrap, format!("{root}/.config"), "hidden shown by default");
+        let back = pane
+            .treespec_sibling(&format!("{root}/Docs"), false)
+            .unwrap();
+        assert_eq!(back, format!("{root}/.config"));
+    }
+
+    #[test]
+    fn shift_letter_jumps_with_wraparound() {
+        let tmp = tempfile::tempdir().unwrap();
+        for d in ["alpha", "beta", "bravo"] {
+            create_dir_all(tmp.path().join(d)).unwrap();
+        }
+        let mut pane = Pane::new(tmp.path().to_path_buf());
+        let current = |p: &Pane| p.tree.node(p.current()).name.to_string_lossy().into_owned();
+        pane.spell_jump('B');
+        assert_eq!(current(&pane), "beta");
+        pane.spell_jump('B');
+        assert_eq!(current(&pane), "bravo");
+        pane.spell_jump('B');
+        assert_eq!(current(&pane), "beta", "wraps around");
+        pane.spell_jump('Z');
+        assert_eq!(current(&pane), "beta", "no match: stays");
     }
 
     #[test]

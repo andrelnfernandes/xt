@@ -196,6 +196,11 @@ const COMMANDS: &[(&str, Command, &str)] = &[
         Command::ViewTagged,
         "view tagged files (N/P: next/previous, Space: next hit)",
     ),
+    (
+        "treespec",
+        Command::Treespec,
+        "go to a directory by typing its path (Tab, / complete)",
+    ),
     ("help", Command::Help, "this help"),
     ("quit", Command::Quit, "quit"),
 ];
@@ -268,6 +273,7 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("alt+f5", Files, "open_archive"),
     ("ctrl+o", Files, "open_tagged"),
     ("ctrl+s", Files, "search_tagged"),
+    ("\\", Any, "treespec"),
     ("ctrl+v", Files, "view_tagged"),
     ("alt+c", Tree, "compare_branch"),
     ("a", Files, "attributes"),
@@ -492,7 +498,9 @@ impl Keymap {
              Space, + / -            next hit (in Ctrl+V, continues in the next files)\n  \
              N / P, Alt+Home/End     next / previous / first / last tagged file\n  \
              U                       untag the file being viewed\n  \
-             H                       hex / text\n",
+             H                       hex / text\n\n\
+             NAVIGATION\n  \
+             Shift+letter, 0-9       next directory / file starting with it\n",
         );
         out
     }

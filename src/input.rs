@@ -51,6 +51,8 @@ pub enum Command {
     SearchTagged,
     /// Ctrl+V: visualiza os marcados, um depois do outro.
     ViewTagged,
+    /// `\`: navega digitando o caminho.
+    Treespec,
     Back,
     Filespec,
     Showall,
@@ -119,6 +121,10 @@ impl LineInput {
     pub fn with_history(mut self, history: Vec<String>) -> Self {
         self.history = history;
         self
+    }
+
+    pub fn history(&self) -> Vec<String> {
+        self.history.clone()
     }
 
     fn set_text(&mut self, text: String) {
