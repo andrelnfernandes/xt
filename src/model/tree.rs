@@ -67,6 +67,14 @@ pub struct Tree {
     /// Árvore de um arquivo compactado: tudo já vem lido e nada é relido
     /// do disco.
     is_virtual: bool,
+    /// Mostra diretórios ocultos (nome começando com ponto). Só afeta o
+    /// que é exibido; o que está logado continua todo aqui.
+    pub show_hidden: bool,
+}
+
+/// Nome oculto no Linux: começa com ponto.
+pub fn is_hidden(name: &std::ffi::OsStr) -> bool {
+    name.as_encoded_bytes().first() == Some(&b'.')
 }
 
 /// Leitura de um ramo inteiro feita aos poucos, para a interface poder
@@ -107,6 +115,7 @@ impl Tree {
                 error: None,
             }],
             is_virtual: false,
+            show_hidden: true,
         };
         tree.expand(ROOT);
         tree
@@ -127,6 +136,7 @@ impl Tree {
                 error: None,
             }],
             is_virtual: true,
+            show_hidden: true,
         };
         for (path, file) in listing {
             let dirs = match file {
@@ -355,11 +365,34 @@ impl Tree {
         rows
     }
 
+    /// Subdiretórios exibidos (sem os ocultos, se for o caso).
+    fn visible_children(&self, id: NodeId) -> impl Iterator<Item = NodeId> + '_ {
+        self.nodes[id]
+            .children
+            .iter()
+            .copied()
+            .filter(|&c| self.show_hidden || !is_hidden(&self.nodes[c].name))
+    }
+
+    /// Como `subtree`, mas sem entrar em diretórios ocultos (a não ser que
+    /// sejam exibidos). `id` em si sempre entra.
+    pub fn visible_subtree(&self, id: NodeId) -> Vec<NodeId> {
+        let mut out = Vec::new();
+        let mut stack = vec![id];
+        while let Some(n) = stack.pop() {
+            out.push(n);
+            let children: Vec<NodeId> = self.visible_children(n).collect();
+            stack.extend(children.into_iter().rev());
+        }
+        out
+    }
+
     fn push_children(&self, id: NodeId, indent: &str, rows: &mut Vec<VisibleRow>) {
-        let children = &self.nodes[id].children;
+        let children: Vec<NodeId> = self.visible_children(id).collect();
         for (i, &child) in children.iter().enumerate() {
             let last = i + 1 == children.len();
-            let collapsed = !self.nodes[child].expanded && self.has_children(child);
+            let collapsed =
+                !self.nodes[child].expanded && self.visible_children(child).next().is_some();
             let connector = match (last, collapsed) {
                 (false, false) => "├──",
                 (false, true) => "├─+",
@@ -635,6 +668,38 @@ mod tests {
         tree.expand(src);
         assert!(tree.node(ROOT).error.is_none());
         assert_eq!(tree.node(ROOT).files.len(), 1);
+    }
+
+    #[test]
+    fn hides_dot_directories_when_asked() {
+        let (tmp, mut tree) = sample();
+        create_dir_all(tmp.path().join(".git/objects")).unwrap();
+        create_dir_all(tmp.path().join("b/.cache")).unwrap();
+        tree.rescan(ROOT);
+        let b = tree.find(&tmp.path().join("b")).unwrap();
+        tree.rescan(b);
+        tree.expand_all(ROOT);
+        let names_of = |t: &Tree| -> Vec<String> {
+            t.visible_rows()
+                .iter()
+                .skip(1)
+                .map(|r| t.node(r.id).name.to_string_lossy().into_owned())
+                .collect()
+        };
+        assert!(names_of(&tree).contains(&".git".to_string()));
+
+        tree.show_hidden = false;
+        assert_eq!(names_of(&tree), ["a", "b", "deep", "deeper"]);
+        assert_eq!(
+            names(&tree, &tree.visible_subtree(b)),
+            ["b", "deep", "deeper"]
+        );
+        // O que está logado não muda.
+        assert_eq!(
+            names(&tree, &tree.subtree(b)),
+            ["b", ".cache", "deep", "deeper"]
+        );
+        assert!(is_hidden(std::ffi::OsStr::new(".x")) && !is_hidden(std::ffi::OsStr::new("x")));
     }
 
     #[test]

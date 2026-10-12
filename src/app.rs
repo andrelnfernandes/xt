@@ -15,7 +15,7 @@ use std::time::Duration;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, ModifierKeyCode};
 
 use crate::archive;
-use crate::config::{Options, PruneConfirm};
+use crate::config::{self, Config, Options, PruneConfirm, Theme};
 use crate::input::{Command, LineEvent, LineInput};
 use crate::keymap::Keymap;
 use crate::model::compare::{self, CompareMode};
@@ -24,6 +24,7 @@ use crate::model::sort::{Sort, SortKey};
 use crate::model::tree::{LogJob, NodeId, ROOT};
 use crate::ops::{self, Answer, OpKind, Operation, Source};
 pub use crate::pane::{FileView, Focus, Pane};
+use crate::settings::{Outcome, Settings};
 use crate::shell::{self, External};
 use crate::state::{self, History};
 use crate::viewer::{self, Viewer};
@@ -181,6 +182,13 @@ pub struct App {
     pub external: Option<External>,
     /// Opções do arquivo de configuração.
     pub options: Options,
+    /// A configuração em vigor (a tela de configuração parte dela).
+    pub config: Config,
+    /// Onde gravar a configuração (sem arquivo nos testes).
+    pub config_file: Option<PathBuf>,
+    /// Erro ao ler o arquivo na inicialização.
+    pub config_error: Option<String>,
+    pub settings: Option<Settings>,
     /// Diretório sendo apagado por um Prune em andamento.
     pruning: Option<PathBuf>,
     pub keymap: Keymap,
@@ -223,6 +231,10 @@ impl App {
             history_file: None,
             external: None,
             options: Options::default(),
+            config: Config::default(),
+            config_file: None,
+            config_error: None,
+            settings: None,
             pruning: None,
             keymap: Keymap::default(),
             should_quit: false,
@@ -238,6 +250,53 @@ impl App {
     /// A outra janela, com a tela dividida.
     pub fn other(&self) -> Option<&Pane> {
         self.is_split().then(|| &self.panes[1 - self.active])
+    }
+
+    /// Aplica a configuração: opções, teclas, formatos e tema. Usado na
+    /// inicialização e quando a tela de configuração grava.
+    pub fn apply_config(&mut self, config: &Config) -> Result<(), String> {
+        let keymap = Keymap::from_config(&config.keys, &config.options)?;
+        let theme = Theme::from_config(config)?;
+        self.keymap = keymap;
+        config::set_theme(theme);
+        config::set_formats(config.options.formats());
+        self.options = config.options.clone();
+        self.config = config.clone();
+        for pane in &mut self.panes {
+            let hidden_changed = pane.tree.show_hidden != config.options.show_hidden;
+            pane.tree.show_hidden = config.options.show_hidden;
+            if hidden_changed {
+                pane.after_change();
+            }
+        }
+        Ok(())
+    }
+
+    /// F3 na tela de configuração: grava (mantendo os comentários do
+    /// arquivo) e aplica na hora.
+    fn save_settings(&mut self, config: Config) {
+        if let Some(path) = &self.config_file
+            && let Err(e) = config.save(path)
+        {
+            if let Some(s) = &mut self.settings {
+                s.message = Some(format!("Cannot save: {e}"));
+            }
+            return;
+        }
+        match self.apply_config(&config) {
+            Ok(()) => {
+                self.settings = None;
+                self.message = Some(match &self.config_file {
+                    Some(path) => format!("Configuration saved to {}", path.display()),
+                    None => "Configuration applied".into(),
+                });
+            }
+            Err(e) => {
+                if let Some(s) = &mut self.settings {
+                    s.message = Some(format!("Cannot apply: {e}"));
+                }
+            }
+        }
     }
 
     /// Diretórios a observar no disco: os atuais de cada janela (fora de
@@ -323,6 +382,14 @@ impl App {
         if let Some(viewer) = &mut self.viewer {
             if !viewer.handle_key(key) {
                 self.viewer = None;
+            }
+            return;
+        }
+        if let Some(settings) = &mut self.settings {
+            match settings.handle_key(key) {
+                Outcome::Stay => {}
+                Outcome::Close => self.settings = None,
+                Outcome::Save(config) => self.save_settings(*config),
             }
             return;
         }
@@ -458,6 +525,12 @@ impl App {
             Command::Back if in_files => self.back_to_tree(),
             Command::Back => self.close_archive(),
             Command::Open => self.open_archive(),
+            Command::Settings => {
+                self.settings = Some(Settings::new(
+                    self.config.clone(),
+                    self.config_error.clone(),
+                ));
+            }
             Command::Help => {
                 let text = self.keymap.help_text().into_bytes();
                 let size = text.len() as u64;
@@ -465,7 +538,9 @@ impl App {
             }
             Command::Edit => {
                 if let Some(f) = self.selected_file() {
-                    self.external = Some(shell::editor(&self.file_path(f), &self.current_path()));
+                    let file = self.file_path(f);
+                    let cwd = self.current_path();
+                    self.external = Some(shell::editor(&file, &cwd, &self.options.editor));
                 }
             }
             Command::Execute => {
@@ -732,10 +807,15 @@ impl App {
             let rel = path.strip_prefix(&base).unwrap_or(&path);
             let target = fs::symlink_metadata(other_base.join(rel)).ok();
             let entry = self.file(f);
+            let tolerance = compare::Tolerance {
+                two_seconds: self.options.compare_ignore_2s,
+                one_hour: self.options.compare_ignore_1h,
+            };
             let tag = mode.matches(compare::relation(
                 entry.size,
                 entry.modified,
                 target.as_ref(),
+                tolerance,
             ));
             count += usize::from(tag);
             self.set_tags(&[f], |_| tag);
@@ -832,6 +912,10 @@ impl App {
         if text.trim().is_empty() {
             return;
         }
+        // "@" na frente: não guardar (ex.: comando com senha).
+        if self.options.history_skip_at && text.trim_start().starts_with('@') {
+            return;
+        }
         let list = self.history.entry(key.to_string()).or_default();
         list.retain(|t| t != text);
         list.push(text.to_string());
@@ -896,13 +980,15 @@ impl App {
                 }
             }
             PromptKind::Execute => {
+                // O "@" (não guardar no histórico) não vai para o shell.
+                let text = text.trim_start().strip_prefix('@').unwrap_or(&text);
                 if !text.trim().is_empty() {
                     let file = self.selected_file().filter(|_| self.focus == Focus::Files);
                     let file = file.map(|f| self.file_path(f));
                     let tagged: Vec<PathBuf> =
                         self.sources(true).into_iter().map(|s| s.path).collect();
                     let dir = self.current_path();
-                    let line = shell::expand(&text, file.as_deref(), &tagged, &dir);
+                    let line = shell::expand(text, file.as_deref(), &tagged, &dir);
                     self.external = Some(shell::command(line, &dir));
                 }
                 Ok(())
@@ -2087,5 +2173,72 @@ mod tests {
         );
         answer_prompt(&mut app, "SUB");
         assert!(!tmp.path().join("sub").exists());
+    }
+
+    #[test]
+    fn hidden_files_option() {
+        let (tmp, mut app) = sample();
+        write(tmp.path().join(".env"), "").unwrap();
+        create_dir_all(tmp.path().join(".git")).unwrap();
+        app.apply(Command::Relog);
+        assert!(names(&app).contains(&".env".to_string()));
+
+        let config = Config {
+            options: Options {
+                show_hidden: false,
+                ..Options::default()
+            },
+            ..Config::default()
+        };
+        app.apply_config(&config).unwrap();
+        assert_eq!(names(&app), ["a.rs", "b.txt"]);
+        assert!(!app.rows.iter().any(|r| app.tree.node(r.id).name == ".git"));
+    }
+
+    #[test]
+    fn at_prefix_skips_history_and_is_stripped() {
+        let (_tmp, mut app) = sample();
+        app.options.history_skip_at = true;
+        press(&mut app, KeyCode::Char('x'));
+        type_text(&mut app, "@echo secret");
+        press(&mut app, KeyCode::Enter);
+        let ext = app.external.take().unwrap();
+        assert_eq!(ext.args[1], "echo secret");
+        assert!(!app.history.contains_key("execute"));
+    }
+
+    #[test]
+    fn f12_settings_save_and_apply() {
+        let (tmp, mut app) = sample();
+        let file = tmp.path().join("cfg/config.toml");
+        app.config_file = Some(file.clone());
+        write(tmp.path().join(".hidden"), "").unwrap();
+        app.apply(Command::Relog);
+
+        press(&mut app, KeyCode::F(12));
+        assert!(app.settings.is_some());
+        press(&mut app, KeyCode::PageDown);
+        press(&mut app, KeyCode::Char('a')); // esconder ocultos
+        press(&mut app, KeyCode::F(3));
+        assert!(app.settings.is_none());
+        assert!(!app.options.show_hidden);
+        assert!(
+            !names(&app).contains(&".hidden".to_string()),
+            "applied at once"
+        );
+        let (saved, err) = Config::load_from(&file);
+        assert!(err.is_none());
+        assert!(!saved.options.show_hidden);
+    }
+
+    #[test]
+    fn settings_esc_discards() {
+        let (_tmp, mut app) = sample();
+        press(&mut app, KeyCode::F(12));
+        press(&mut app, KeyCode::Char('b'));
+        press(&mut app, KeyCode::Esc);
+        press(&mut app, KeyCode::Esc);
+        assert!(app.settings.is_none());
+        assert_eq!(app.options, Options::default());
     }
 }

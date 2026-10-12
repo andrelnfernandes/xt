@@ -3,9 +3,22 @@
 use std::fs::Metadata;
 use std::time::SystemTime;
 
-/// Datas com diferença até esta são consideradas iguais: sistemas de
-/// arquivos como FAT/exFAT guardam a hora com precisão de 2 segundos.
-const TOLERANCE_SECS: u64 = 2;
+/// Quais diferenças de data contam como "mesma data".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Tolerance {
+    /// Até 2 segundos: FAT/exFAT guardam a hora com essa precisão.
+    pub two_seconds: bool,
+    /// Exatamente 1 hora: mudança de horário de verão.
+    pub one_hour: bool,
+}
+
+impl Tolerance {
+    fn same_time(self, a: u64, b: u64) -> bool {
+        let diff = a.abs_diff(b);
+        let close = |d: u64| diff == d || (self.two_seconds && diff.abs_diff(d) <= 2);
+        close(0) || (self.one_hour && close(3600))
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Relation {
@@ -70,7 +83,12 @@ impl CompareMode {
 }
 
 /// Relação entre o arquivo de origem e o do outro lado (`other`).
-pub fn relation(size: u64, modified: Option<SystemTime>, other: Option<&Metadata>) -> Relation {
+pub fn relation(
+    size: u64,
+    modified: Option<SystemTime>,
+    other: Option<&Metadata>,
+    tolerance: Tolerance,
+) -> Relation {
     let Some(other) = other else {
         return Relation::Unique;
     };
@@ -82,7 +100,7 @@ pub fn relation(size: u64, modified: Option<SystemTime>, other: Option<&Metadata
             .map_or(0, |d| d.as_secs())
     };
     let (mine, theirs) = (secs(modified), secs(other.modified().ok()));
-    if mine.abs_diff(theirs) <= TOLERANCE_SECS {
+    if tolerance.same_time(mine, theirs) {
         if size == other.len() {
             Relation::Identical
         } else {
@@ -118,28 +136,55 @@ mod tests {
         Some(SystemTime::UNIX_EPOCH + Duration::from_secs(secs))
     }
 
+    const FAT: Tolerance = Tolerance {
+        two_seconds: true,
+        one_hour: false,
+    };
+
+    #[test]
+    fn tolerances() {
+        let exact = Tolerance {
+            two_seconds: false,
+            one_hour: false,
+        };
+        let dst = Tolerance {
+            two_seconds: true,
+            one_hour: true,
+        };
+        assert!(exact.same_time(10, 10));
+        assert!(!exact.same_time(10, 12));
+        assert!(FAT.same_time(10, 12));
+        assert!(!FAT.same_time(10, 3610));
+        assert!(dst.same_time(10, 3610));
+        assert!(dst.same_time(3611, 10));
+        assert!(!dst.same_time(10, 1810));
+    }
+
     #[test]
     fn relations() {
         let tmp = tempfile::tempdir().unwrap();
         let other = file_at(tmp.path(), "x", "abc", 1_000_000);
-        assert_eq!(relation(3, at(1_000_000), None), Relation::Unique);
+        assert_eq!(relation(3, at(1_000_000), None, FAT), Relation::Unique);
         assert_eq!(
-            relation(3, at(1_000_000), Some(&other)),
+            relation(3, at(1_000_000), Some(&other), FAT),
             Relation::Identical
         );
         assert_eq!(
-            relation(3, at(1_000_001), Some(&other)),
+            relation(3, at(1_000_001), Some(&other), FAT),
             Relation::Identical,
             "tolerance"
         );
         assert_eq!(
-            relation(9, at(1_000_000), Some(&other)),
+            relation(9, at(1_000_000), Some(&other), FAT),
             Relation::Different
         );
-        assert_eq!(relation(3, at(1_000_100), Some(&other)), Relation::Newer);
-        assert_eq!(relation(3, at(999_000), Some(&other)), Relation::Older);
+        assert_eq!(
+            relation(3, at(1_000_100), Some(&other), FAT),
+            Relation::Newer
+        );
+        assert_eq!(relation(3, at(999_000), Some(&other), FAT), Relation::Older);
         let dir = fs::metadata(tmp.path()).unwrap();
-        assert_eq!(relation(3, at(1), Some(&dir)), Relation::Different);
+        assert_eq!(relation(3, at(1), Some(&dir), FAT), Relation::Different);
     }
 
     #[test]

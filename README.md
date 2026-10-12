@@ -24,25 +24,42 @@ Sem argumento, abre o diretório atual. `xt --help` mostra as opções.
 
 ## Configuração
 
-O xt lê `~/.config/xt/config.toml` (ou `$XDG_CONFIG_HOME/xt/config.toml`), se
-existir. Para começar de um arquivo comentado com todos os padrões:
+A forma mais fácil é a **tela de configuração: F12** (ou Alt+F10, como no
+ZTreeWin; no Ubuntu/GNOME o Alt+F10 costuma maximizar a janela e não chega ao
+xt). Ela tem quatro páginas:
+
+| Página | Opções |
+|---|---|
+| 1. Programas e formatos | editor, formato de data, formato de número |
+| 2. Exibição e ordenação | mostrar ocultos, ordenação inicial e sentido, o que o Enter faz na janela de arquivos |
+| 3. Confirmações e histórico | confirmar ao sair, confirmação do Prune, não guardar entradas com `@` |
+| 4. Compare e atualização | ignorar 2 s, ignorar 1 h, atualização automática |
+
+A letra da opção (ou Enter) troca o valor, PgUp/PgDn ou 1–4 mudam de página,
+**F4** escolhe o tema numa lista (com prévia na hora), **F3** grava e aplica,
+**Esc** desiste (pergunta se houver mudanças).
+
+Tudo fica em `~/.config/xt/config.toml` (ou `$XDG_CONFIG_HOME/xt/`), que
+também pode ser editado à mão; a tela mantém os seus comentários. Para começar
+de um arquivo comentado com todos os padrões:
 
 ```bash
 mkdir -p ~/.config/xt && xt --default-config > ~/.config/xt/config.toml
 ```
 
-- `theme`: `classic` (azul do XTree), `dark`, `light` ou `mono` (cores do
-  próprio terminal).
+- `theme`: `classic` (azul do XTree), `dark`, `light`, `mono` (cores do
+  próprio terminal), `norton`, `solarized`, `gruvbox` ou `nord`.
+- `[options]`: as opções da tela de configuração.
 - `[colors]`: troca cores individuais por cima do tema, com nomes
   (`"yellow"`), `"#rrggbb"` ou índices de 0 a 255.
-- `[options]`: `confirm_quit = false` sai sem perguntar.
 - `[keys.any]`, `[keys.tree]`, `[keys.files]`: troca teclas, nas duas
   janelas ou só numa (esta tem prioridade). Ex.: `"f3" = "view"`,
   `"ctrl+r" = "relog"`; `"none"` desliga uma tecla. **F1** dentro do xt
   mostra as teclas em vigor, já com as suas trocas.
 
 Um erro no arquivo não impede o xt de abrir: ele usa os padrões e mostra o
-erro no rodapé.
+erro no rodapé (e a tela de configuração não grava até o arquivo ser
+corrigido, para não apagar o que você escreveu).
 
 ## Teclas
 
@@ -70,6 +87,7 @@ erro no rodapé.
 | Enter | abre a janela de arquivos | volta para a árvore |
 | Esc | | volta para a árvore (no diretório do arquivo) |
 | F1 | ajuda: lista das teclas em vigor | idem |
+| F12 / Alt+F10 | tela de configuração | idem |
 | `Q` / F10 | sair (pede confirmação) | sair |
 
 ### Tags e operações
@@ -201,7 +219,8 @@ Na árvore, `+` no conector (`├─+`) indica um diretório recolhido que tem s
 - `src/archive.rs` — leitura de ZIP/TAR
 - `src/watch.rs` — avisos de mudanças no disco (inotify)
 - `src/shell.rs` — editor e comandos do shell (com aspas seguras)
-- `src/config.rs` — arquivo de configuração e temas
+- `src/config.rs` — arquivo de configuração, temas e formatos
+- `src/settings.rs` — tela de configuração (F12)
 - `src/state.rs` — histórico dos prompts entre execuções
 - `src/model/compare.rs` — regras do Compare
 - `src/model/filespec.rs` — filtro de arquivos

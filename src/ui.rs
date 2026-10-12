@@ -17,12 +17,13 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, List, ListItem, ListState, Paragraph};
+use ratatui::widgets::{Block, BorderType, Clear, List, ListItem, ListState, Paragraph};
 
 use crate::app::{App, FileView, Focus, MenuMode, Pane};
-use crate::config::theme;
+use crate::config::{self, formats, theme};
 use crate::model::tree::{FileEntry, FileKind};
 use crate::ops::Operation;
+use crate::settings::{self, Settings};
 use crate::viewer::{self, ViewMode};
 
 const STATS_WIDTH: u16 = 28;
@@ -34,6 +35,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     if app.viewer.is_some() {
         draw_viewer(frame, app);
+        return;
+    }
+    if let Some(settings) = &app.settings {
+        draw_settings(frame, settings);
         return;
     }
 
@@ -117,7 +122,7 @@ fn highlight(active: bool) -> Style {
 
 fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
     let path = app.tree.path(app.header_dir());
-    let clock = Local::now().format("%d/%m/%Y %H:%M").to_string();
+    let clock = Local::now().format(formats().date.pattern()).to_string();
     let [left, right] =
         Layout::horizontal([Constraint::Min(1), Constraint::Length(clock.len() as u16)])
             .areas(area);
@@ -573,6 +578,139 @@ fn menu_words(title: &str, words: &[&str]) -> Line<'static> {
     Line::from(spans)
 }
 
+/// Tela de configuração: as opções da página, com a letra, a descrição e o
+/// valor; com F4, a lista de temas por cima.
+fn draw_settings(frame: &mut Frame, s: &Settings) {
+    let [header, body, menu] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(3),
+        Constraint::Length(2),
+    ])
+    .areas(frame.area());
+    let bold = Style::new().add_modifier(Modifier::BOLD);
+    let (title, items) = settings::PAGES[s.page];
+
+    frame.render_widget(
+        Line::from(vec![
+            Span::styled("xt configuration", bold),
+            Span::raw(format!(
+                "   page {} of {}: {title}",
+                s.page + 1,
+                settings::PAGES.len()
+            )),
+            Span::styled(
+                if s.dirty() { "   (modified)" } else { "" },
+                Style::new().fg(theme().message),
+            ),
+        ]),
+        header,
+    );
+
+    let block = panel(format!(" {title} "), true);
+    let inner = block.inner(body);
+    frame.render_widget(block, body);
+    let width = inner.width as usize;
+    let mut lines: Vec<Line> = items
+        .iter()
+        .enumerate()
+        .map(|(i, (letter, label, opt))| {
+            let value = opt.value(&s.config);
+            let fill = width.saturating_sub(label.chars().count() + value.chars().count() + 8);
+            let line = Line::from(vec![
+                Span::raw("  "),
+                key(&letter.to_string()),
+                Span::raw(format!("  {label} {} ", ".".repeat(fill))),
+                Span::styled(value, bold),
+            ]);
+            if i == s.selected {
+                line.style(highlight(true))
+            } else {
+                line
+            }
+        })
+        .collect();
+    lines.push(Line::default());
+    lines.push(Line::from(vec![
+        Span::raw("  Theme: "),
+        Span::styled(s.config.theme.clone(), bold),
+        Span::styled("  (F4 to choose)", Style::new().fg(theme().dim)),
+    ]));
+    frame.render_widget(Paragraph::new(lines), inner);
+
+    if let Some(picker) = &s.picker {
+        let height = (config::THEMES.len() + 2) as u16;
+        let area = Rect {
+            x: inner.x + 4,
+            y: inner.y + 1,
+            width: 30.min(inner.width.saturating_sub(4)),
+            height: height.min(inner.height),
+        }
+        .intersection(inner);
+        let items: Vec<ListItem> = config::THEMES
+            .iter()
+            .map(|(name, _)| ListItem::new(format!(" {name}")))
+            .collect();
+        let mut state = ListState::default().with_selected(Some(picker.index));
+        frame.render_widget(Clear, area);
+        frame.render_stateful_widget(
+            List::new(items)
+                .block(panel(" Theme ", true))
+                .style(Style::new().fg(theme().text).bg(theme().background))
+                .highlight_style(highlight(true)),
+            area,
+            &mut state,
+        );
+    }
+
+    let lines = if let Some(input) = &s.editing {
+        let label = "Editor: ";
+        let col = menu.x + (label.len() + input.cursor) as u16;
+        frame.set_cursor_position((col.min(menu.right().saturating_sub(1)), menu.y));
+        vec![
+            Line::from(vec![
+                Span::styled(label, bold),
+                Span::raw(input.text.clone()),
+            ]),
+            menu_line(
+                "",
+                &[
+                    ("Enter", "accept"),
+                    ("Esc", "cancel"),
+                    ("", "empty = default"),
+                ],
+            ),
+        ]
+    } else if s.picker.is_some() {
+        vec![
+            menu_line(
+                "THEME",
+                &[("↑↓", "preview"), ("Enter", "choose"), ("Esc", "cancel")],
+            ),
+            Line::default(),
+        ]
+    } else {
+        let first = match &s.message {
+            Some(m) => Line::styled(
+                m.clone(),
+                Style::new()
+                    .fg(theme().message)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            None => menu_line(
+                "CONFIG",
+                &[
+                    ("A-Z", "change"),
+                    ("↑↓ Enter", "select/change"),
+                    ("PgUp/PgDn 1-4", "page"),
+                    ("F4", "theme"),
+                ],
+            ),
+        };
+        vec![first, menu_line("", &[("F3", "save"), ("Esc", "cancel")])]
+    };
+    frame.render_widget(Paragraph::new(lines), menu);
+}
+
 fn draw_viewer(frame: &mut Frame, app: &mut App) {
     let Some(v) = &mut app.viewer else { return };
     let [header, body, menu] = Layout::vertical([
@@ -685,13 +823,21 @@ fn fit_tail(s: &str, width: usize) -> String {
     format!("…{tail}")
 }
 
-/// 1234567 -> "1,234,567"
+/// Número com o separador de milhar configurado.
 fn fmt_num(n: u64) -> String {
+    group_digits(n, formats().number.separator())
+}
+
+/// 1234567 -> "1,234,567" (com `,`).
+fn group_digits(n: u64, separator: Option<char>) -> String {
     let digits = n.to_string();
+    let Some(sep) = separator else {
+        return digits;
+    };
     let mut out = String::with_capacity(digits.len() + digits.len() / 3);
     for (i, c) in digits.chars().enumerate() {
         if i > 0 && (digits.len() - i).is_multiple_of(3) {
-            out.push(',');
+            out.push(sep);
         }
         out.push(c);
     }
@@ -700,7 +846,7 @@ fn fmt_num(n: u64) -> String {
 
 fn fmt_time(t: SystemTime) -> String {
     DateTime::<Local>::from(t)
-        .format("%Y-%m-%d %H:%M")
+        .format(formats().date.pattern())
         .to_string()
 }
 
@@ -727,10 +873,13 @@ mod tests {
 
     #[test]
     fn formats_numbers() {
-        assert_eq!(fmt_num(0), "0");
-        assert_eq!(fmt_num(999), "999");
-        assert_eq!(fmt_num(1000), "1,000");
-        assert_eq!(fmt_num(1234567), "1,234,567");
+        let comma = Some(',');
+        assert_eq!(group_digits(0, comma), "0");
+        assert_eq!(group_digits(999, comma), "999");
+        assert_eq!(group_digits(1000, comma), "1,000");
+        assert_eq!(group_digits(1234567, comma), "1,234,567");
+        assert_eq!(group_digits(1234567, Some('.')), "1.234.567");
+        assert_eq!(group_digits(1234567, None), "1234567");
     }
 
     #[test]
@@ -777,7 +926,11 @@ mod tests {
         let keys: Vec<&str> = line
             .spans
             .iter()
-            .filter(|s| s.style.fg == Some(theme().key))
+            // As letras de tecla são as partes em negrito (o tema pode
+            // estar sendo trocado por outro teste ao mesmo tempo).
+            .filter(|s| {
+                s.style.add_modifier.contains(Modifier::BOLD) && !s.content.trim().is_empty()
+            })
             .map(|s| s.content.as_ref())
             .collect();
         assert_eq!(keys, ["C", "X"]);

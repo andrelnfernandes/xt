@@ -11,7 +11,7 @@ use crate::archive::{self, EntryKind};
 use crate::input::Command;
 use crate::model::filespec::Filespec;
 use crate::model::sort::{self, Sort};
-use crate::model::tree::{FileEntry, FileKind, NodeId, ROOT, Tree, VisibleRow};
+use crate::model::tree::{FileEntry, FileKind, NodeId, ROOT, Tree, VisibleRow, is_hidden};
 use crate::ops::Source;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -183,9 +183,10 @@ impl Pane {
     /// Todos os arquivos logados que passam no filespec.
     pub fn logged_matching_files(&self) -> Vec<FileRef> {
         let mut refs = Vec::new();
-        for dir in self.tree.subtree(ROOT) {
+        for dir in self.tree.visible_subtree(ROOT) {
             for (idx, f) in self.tree.node(dir).files.iter().enumerate() {
-                if self.filespec.matches(&f.name) {
+                let shown = self.tree.show_hidden || !is_hidden(&f.name);
+                if shown && self.filespec.matches(&f.name) {
                     refs.push(FileRef { dir, idx });
                 }
             }
@@ -358,13 +359,14 @@ impl Pane {
     pub fn refresh_files(&mut self) {
         let dirs = match self.view {
             FileView::Dir => vec![self.current()],
-            FileView::Branch(id) => self.tree.subtree(id),
-            FileView::Showall => self.tree.subtree(ROOT),
+            FileView::Branch(id) => self.tree.visible_subtree(id),
+            FileView::Showall => self.tree.visible_subtree(ROOT),
         };
         let mut files = Vec::new();
         for (rank, dir) in dirs.into_iter().enumerate() {
             for (idx, f) in self.tree.node(dir).files.iter().enumerate() {
-                if self.filespec.matches(&f.name) {
+                let shown = self.tree.show_hidden || !is_hidden(&f.name);
+                if shown && self.filespec.matches(&f.name) {
                     files.push((FileRef { dir, idx }, rank));
                 }
             }

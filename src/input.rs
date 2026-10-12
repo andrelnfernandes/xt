@@ -37,6 +37,8 @@ pub enum Command {
     Sort,
     /// Alt+P: apaga o diretório atual com tudo dentro.
     Prune,
+    /// F12 / Alt+F10: tela de configuração.
+    Settings,
     Back,
     Filespec,
     Showall,

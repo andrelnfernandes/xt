@@ -18,11 +18,13 @@ pub struct External {
     pub wait: bool,
 }
 
-/// Abre `file` no editor: `$VISUAL`, `$EDITOR`, o `editor` do Debian/Ubuntu
-/// ou `vi`. A variável pode ter argumentos (`code -w`).
-pub fn editor(file: &Path, cwd: &Path) -> External {
+/// Abre `file` no editor: o configurado, `$VISUAL`, `$EDITOR`, o `editor`
+/// do Debian/Ubuntu ou `vi`. Pode ter argumentos (`code -w`).
+pub fn editor(file: &Path, cwd: &Path, configured: &str) -> External {
     let env = |name| std::env::var(name).ok().filter(|v| !v.trim().is_empty());
-    let editor = env("VISUAL")
+    let editor = Some(configured.trim().to_string())
+        .filter(|e| !e.is_empty())
+        .or_else(|| env("VISUAL"))
         .or_else(|| env("EDITOR"))
         .unwrap_or_else(|| if in_path("editor") { "editor" } else { "vi" }.into());
     External {
@@ -158,10 +160,12 @@ mod tests {
 
     #[test]
     fn editor_uses_env_and_passes_file_as_argument() {
-        let ext = editor(Path::new("/tmp/a b.txt"), Path::new("/tmp"));
+        let ext = editor(Path::new("/tmp/a b.txt"), Path::new("/tmp"), "");
         assert_eq!(ext.program, "sh");
         assert_eq!(ext.args[3], "/tmp/a b.txt");
         assert!(ext.args[1].to_string_lossy().ends_with(" \"$1\""));
         assert!(!ext.wait);
+        let ext = editor(Path::new("/x"), Path::new("/"), "nano -l");
+        assert_eq!(ext.args[1], "nano -l \"$1\"");
     }
 }

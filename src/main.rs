@@ -10,6 +10,7 @@ mod keymap;
 mod model;
 mod ops;
 mod pane;
+mod settings;
 mod shell;
 mod state;
 mod ui;
@@ -76,13 +77,12 @@ fn main() -> anyhow::Result<()> {
     }
 
     let (config, config_error) = config::Config::load();
-    if let Ok(theme) = config::Theme::from_config(&config) {
-        config::set_theme(theme);
-    }
     let mut app = App::new(root);
     app.set_sort(config.options.initial_sort());
-    app.options = config.options;
-    app.keymap = keymap::Keymap::from_config(&config.keys).unwrap_or_default();
+    // `load` já validou; com erro no arquivo, `config` são os padrões.
+    let _ = app.apply_config(&config);
+    app.config_file = config::Config::path();
+    app.config_error = config_error.clone();
     app.message = config_error;
     app.history_file = state::history_path();
     if let Some(path) = &app.history_file {
@@ -215,7 +215,12 @@ fn run(
     while !app.should_quit {
         keyboard.sync(app)?;
         if let Some(w) = &mut watcher {
-            w.watch_only(app.watched_dirs());
+            let dirs = if app.options.auto_refresh {
+                app.watched_dirs()
+            } else {
+                Default::default()
+            };
+            w.watch_only(dirs);
         }
         terminal.draw(|frame| ui::draw(frame, app))?;
         // Com trabalho em andamento (log, cópia...), não bloqueia esperando tecla:

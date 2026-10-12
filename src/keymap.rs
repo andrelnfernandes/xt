@@ -6,7 +6,7 @@ use std::fmt;
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::config::Keys;
+use crate::config::{Keys, Options};
 use crate::input::Command;
 use crate::pane::Focus;
 
@@ -161,6 +161,11 @@ const COMMANDS: &[(&str, Command, &str)] = &[
         Command::Sort,
         "sort files (name, ext, date, size; order)",
     ),
+    (
+        "settings",
+        Command::Settings,
+        "configuration: options and theme",
+    ),
     ("help", Command::Help, "this help"),
     ("quit", Command::Quit, "quit"),
 ];
@@ -189,6 +194,8 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("f2", Any, "relog"),
     ("f8", Any, "split"),
     ("f10", Any, "quit"),
+    ("f12", Any, "settings"),
+    ("alt+f10", Any, "settings"),
     ("b", Any, "branch"),
     ("d", Any, "delete"),
     ("f", Any, "filespec"),
@@ -364,8 +371,16 @@ impl Default for Keymap {
 
 impl Keymap {
     /// Os padrões com as trocas do arquivo de configuração.
-    pub fn from_config(keys: &Keys) -> Result<Self, String> {
+    pub fn from_config(keys: &Keys, options: &Options) -> Result<Self, String> {
         let mut keymap = Keymap::default();
+        if options.enter_views {
+            let enter = KeySpec::parse("enter").expect("valid key");
+            keymap
+                .maps
+                .entry(Files)
+                .or_default()
+                .insert(enter, Some(Command::View));
+        }
         for (scope, table) in [(Any, &keys.any), (Tree, &keys.tree), (Files, &keys.files)] {
             let mut entries: Vec<_> = table.iter().collect();
             entries.sort();
@@ -515,7 +530,7 @@ mod tests {
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .into(),
         };
-        let km = Keymap::from_config(&keys).unwrap();
+        let km = Keymap::from_config(&keys, &Options::default()).unwrap();
         let key = |c| KeyEvent::new(c, KeyModifiers::NONE);
         assert_eq!(
             km.lookup(key(KeyCode::F(3)), Focus::Files),
@@ -547,17 +562,29 @@ mod tests {
     }
 
     #[test]
+    fn enter_views_option() {
+        let options = Options {
+            enter_views: true,
+            ..Options::default()
+        };
+        let km = Keymap::from_config(&Keys::default(), &options).unwrap();
+        let enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+        assert_eq!(km.lookup(enter, Focus::Files), Some(Command::View));
+        assert_eq!(km.lookup(enter, Focus::Tree), Some(Command::SwitchWindow));
+    }
+
+    #[test]
     fn rejects_bad_config() {
         let bad = |k: &str, v: &str| Keys {
             any: HashMap::from([(k.to_string(), v.to_string())]),
             ..Keys::default()
         };
         assert!(
-            Keymap::from_config(&bad("f3", "explode"))
+            Keymap::from_config(&bad("f3", "explode"), &Options::default())
                 .unwrap_err()
                 .contains("unknown command")
         );
-        assert!(Keymap::from_config(&bad("hyper+x", "view")).is_err());
+        assert!(Keymap::from_config(&bad("hyper+x", "view"), &Options::default()).is_err());
     }
 
     #[test]
@@ -566,7 +593,9 @@ mod tests {
             files: HashMap::from([("f3".to_string(), "view".to_string())]),
             ..Keys::default()
         };
-        let help = Keymap::from_config(&keys).unwrap().help_text();
+        let help = Keymap::from_config(&keys, &Options::default())
+            .unwrap()
+            .help_text();
         assert!(help.contains("FILE WINDOW"));
         let view_line = help.lines().find(|l| l.contains("view file")).unwrap();
         assert!(
