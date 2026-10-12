@@ -403,7 +403,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                 "DIR",
                 &[
                     "Branch", "Compare", "Delete", "Filespec", "Invert", "Log", "Makedir",
-                    "Rename", "Showall", "Tag", "Untag", "Quit",
+                    "Rename", "Showall", "Tag", "Untag", "eXecute", "Quit",
                 ],
             ),
             menu_line(
@@ -435,6 +435,8 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                     "Tag",
                     "Untag",
                     "View",
+                    "Edit",
+                    "eXecute",
                     "Quit",
                 ],
             ),
@@ -540,16 +542,22 @@ fn op_lines(op: &Operation) -> Vec<Line<'static>> {
     vec![first, second]
 }
 
-/// Linha de menu no estilo do XTree: a primeira letra de cada palavra é a tecla.
+/// Linha de menu no estilo do XTree: a tecla de cada palavra é a primeira
+/// letra maiúscula ("Copy" → C, "eXecute" → X).
 fn menu_words(title: &str, words: &[&str]) -> Line<'static> {
     let mut spans = vec![Span::styled(
         format!("{title:<9}"),
         Style::new().add_modifier(Modifier::BOLD),
     )];
     for word in words {
-        let (first, rest) = word.split_at(1);
-        spans.push(key(first));
-        spans.push(Span::raw(format!("{rest} ")));
+        let (at, c) = word
+            .char_indices()
+            .find(|(_, c)| c.is_uppercase())
+            .unwrap_or((0, word.chars().next().unwrap_or(' ')));
+        let after = at + c.len_utf8();
+        spans.push(Span::raw(word[..at].to_string()));
+        spans.push(key(&word[at..after]));
+        spans.push(Span::raw(format!("{} ", &word[after..])));
     }
     Line::from(spans)
 }
@@ -747,6 +755,20 @@ mod tests {
         state.select(Some(2));
         assert_eq!(visible_window(&mut state, 5, 10).0, 0..5);
         assert_eq!(visible_window(&mut state, 0, 10).0, 0..0);
+    }
+
+    #[test]
+    fn menu_highlights_first_uppercase_letter() {
+        let line = menu_words("", &["Copy", "eXecute"]);
+        let keys: Vec<&str> = line
+            .spans
+            .iter()
+            .filter(|s| s.style.fg == Some(KEY))
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert_eq!(keys, ["C", "X"]);
+        let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+        assert_eq!(text.trim(), "Copy eXecute");
     }
 
     #[test]

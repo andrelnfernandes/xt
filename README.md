@@ -26,6 +26,8 @@ Sem argumento, abre o diretório atual.
 | `F2` | relê o diretório do disco | idem |
 | `V` | | visualiza o arquivo (texto/hex) |
 | `O` | | abre um ZIP/TAR como diretório |
+| `E` | | abre o arquivo no editor |
+| `X` | executa um comando do shell | idem |
 | `L` | Log: abre outro diretório na janela | |
 | `C` | Compare: compara com a outra janela e marca | |
 | F8 | divide a tela em duas janelas (ou volta a uma) | idem |
@@ -76,6 +78,17 @@ Datas com até 2 segundos de diferença contam como iguais (FAT/exFAT).
 
 Para sincronizar: `C` `B` `A` e depois Alt+C (copiar com caminhos), que já
 sugere a outra janela como destino.
+
+**Edit e eXecute:** `E` abre o arquivo no editor (`$VISUAL`, `$EDITOR`, o
+`editor` do Debian/Ubuntu ou `vi`). `X` pede uma linha de comando e a roda com
+`sh` no diretório atual; `%f` vira o arquivo sob o cursor, `%t` os arquivos
+marcados e `%d` o diretório atual, todos já entre aspas (`%%` é um `%`).
+Exemplo: `tar czf backup.tgz %t`. No fim, o xt espera Enter para você ler a
+saída. Ao voltar, os diretórios abertos são relidos.
+
+**Histórico:** nos prompts, ↑/↓ trazem as entradas anteriores. Cada tipo de
+prompt (Filespec, destino do Copy/Move, Log, eXecute...) tem o seu histórico,
+que por enquanto dura só até sair do xt.
 
 **Arquivos compactados:** `O` na janela de arquivos abre `.zip`, `.jar`,
 `.war`, `.apk`, `.tar`, `.tar.gz` ou `.tgz` como uma árvore, somente leitura:
@@ -134,6 +147,7 @@ Na árvore, `+` no conector (`├─+`) indica um diretório recolhido que tem s
 - `src/viewer.rs` — visualizador texto/hex
 - `src/archive.rs` — leitura de ZIP/TAR
 - `src/watch.rs` — avisos de mudanças no disco (inotify)
+- `src/shell.rs` — editor e comandos do shell (com aspas seguras)
 - `src/model/compare.rs` — regras do Compare
 - `src/model/filespec.rs` — filtro de arquivos
 - `src/ops/` — copiar, mover e apagar, em passos (progresso, conflitos, cancelamento)

@@ -8,11 +8,12 @@ mod input;
 mod model;
 mod ops;
 mod pane;
+mod shell;
 mod ui;
 mod viewer;
 mod watch;
 
-use std::io::stdout;
+use std::io::{Write, stdout};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -22,7 +23,8 @@ use ratatui::crossterm::event::{
     self, Event, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
     PushKeyboardEnhancementFlags,
 };
-use ratatui::crossterm::{execute, terminal};
+use ratatui::crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
+use ratatui::crossterm::{cursor, execute, terminal};
 
 use app::App;
 
@@ -115,7 +117,43 @@ impl Keyboard {
         if self.supported {
             let _ = execute!(stdout(), PopKeyboardEnhancementFlags);
         }
+        self.full = false;
     }
+
+    /// Volta ao modo simples depois de um `restore` (ex.: na volta do editor).
+    fn resume(&mut self) {
+        if self.supported {
+            let _ = execute!(stdout(), PushKeyboardEnhancementFlags(Self::SIMPLE));
+        }
+    }
+}
+
+/// Entrega o terminal a um programa externo (editor, comando) e o pega de
+/// volta quando ele termina.
+fn run_external(
+    terminal: &mut DefaultTerminal,
+    keyboard: &mut Keyboard,
+    ext: &shell::External,
+) -> std::io::Result<std::process::ExitStatus> {
+    keyboard.restore();
+    terminal::disable_raw_mode()?;
+    execute!(stdout(), LeaveAlternateScreen, cursor::Show)?;
+
+    let status = std::process::Command::new(&ext.program)
+        .args(&ext.args)
+        .current_dir(&ext.cwd)
+        .status();
+    if ext.wait {
+        print!("\n[xt] Press Enter to return to xt...");
+        let _ = stdout().flush();
+        let _ = std::io::stdin().read_line(&mut String::new());
+    }
+
+    execute!(stdout(), EnterAlternateScreen)?;
+    terminal::enable_raw_mode()?;
+    keyboard.resume();
+    terminal.clear()?;
+    status
 }
 
 fn run(
@@ -150,6 +188,10 @@ fn run(
         // Pressionar, repetir e soltar: o App decide o que usar.
         if let Event::Key(key) = event::read()? {
             app.handle_key(key);
+        }
+        if let Some(ext) = app.external.take() {
+            let result = run_external(terminal, keyboard, &ext);
+            app.after_external(result);
         }
     }
     Ok(())

@@ -5,7 +5,7 @@
 //! o visualizador. `App` dá acesso direto à janela ativa (`app.tree`,
 //! `app.files`...), via `Deref`.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::ops::{Deref, DerefMut};
 use std::os::unix::fs::PermissionsExt;
@@ -21,6 +21,7 @@ use crate::model::filespec::Filespec;
 use crate::model::tree::{LogJob, NodeId, ROOT};
 use crate::ops::{self, Answer, OpKind, Operation, Source};
 pub use crate::pane::{FileView, Focus, Pane};
+use crate::shell::{self, External};
 use crate::viewer::{self, Viewer};
 
 /// Leitura em andamento e o que fazer quando ela terminar.
@@ -69,7 +70,26 @@ enum PromptKind {
     MakeDir(NodeId),
     Chmod(Vec<PathBuf>),
     Log,
+    Execute,
 }
+
+impl PromptKind {
+    /// Prompts do mesmo tipo dividem o histórico (↑/↓).
+    fn history_key(&self) -> Option<&'static str> {
+        Some(match self {
+            PromptKind::Filespec => "filespec",
+            PromptKind::Transfer { .. } => "destination",
+            PromptKind::Log => "log",
+            PromptKind::Execute => "execute",
+            PromptKind::MakeDir(_) => "mkdir",
+            PromptKind::Chmod(_) => "chmod",
+            PromptKind::RenameFile(_) | PromptKind::RenameDir(_) => return None,
+        })
+    }
+}
+
+/// Entradas guardadas por tipo de prompt.
+const HISTORY_SIZE: usize = 100;
 
 impl Prompt {
     /// O prompt de Copy/Move de marcados aceita F6 (com/sem caminhos).
@@ -133,6 +153,11 @@ pub struct App {
     last_dest: Option<String>,
     /// Diretórios que mudaram no disco e ainda não foram relidos.
     pending_changes: HashSet<PathBuf>,
+    /// Histórico dos prompts, por tipo.
+    history: HashMap<&'static str, Vec<String>>,
+    /// Programa externo (editor, comando) a rodar pelo laço principal,
+    /// que entrega o terminal a ele.
+    pub external: Option<External>,
     pub should_quit: bool,
     /// Ctrl/Alt pressionado agora (só em terminais que avisam isso).
     pub held: Option<MenuMode>,
@@ -168,6 +193,8 @@ impl App {
             viewer: None,
             last_dest: None,
             pending_changes: HashSet::new(),
+            history: HashMap::new(),
+            external: None,
             should_quit: false,
             held: None,
             sticky: MenuMode::Normal,
@@ -360,6 +387,8 @@ impl App {
                 | Command::Attributes { .. }
                 | Command::MakeDir
                 | Command::Log
+                | Command::Edit
+                | Command::Execute
         );
         if writes && self.archive.is_some() {
             self.message = Some("Archives are read-only (use Copy to extract)".into());
@@ -384,6 +413,15 @@ impl App {
             Command::Back if in_files => self.back_to_tree(),
             Command::Back => self.close_archive(),
             Command::Open => self.open_archive(),
+            Command::Edit => {
+                if let Some(f) = self.selected_file() {
+                    self.external = Some(shell::editor(&self.file_path(f), &self.current_path()));
+                }
+            }
+            Command::Execute => {
+                let label = format!("EXECUTE in {}: ", fit_name(&self.current_path()));
+                self.open_prompt(PromptKind::Execute, label, "");
+            }
             Command::Filespec => {
                 let text = self.filespec.text().to_string();
                 self.open_prompt(PromptKind::Filespec, "FILESPEC: ".into(), &text);
@@ -634,11 +672,41 @@ impl App {
     }
 
     fn open_prompt(&mut self, kind: PromptKind, label: String, text: &str) {
+        let history = kind
+            .history_key()
+            .and_then(|k| self.history.get(k).cloned())
+            .unwrap_or_default();
         self.prompt = Some(Prompt {
             label,
-            input: LineInput::new(text),
+            input: LineInput::new(text).with_history(history),
             kind,
         });
+    }
+
+    fn remember(&mut self, kind: &PromptKind, text: &str) {
+        let Some(key) = kind.history_key() else {
+            return;
+        };
+        if text.trim().is_empty() {
+            return;
+        }
+        let list = self.history.entry(key).or_default();
+        list.retain(|t| t != text);
+        list.push(text.to_string());
+        if list.len() > HISTORY_SIZE {
+            list.remove(0);
+        }
+    }
+
+    /// Volta de um programa externo: o disco pode ter mudado.
+    pub fn after_external(&mut self, result: std::io::Result<std::process::ExitStatus>) {
+        let dirs: Vec<PathBuf> = self.watched_dirs().into_iter().collect();
+        self.rescan_everywhere(&dirs);
+        self.message = match result {
+            Ok(status) if status.success() => None,
+            Ok(status) => Some(format!("Command finished with {status}")),
+            Err(e) => Some(format!("Cannot run command: {e}")),
+        };
     }
 
     fn ask(&mut self, kind: ConfirmKind, question: String) {
@@ -659,12 +727,25 @@ impl App {
     }
 
     fn submit(&mut self, kind: PromptKind, text: String) {
+        self.remember(&kind, &text);
         let result = match kind {
             PromptKind::Filespec => Filespec::parse(&text).map(|spec| {
                 self.filespec = spec;
                 self.refresh_files();
             }),
             PromptKind::Log => self.log(&text),
+            PromptKind::Execute => {
+                if !text.trim().is_empty() {
+                    let file = self.selected_file().filter(|_| self.focus == Focus::Files);
+                    let file = file.map(|f| self.file_path(f));
+                    let tagged: Vec<PathBuf> =
+                        self.sources(true).into_iter().map(|s| s.path).collect();
+                    let dir = self.current_path();
+                    let line = shell::expand(&text, file.as_deref(), &tagged, &dir);
+                    self.external = Some(shell::command(line, &dir));
+                }
+                Ok(())
+            }
             PromptKind::Transfer {
                 kind,
                 sources,
@@ -1651,5 +1732,63 @@ mod tests {
         assert!(app.op.is_none());
         assert!(app.fs_changed([]), "pending change applied");
         assert_eq!(names(&app).len(), 4);
+    }
+
+    #[test]
+    fn edit_and_execute_request_external_programs() {
+        let (tmp, mut app) = sample();
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Char('e'));
+        let ext = app.external.take().expect("editor requested");
+        assert_eq!(
+            ext.args.last().unwrap(),
+            tmp.path().join("a.rs").as_os_str()
+        );
+
+        press(&mut app, KeyCode::Char('t'));
+        press(&mut app, KeyCode::Char('t'));
+        press(&mut app, KeyCode::Char('x'));
+        type_text(&mut app, "wc -c %t");
+        press(&mut app, KeyCode::Enter);
+        let ext = app.external.take().expect("command requested");
+        let a = tmp.path().join("a.rs");
+        let b = tmp.path().join("b.txt");
+        let expected = format!("wc -c '{}' '{}'", a.display(), b.display());
+        assert_eq!(ext.args[1], expected.as_str());
+        assert_eq!(ext.cwd, tmp.path());
+        assert!(ext.wait);
+
+        // A volta relê o disco e mostra falhas.
+        write(tmp.path().join("made-by-command"), "").unwrap();
+        let status = std::process::Command::new("false").status();
+        app.after_external(status);
+        assert!(names(&app).contains(&"made-by-command".to_string()));
+        assert!(
+            app.message
+                .as_deref()
+                .unwrap()
+                .starts_with("Command finished with")
+        );
+    }
+
+    #[test]
+    fn prompts_remember_history_by_kind() {
+        let (_tmp, mut app) = sample();
+        for spec in ["*.rs", "*.txt"] {
+            press(&mut app, KeyCode::Char('f'));
+            answer_prompt(&mut app, spec);
+        }
+        press(&mut app, KeyCode::Char('f'));
+        ctrl(&mut app, 'u');
+        press(&mut app, KeyCode::Up);
+        assert_eq!(app.prompt.as_ref().unwrap().input.text, "*.txt");
+        press(&mut app, KeyCode::Up);
+        assert_eq!(app.prompt.as_ref().unwrap().input.text, "*.rs");
+        press(&mut app, KeyCode::Esc);
+
+        // Outro tipo de prompt tem histórico próprio.
+        press(&mut app, KeyCode::Char('x'));
+        press(&mut app, KeyCode::Up);
+        assert_eq!(app.prompt.as_ref().unwrap().input.text, "");
     }
 }

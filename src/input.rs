@@ -28,6 +28,10 @@ pub enum Command {
     Compare,
     /// Abre um ZIP/TAR como se fosse um diretório.
     Open,
+    /// Abre o arquivo no editor.
+    Edit,
+    /// Executa um comando do shell.
+    Execute,
     Back,
     Filespec,
     Showall,
@@ -116,6 +120,7 @@ pub fn map_key(key: KeyEvent, focus: Focus) -> Option<Command> {
         KeyCode::Char('i') => Some(Invert),
         KeyCode::Char('d') => Some(Delete { tagged: false }),
         KeyCode::Char('r') => Some(Rename),
+        KeyCode::Char('x') => Some(Execute),
         KeyCode::Char('q') | KeyCode::F(10) => Some(Quit),
         _ => None,
     };
@@ -139,6 +144,7 @@ pub fn map_key(key: KeyEvent, focus: Focus) -> Option<Command> {
             KeyCode::Esc | KeyCode::Left => Some(Back),
             KeyCode::Char('v') => Some(View),
             KeyCode::Char('o') => Some(Open),
+            KeyCode::Char('e') => Some(Edit),
             KeyCode::Char('c') => Some(Copy {
                 tagged: false,
                 paths: false,
@@ -166,6 +172,12 @@ pub struct LineInput {
     pub text: String,
     /// Posição do cursor, em caracteres.
     pub cursor: usize,
+    /// Entradas anteriores deste tipo de prompt, da mais antiga à mais nova.
+    history: Vec<String>,
+    /// Posição no histórico enquanto se navega com ↑/↓...
+    history_pos: Option<usize>,
+    /// ...e o texto que estava sendo digitado, para voltar a ele.
+    draft: String,
 }
 
 impl LineInput {
@@ -173,7 +185,20 @@ impl LineInput {
         LineInput {
             text: text.to_string(),
             cursor: text.chars().count(),
+            history: Vec::new(),
+            history_pos: None,
+            draft: String::new(),
         }
+    }
+
+    pub fn with_history(mut self, history: Vec<String>) -> Self {
+        self.history = history;
+        self
+    }
+
+    fn set_text(&mut self, text: String) {
+        self.cursor = text.chars().count();
+        self.text = text;
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> LineEvent {
@@ -181,6 +206,29 @@ impl LineInput {
         match key.code {
             KeyCode::Enter => return LineEvent::Submit,
             KeyCode::Esc => return LineEvent::Cancel,
+            KeyCode::Up if !self.history.is_empty() => {
+                let pos = match self.history_pos {
+                    None => {
+                        self.draft = self.text.clone();
+                        self.history.len() - 1
+                    }
+                    Some(p) => p.saturating_sub(1),
+                };
+                self.history_pos = Some(pos);
+                self.set_text(self.history[pos].clone());
+            }
+            KeyCode::Down => match self.history_pos {
+                Some(p) if p + 1 < self.history.len() => {
+                    self.history_pos = Some(p + 1);
+                    self.set_text(self.history[p + 1].clone());
+                }
+                Some(_) => {
+                    self.history_pos = None;
+                    let draft = std::mem::take(&mut self.draft);
+                    self.set_text(draft);
+                }
+                None => {}
+            },
             KeyCode::Left => self.cursor = self.cursor.saturating_sub(1),
             KeyCode::Right => self.cursor = (self.cursor + 1).min(len),
             KeyCode::Home => self.cursor = 0,
@@ -287,6 +335,25 @@ mod tests {
             &[KeyCode::End, KeyCode::Backspace, KeyCode::Backspace],
         );
         assert_eq!(input.text, "x.rs");
+    }
+
+    #[test]
+    fn walks_history() {
+        let mut input = LineInput::new("draft").with_history(vec!["one".into(), "two".into()]);
+        type_keys(&mut input, &[KeyCode::Up]);
+        assert_eq!((input.text.as_str(), input.cursor), ("two", 3));
+        type_keys(&mut input, &[KeyCode::Up, KeyCode::Up]);
+        assert_eq!(input.text, "one");
+        type_keys(&mut input, &[KeyCode::Down]);
+        assert_eq!(input.text, "two");
+        type_keys(&mut input, &[KeyCode::Down]);
+        assert_eq!(input.text, "draft", "back to what was typed");
+        type_keys(&mut input, &[KeyCode::Down]);
+        assert_eq!(input.text, "draft");
+
+        let mut empty = LineInput::new("x");
+        type_keys(&mut empty, &[KeyCode::Up]);
+        assert_eq!(empty.text, "x");
     }
 
     #[test]
