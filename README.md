@@ -44,8 +44,14 @@ Sem argumento, abre o diretório atual.
 | Ctrl ou Alt + `C` `M` `D` `A` | idem, nos arquivos marcados | idem, nos arquivos marcados |
 
 As operações em grupo agem sobre os arquivos marcados **da lista atual**
-(o diretório, ou o Branch/Showall aberto). Como o terminal não distingue
-Ctrl+M de Enter, toda operação em grupo também aceita Alt+letra.
+(o diretório, ou o Branch/Showall aberto). Toda operação em grupo também
+aceita Alt+letra.
+
+**Ctrl+M:** na maioria dos terminais, Ctrl+M chega igual a Enter. O xt liga
+automaticamente o protocolo de teclado do kitty quando o terminal o suporta
+(kitty, WezTerm, foot, Ghostty, Alacritty recente, iTerm2), e aí Ctrl+M move
+os arquivos marcados como no ZTree. Nos terminais baseados em VTE (GNOME
+Terminal, Ptyxis, Terminator, Tilix) use **Alt+M**.
 
 Durante um log demorado, o progresso aparece no rodapé e `Esc` cancela.
 
