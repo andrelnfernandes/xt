@@ -1,5 +1,5 @@
-//! Telas de informação, mostradas no visualizador: Info (Alt+I), Avail
-//! (`A` na árvore, os sistemas de arquivos montados) e estatísticas (`?`).
+//! Information screens, shown in the viewer: Info (Alt+I), Avail
+//! (`A` in the tree, the mounted file systems) and statistics (`?`).
 
 use std::fmt::Write as _;
 use std::fs;
@@ -10,7 +10,7 @@ use std::time::SystemTime;
 use chrono::{DateTime, Local};
 use nix::unistd::{Gid, Group, Uid, User};
 
-/// Tudo sobre um arquivo ou diretório.
+/// Everything about a file or directory.
 pub fn path_info(path: &Path) -> String {
     let mut out = format!("INFO  {}\n\n", path.display());
     let meta = match fs::symlink_metadata(path) {
@@ -78,7 +78,7 @@ pub fn path_info(path: &Path) -> String {
     out
 }
 
-/// Os sistemas de arquivos montados, como o `df`.
+/// The mounted file systems, like `df`.
 pub fn avail() -> String {
     let mut out = String::from("AVAIL  mounted file systems\n\n");
     let _ = writeln!(
@@ -93,14 +93,14 @@ pub fn avail() -> String {
         let [_, point, fstype, ..] = fields[..] else {
             continue;
         };
-        // "\040" é o espaço nos nomes do /proc/mounts.
+        // "\040" is the space in /proc/mounts names.
         let point = point.replace("\\040", " ");
         let Ok(st) = nix::sys::statvfs::statvfs(Path::new(&point)) else {
             continue;
         };
         let frag = st.fragment_size();
         let total = st.blocks() * frag;
-        // Sistemas virtuais (proc, sysfs, cgroup...) não têm tamanho.
+        // Virtual file systems (proc, sysfs, cgroup...) have no size.
         if total == 0 || !seen.insert(point.clone()) {
             continue;
         }
@@ -120,8 +120,8 @@ pub fn avail() -> String {
     out
 }
 
-/// "1234567" → "1,234,567" (as telas de informação usam sempre a vírgula,
-/// como o `df`, para alinhar).
+/// "1234567" → "1,234,567" (the information screens always use the comma,
+/// like `df`, to align).
 pub fn group(n: u64) -> String {
     let digits = n.to_string();
     let mut out = String::new();

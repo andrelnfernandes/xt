@@ -1,12 +1,12 @@
-//! Leitura de arquivos compactados (ZIP e TAR), somente leitura.
+//! Reading of archives (ZIP and TAR), read-only.
 //!
-//! As entradas viram uma árvore virtual cuja raiz é o próprio arquivo:
-//! `/x/pacote.zip/src/a.rs` é a entrada `src/a.rs` de `/x/pacote.zip`.
+//! The entries become a virtual tree whose root is the archive itself:
+//! `/x/package.zip/src/a.rs` is the entry `src/a.rs` of `/x/package.zip`.
 //!
-//! Segurança: entradas com `..` ou caminho absoluto são ignoradas (senão
-//! poderiam ser extraídas para fora do destino), e links simbólicos nunca
-//! são extraídos (um link para `/etc` seguido de `link/passwd` escreveria
-//! fora do destino).
+//! Security: entries with `..` or an absolute path are ignored (otherwise they
+//! could be extracted outside the destination), and symlinks are never
+//! extracted (a link to `/etc` followed by `link/passwd` would write
+//! outside the destination).
 
 use std::collections::HashMap;
 use std::fs::File;
@@ -24,7 +24,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    /// Reconhece pelo nome do arquivo.
+    /// Recognizes it by the file name.
     pub fn detect(path: &Path) -> Option<Kind> {
         let name = path.file_name()?.to_string_lossy().to_lowercase();
         if name.ends_with(".tar.gz") || name.ends_with(".tgz") {
@@ -52,7 +52,7 @@ pub enum EntryKind {
 
 #[derive(Debug, Clone)]
 pub struct Entry {
-    /// Caminho relativo, já validado (só componentes normais).
+    /// Relative path, already validated (normal components only).
     pub path: PathBuf,
     pub size: u64,
     pub modified: Option<SystemTime>,
@@ -60,12 +60,12 @@ pub struct Entry {
     pub kind: EntryKind,
 }
 
-/// Um arquivo compactado aberto, para listar e extrair entradas.
+/// An open archive, to list and extract entries.
 pub struct Reader {
     path: PathBuf,
     kind: Kind,
     zip: Option<zip::ZipArchive<BufReader<File>>>,
-    /// Caminho → índice no ZIP.
+    /// Path → index in the ZIP.
     zip_index: HashMap<PathBuf, usize>,
 }
 
@@ -87,7 +87,7 @@ impl Reader {
         Ok(reader)
     }
 
-    /// Todas as entradas válidas do arquivo.
+    /// All valid entries of the archive.
     pub fn list(&mut self) -> io::Result<Vec<Entry>> {
         match self.kind {
             Kind::Zip => self.list_zip(),
@@ -102,8 +102,8 @@ impl Reader {
         }
     }
 
-    /// Escreve o conteúdo de `entry` em `out`, até `limit` bytes.
-    /// Devolve quantos bytes foram escritos.
+    /// Writes the contents of `entry` to `out`, up to `limit` bytes.
+    /// Returns how many bytes were written.
     pub fn extract(&mut self, entry: &Path, out: &mut dyn Write, limit: u64) -> io::Result<u64> {
         match self.kind {
             Kind::Zip => {
@@ -141,7 +141,7 @@ impl Reader {
         self.zip_index.clear();
         for i in 0..zip.len() {
             let file = zip.by_index_raw(i).map_err(io::Error::other)?;
-            // `enclosed_name` já recusa ".." e caminhos absolutos.
+            // `enclosed_name` already rejects ".." and absolute paths.
             let Some(path) = file.enclosed_name().filter(|p| is_safe(p)) else {
                 continue;
             };
@@ -174,8 +174,8 @@ impl Reader {
         Ok(entries)
     }
 
-    /// Percorre o TAR do início, chamando `f` com cada entrada válida e o
-    /// seu conteúdo; `f` devolve `false` para parar.
+    /// Walks the TAR from the start, calling `f` with each valid entry and its
+    /// contents; `f` returns `false` to stop.
     fn each_tar_entry(
         &self,
         mut f: impl FnMut(Entry, &mut dyn Read) -> io::Result<bool>,
@@ -223,23 +223,23 @@ impl Reader {
     }
 }
 
-/// Escritor do arquivo compactado em criação.
+/// Writer of the archive being created.
 enum Writer {
     Zip(Box<zip::ZipWriter<File>>),
     Tar(tar::Builder<File>),
     TarGz(Box<tar::Builder<flate2::write::GzEncoder<File>>>),
 }
 
-/// Um arquivo a pôr no compactado: o caminho no disco e o nome lá dentro.
+/// A file to put in the archive: the path on disk and the name inside it.
 pub struct ArchiveItem {
     pub path: PathBuf,
     pub name: String,
     pub size: u64,
 }
 
-/// Criação de um ZIP/TAR (F5), um arquivo por vez, num temporário que só
-/// ganha o nome final no fim: cancelar ou falhar não deixa um arquivo
-/// compactado pela metade.
+/// Creation of a ZIP/TAR (F5), one file at a time, in a temporary file that only
+/// gets its final name at the end: cancelling or failing does not leave a
+/// half-written archive.
 pub struct ArchiveJob {
     writer: Option<Writer>,
     items: Vec<ArchiveItem>,
@@ -297,7 +297,7 @@ impl ArchiveJob {
         self.next >= self.items.len()
     }
 
-    /// Acrescenta arquivos até estourar `budget`.
+    /// Adds files until `budget` is exceeded.
     pub fn step(&mut self, budget: std::time::Duration) {
         let start = std::time::Instant::now();
         while !self.is_done() {
@@ -314,7 +314,7 @@ impl ArchiveJob {
         }
     }
 
-    /// Fecha o arquivo compactado e o põe no lugar.
+    /// Closes the archive and puts it in place.
     pub fn finish(mut self) -> io::Result<PathBuf> {
         let result = match self.writer.take().expect("not finished yet") {
             Writer::Zip(z) => z.finish().map(drop).map_err(io::Error::other),
@@ -330,7 +330,7 @@ impl ArchiveJob {
         }
     }
 
-    /// Desiste: apaga o temporário.
+    /// Gives up: deletes the temporary file.
     pub fn cancel(mut self) {
         self.writer = None;
         let _ = std::fs::remove_file(&self.tmp);
@@ -338,7 +338,7 @@ impl ArchiveJob {
 }
 
 fn no_follow<W: Write>(mut b: tar::Builder<W>) -> tar::Builder<W> {
-    // Links simbólicos entram como links, não como o arquivo apontado.
+    // Symlinks go in as links, not as the file they point to.
     b.follow_symlinks(false);
     b
 }
@@ -378,7 +378,7 @@ fn add(writer: &mut Writer, item: &ArchiveItem) -> io::Result<()> {
     }
 }
 
-/// Só componentes normais: nada de `..`, `/` no começo ou `C:`.
+/// Normal components only: no `..`, leading `/` or `C:`.
 fn is_safe(path: &Path) -> bool {
     path.components().all(|c| matches!(c, Component::Normal(_)))
 }
@@ -399,7 +399,7 @@ pub mod tests {
     use super::*;
     use std::io::Cursor;
 
-    /// ZIP com src/a.rs, README e uma entrada maliciosa "../evil".
+    /// ZIP with src/a.rs, README and a malicious entry "../evil".
     pub fn make_zip(path: &Path) {
         let file = File::create(path).unwrap();
         let mut zip = zip::ZipWriter::new(file);
@@ -414,7 +414,7 @@ pub mod tests {
         zip.finish().unwrap();
     }
 
-    /// TAR(.gz) com docs/guide.txt, um link para /etc e "../evil".
+    /// TAR(.gz) with docs/guide.txt, a link to /etc and "../evil".
     pub fn make_tar(path: &Path, gz: bool) {
         let mut data = Vec::new();
         {
@@ -432,7 +432,7 @@ pub mod tests {
             link.set_size(0);
             tar.append_link(&mut link, "etc-link", "/etc").unwrap();
 
-            // `append_data` recusa "..": monta o cabeçalho na mão.
+            // `append_data` rejects "..": builds the header by hand.
             let mut evil = tar::Header::new_old();
             evil.as_old_mut().name[..7].copy_from_slice(b"../evil");
             evil.set_size(1);
@@ -565,7 +565,7 @@ pub mod tests {
                 .unwrap();
             assert_eq!(out, b"beta");
         }
-        // Cancelar não deixa nada; extensão desconhecida é recusada.
+        // Cancelling leaves nothing; unknown extension is rejected.
         let job = ArchiveJob::new(&tmp.path().join("x.zip"), items()).unwrap();
         job.cancel();
         let left: Vec<_> = std::fs::read_dir(tmp.path())

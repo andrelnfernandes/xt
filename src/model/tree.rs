@@ -1,8 +1,8 @@
-//! Árvore de diretórios mantida em memória, no estilo XTree.
+//! Directory tree kept in memory, XTree style.
 //!
-//! Os nós ficam numa arena (`Vec<DirNode>`) e se referenciam por índice,
-//! o que evita ponteiros e mantém a estrutura compacta mesmo com milhões
-//! de diretórios logados.
+//! Nodes live in an arena (`Vec<DirNode>`) and refer to each other by index,
+//! which avoids pointers and keeps the structure compact even with millions
+//! of logged directories.
 
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
@@ -29,29 +29,29 @@ pub struct FileEntry {
     pub modified: Option<SystemTime>,
     pub mode: u32,
     pub kind: FileKind,
-    /// Marcado com `T` para as operações em grupo.
+    /// Tagged with `T` for group operations.
     pub tagged: bool,
 }
 
 #[derive(Debug)]
 pub struct DirNode {
-    /// Nome do diretório; na raiz é o caminho completo.
+    /// Directory name; for the root it is the full path.
     pub name: OsString,
     pub parent: Option<NodeId>,
     pub children: Vec<NodeId>,
     pub files: Vec<FileEntry>,
     pub expanded: bool,
-    /// Já foi lido do disco ("logado").
+    /// Already read from disk ("logged").
     pub scanned: bool,
-    /// Erro ao ler o diretório (ex.: sem permissão).
+    /// Error reading the directory (e.g. permission denied).
     pub error: Option<String>,
 }
 
-/// Uma linha visível no painel da árvore.
+/// A visible row in the tree pane.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VisibleRow {
     pub id: NodeId,
-    /// Conectores desenhados antes do nome (`│  ├──`).
+    /// Connectors drawn before the name (`│  ├──`).
     pub prefix: String,
 }
 
@@ -64,26 +64,26 @@ pub struct Totals {
 
 pub struct Tree {
     nodes: Vec<DirNode>,
-    /// Árvore de um arquivo compactado: tudo já vem lido e nada é relido
-    /// do disco.
+    /// Tree of an archive: everything is already read and nothing is reread
+    /// from disk.
     is_virtual: bool,
-    /// Mostra diretórios ocultos (nome começando com ponto). Só afeta o
-    /// que é exibido; o que está logado continua todo aqui.
+    /// Shows hidden directories (name starting with a dot). Only affects what
+    /// is displayed; everything logged is still kept here.
     pub show_hidden: bool,
 }
 
-/// Nome oculto no Linux: começa com ponto.
+/// Hidden name on Linux: starts with a dot.
 pub fn is_hidden(name: &std::ffi::OsStr) -> bool {
     name.as_encoded_bytes().first() == Some(&b'.')
 }
 
-/// Leitura de um ramo inteiro feita aos poucos, para a interface poder
-/// mostrar o progresso e o usuário poder cancelar.
+/// Reading of a whole branch done in small steps, so the interface can
+/// show progress and the user can cancel.
 pub struct LogJob {
     stack: Vec<NodeId>,
-    /// Além de ler, expande os nós na árvore (tecla `*`).
+    /// Besides reading, expands the nodes in the tree (`*` key).
     expand: bool,
-    /// Diretórios processados até agora.
+    /// Directories processed so far.
     pub dirs: u64,
 }
 
@@ -102,7 +102,7 @@ impl LogJob {
 }
 
 impl Tree {
-    /// Cria a árvore com `root` já logado e expandido.
+    /// Creates the tree with `root` already logged and expanded.
     pub fn new(root: PathBuf) -> Self {
         let mut tree = Tree {
             nodes: vec![DirNode {
@@ -121,9 +121,9 @@ impl Tree {
         tree
     }
 
-    /// Árvore virtual a partir de uma listagem: caminhos relativos a `root`
-    /// e, para cada um, o arquivo (`Some`) ou um diretório (`None`).
-    /// Diretórios que só aparecem no caminho de um arquivo são criados.
+    /// Virtual tree from a listing: paths relative to `root`
+    /// and, for each one, the file (`Some`) or a directory (`None`).
+    /// Directories that only appear on a file's path are created.
     pub fn from_listing(root: PathBuf, listing: Vec<(PathBuf, Option<FileEntry>)>) -> Self {
         let mut tree = Tree {
             nodes: vec![DirNode {
@@ -175,7 +175,7 @@ impl Tree {
         &self.nodes[id]
     }
 
-    /// Caminho completo do diretório.
+    /// Full path of the directory.
     pub fn path(&self, id: NodeId) -> PathBuf {
         let mut parts = Vec::new();
         let mut cur = Some(id);
@@ -186,7 +186,7 @@ impl Tree {
         parts.iter().rev().collect()
     }
 
-    /// Lê o diretório do disco, se ainda não foi lido.
+    /// Reads the directory from disk, if it has not been read yet.
     pub fn scan(&mut self, id: NodeId) {
         if self.nodes[id].scanned || self.is_virtual {
             return;
@@ -222,8 +222,8 @@ impl Tree {
         self.nodes.len() - 1
     }
 
-    /// Relê um diretório já logado (re-log). Subdiretórios que continuam
-    /// existindo mantêm o que já foi lido abaixo deles; arquivos mantêm a tag.
+    /// Rereads an already logged directory (re-log). Subdirectories that still
+    /// exist keep what was already read below them; files keep their tag.
     pub fn rescan(&mut self, id: NodeId) {
         if !self.nodes[id].scanned || self.is_virtual {
             return;
@@ -255,7 +255,7 @@ impl Tree {
             .iter()
             .map(|&c| (self.nodes[c].name.clone(), c))
             .collect();
-        // Os que sumiram ficam soltos na arena, fora da árvore.
+        // Those that vanished are left loose in the arena, outside the tree.
         let children = dirs
             .into_iter()
             .map(|name| match old.remove(&name) {
@@ -270,7 +270,7 @@ impl Tree {
         node.error = None;
     }
 
-    /// Nó do diretório `path`, se ele estiver na árvore.
+    /// Node of directory `path`, if it is in the tree.
     pub fn find(&self, path: &Path) -> Option<NodeId> {
         let rel = path.strip_prefix(&self.nodes[ROOT].name).ok()?;
         let mut cur = ROOT;
@@ -288,8 +288,8 @@ impl Tree {
         &mut self.nodes[dir].files[idx]
     }
 
-    /// Expande um nó. Os filhos também são lidos para sabermos se
-    /// eles têm subdiretórios (e mostrar o indicador `+`).
+    /// Expands a node. The children are also read so we know whether
+    /// they have subdirectories (and show the `+` indicator).
     pub fn expand(&mut self, id: NodeId) {
         self.scan(id);
         self.nodes[id].expanded = true;
@@ -303,14 +303,14 @@ impl Tree {
         self.nodes[id].expanded = false;
     }
 
-    /// Expande o ramo inteiro abaixo de `id` de uma vez.
+    /// Expands the whole branch below `id` at once.
     #[cfg(test)]
     pub fn expand_all(&mut self, id: NodeId) {
         let mut job = LogJob::new(id, true);
         self.run_job(&mut job, Duration::MAX);
     }
 
-    /// Avança um [`LogJob`] até terminar ou estourar `budget`.
+    /// Advances a [`LogJob`] until it finishes or exceeds `budget`.
     pub fn run_job(&mut self, job: &mut LogJob, budget: Duration) {
         let start = Instant::now();
         while let Some(n) = job.stack.pop() {
@@ -320,7 +320,7 @@ impl Tree {
                 self.scan(n);
             }
             job.dirs += 1;
-            // Ordem reversa para visitar os filhos em ordem alfabética.
+            // Reverse order so children are visited alphabetically.
             job.stack
                 .extend(self.nodes[n].children.iter().rev().copied());
             if start.elapsed() >= budget {
@@ -329,7 +329,7 @@ impl Tree {
         }
     }
 
-    /// `id` e todos os seus descendentes já criados, em pré-ordem.
+    /// `id` and all its descendants already created, in pre-order.
     pub fn subtree(&self, id: NodeId) -> Vec<NodeId> {
         let mut out = Vec::new();
         let mut stack = vec![id];
@@ -340,7 +340,7 @@ impl Tree {
         out
     }
 
-    /// Expande os ancestrais de `id` para que ele apareça na árvore.
+    /// Expands the ancestors of `id` so it shows up in the tree.
     pub fn reveal(&mut self, id: NodeId) {
         let mut cur = self.nodes[id].parent;
         while let Some(n) = cur {
@@ -353,7 +353,7 @@ impl Tree {
         !self.nodes[id].children.is_empty()
     }
 
-    /// Linhas visíveis, em ordem, respeitando os nós recolhidos.
+    /// Visible rows, in order, honoring collapsed nodes.
     pub fn visible_rows(&self) -> Vec<VisibleRow> {
         let mut rows = vec![VisibleRow {
             id: ROOT,
@@ -365,7 +365,7 @@ impl Tree {
         rows
     }
 
-    /// Subdiretórios exibidos (sem os ocultos, se for o caso).
+    /// Displayed subdirectories (without the hidden ones, if applicable).
     fn visible_children(&self, id: NodeId) -> impl Iterator<Item = NodeId> + '_ {
         self.nodes[id]
             .children
@@ -374,8 +374,8 @@ impl Tree {
             .filter(|&c| self.show_hidden || !is_hidden(&self.nodes[c].name))
     }
 
-    /// Como `subtree`, mas sem entrar em diretórios ocultos (a não ser que
-    /// sejam exibidos). `id` em si sempre entra.
+    /// Like `subtree`, but without entering hidden directories (unless
+    /// they are displayed). `id` itself is always included.
     pub fn visible_subtree(&self, id: NodeId) -> Vec<NodeId> {
         let mut out = Vec::new();
         let mut stack = vec![id];
@@ -410,10 +410,10 @@ impl Tree {
         }
     }
 
-    /// Para cada diretório (por `NodeId`), quantos arquivos e quantos bytes
-    /// ele tem: só nele, ou no ramo inteiro (`branch`). Conta só os
-    /// marcados com `tagged_only`, e respeita `show_hidden`. Feito numa
-    /// passada só, de baixo para cima, para valer até em árvores enormes.
+    /// For each directory (by `NodeId`), how many files and how many bytes
+    /// it has: only in it, or in the whole branch (`branch`). Counts only the
+    /// tagged ones with `tagged_only`, and honors `show_hidden`. Done in a
+    /// single bottom-up pass, so it works even on huge trees.
     pub fn dir_totals(&self, branch: bool, tagged_only: bool) -> Vec<(u64, u64)> {
         let mut totals = vec![(0u64, 0u64); self.nodes.len()];
         let order = self.visible_subtree(ROOT);
@@ -437,7 +437,7 @@ impl Tree {
         totals
     }
 
-    /// Totais de tudo o que já foi logado.
+    /// Totals of everything logged so far.
     pub fn logged_totals(&self) -> Totals {
         let mut t = Totals::default();
         for n in self.subtree(ROOT).into_iter().map(|id| &self.nodes[id]) {
@@ -452,8 +452,8 @@ impl Tree {
     }
 }
 
-/// Lê um diretório e devolve (subdiretórios, arquivos), ambos ordenados.
-/// Links simbólicos nunca são seguidos: aparecem como arquivos.
+/// Reads a directory and returns (subdirectories, files), both sorted.
+/// Symlinks are never followed: they appear as files.
 fn read_dir_entries(path: &Path) -> std::io::Result<(Vec<OsString>, Vec<FileEntry>)> {
     let mut dirs = Vec::new();
     let mut files = Vec::new();
@@ -462,7 +462,7 @@ fn read_dir_entries(path: &Path) -> std::io::Result<(Vec<OsString>, Vec<FileEntr
         let Ok(entry) = entry else { continue };
         let name = entry.file_name();
         let Ok(meta) = entry.metadata() else {
-            // Entrada que sumiu ou sem permissão de stat: mostra mesmo assim.
+            // Entry that vanished or without stat permission: shown anyway.
             files.push(FileEntry {
                 name,
                 size: 0,
@@ -561,7 +561,7 @@ mod tests {
     fn visible_rows_follow_expansion() {
         let (_tmp, mut tree) = sample();
         let prefixes: Vec<_> = tree.visible_rows().into_iter().map(|r| r.prefix).collect();
-        // "b" tem filhos e está recolhido: indicador "+".
+        // "b" has children and is collapsed: "+" indicator.
         assert_eq!(prefixes, ["", "├──", "└─+"]);
 
         tree.expand_all(ROOT);
@@ -575,7 +575,7 @@ mod tests {
     #[test]
     fn totals_count_only_logged_dirs() {
         let (_tmp, mut tree) = sample();
-        // raiz + a + b (filhos lidos ao expandir a raiz)
+        // root + a + b (children read when the root was expanded)
         assert_eq!(
             tree.logged_totals(),
             Totals {
@@ -592,7 +592,7 @@ mod tests {
     fn log_job_can_run_in_slices() {
         let (_tmp, mut tree) = sample();
         let mut job = LogJob::new(ROOT, false);
-        // Orçamento zero: processa um diretório por chamada.
+        // Zero budget: processes one directory per call.
         let mut calls = 0;
         while !job.is_done() {
             tree.run_job(&mut job, Duration::ZERO);
@@ -601,7 +601,7 @@ mod tests {
         assert_eq!(calls, 5);
         assert_eq!(job.dirs, 5);
         assert_eq!(tree.logged_totals().dirs, 5);
-        // Só leu, não expandiu.
+        // Only read, did not expand.
         assert_eq!(tree.visible_rows().len(), 3);
     }
 
@@ -644,7 +644,7 @@ mod tests {
             tags,
             [("A.txt", false), ("new.txt", false), ("z.txt", true)]
         );
-        // "a" sumiu da árvore e dos totais.
+        // "a" is gone from the tree and from the totals.
         assert_eq!(tree.logged_totals().dirs, 4);
     }
 
@@ -690,7 +690,7 @@ mod tests {
             }
         );
 
-        // Nada é lido do disco: nem scan, nem re-log.
+        // Nothing is read from disk: neither scan nor re-log.
         tree.rescan(ROOT);
         tree.expand(src);
         assert!(tree.node(ROOT).error.is_none());
@@ -721,7 +721,7 @@ mod tests {
             names(&tree, &tree.visible_subtree(b)),
             ["b", "deep", "deeper"]
         );
-        // O que está logado não muda.
+        // What is logged does not change.
         assert_eq!(
             names(&tree, &tree.subtree(b)),
             ["b", ".cache", "deep", "deeper"]

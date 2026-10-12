@@ -1,25 +1,25 @@
-//! Programas externos: o editor (tecla `E`) e comandos do shell (tecla `X`).
+//! External programs: the editor (`E` key) and shell commands (`X` key).
 //!
-//! Tudo passa por `sh -c`, com os nomes de arquivo sempre entre aspas
-//! simples. Os nomes são tratados como bytes: no Linux eles não precisam
-//! ser UTF-8 válido.
+//! Everything goes through `sh -c`, with file names always in single
+//! quotes. Names are handled as bytes: on Linux they need not
+//! be valid UTF-8.
 
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 
-/// Um programa a rodar com o terminal entregue a ele.
+/// A program to run with the terminal handed over to it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct External {
     pub program: OsString,
     pub args: Vec<OsString>,
     pub cwd: PathBuf,
-    /// Pede Enter antes de voltar ao xt, para dar tempo de ler a saída.
+    /// Asks for Enter before returning to xt, to give time to read the output.
     pub wait: bool,
 }
 
-/// Abre `file` no editor: o configurado, `$VISUAL`, `$EDITOR`, o `editor`
-/// do Debian/Ubuntu ou `vi`. Pode ter argumentos (`code -w`).
+/// Opens `file` in the editor: the configured one, `$VISUAL`, `$EDITOR`, the
+/// Debian/Ubuntu `editor` or `vi`. May have arguments (`code -w`).
 pub fn editor(file: &Path, cwd: &Path, configured: &str) -> External {
     let env = |name| std::env::var(name).ok().filter(|v| !v.trim().is_empty());
     let editor = Some(configured.trim().to_string())
@@ -40,12 +40,12 @@ pub fn editor(file: &Path, cwd: &Path, configured: &str) -> External {
     }
 }
 
-/// Abre `file` no programa padrão do sistema (`xdg-open`, ou `opener`),
-/// sem entregar o terminal: o programa roda em segundo plano, separado.
+/// Opens `file` in the system's default program (`xdg-open`, or `opener`),
+/// without handing over the terminal: the program runs detached in the background.
 pub fn open_detached(file: &Path, opener: &str) -> std::io::Result<()> {
     use std::process::{Command, Stdio};
     let opener = match opener.trim() {
-        // Nos testes, nunca abre programas de verdade na área de trabalho.
+        // In tests, never opens real programs on the desktop.
         "" if cfg!(test) => "true",
         "" => "xdg-open",
         other => other,
@@ -59,12 +59,12 @@ pub fn open_detached(file: &Path, opener: &str) -> std::io::Result<()> {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()?;
-    // Recolhe o processo quando terminar, sem travar o xt.
+    // Reaps the process when it finishes, without blocking xt.
     std::thread::spawn(move || child.wait());
     Ok(())
 }
 
-/// Roda uma linha de comando do usuário.
+/// Runs a user command line.
 pub fn command(line: OsString, cwd: &Path) -> External {
     External {
         program: "sh".into(),
@@ -74,9 +74,9 @@ pub fn command(line: OsString, cwd: &Path) -> External {
     }
 }
 
-/// Troca, na linha de comando, `%f` pelo arquivo sob o cursor, `%t` pelos
-/// arquivos marcados e `%d` pelo diretório atual, todos entre aspas.
-/// `%%` vira `%`.
+/// Replaces, in the command line, `%f` with the file under the cursor, `%t` with the
+/// tagged files and `%d` with the current directory, all quoted.
+/// `%%` becomes `%`.
 pub fn expand(template: &str, file: Option<&Path>, tagged: &[PathBuf], dir: &Path) -> OsString {
     let mut out: Vec<u8> = Vec::new();
     let mut chars = template.chars().peekable();
@@ -112,10 +112,10 @@ pub fn expand(template: &str, file: Option<&Path>, tagged: &[PathBuf], dir: &Pat
     OsString::from_vec(out)
 }
 
-/// Uma linha do Batch (Ctrl+B) para `file`: `%f` caminho, `%d` diretório,
-/// `%n` nome, `%b` nome sem extensão, `%e` extensão, `%s` tamanho. Em
-/// minúsculas saem entre aspas (para scripts); em maiúsculas, como texto
-/// puro (para listas). `%%` é um `%`.
+/// A Batch (Ctrl+B) line for `file`: `%f` path, `%d` directory,
+/// `%n` name, `%b` name without extension, `%e` extension, `%s` size. In
+/// lowercase they come out quoted (for scripts); in uppercase, as plain
+/// text (for lists). `%%` is a `%`.
 pub fn batch_line(mask: &str, file: &Path, size: u64) -> Vec<u8> {
     let name = file.file_name().unwrap_or_default();
     let (base, ext) = split_ext(name.as_bytes());
@@ -160,8 +160,8 @@ pub fn batch_line(mask: &str, file: &Path, size: u64) -> Vec<u8> {
     out
 }
 
-/// "foto.tar.gz" → ("foto.tar", "gz"); ".bashrc" e "Makefile" não têm
-/// extensão.
+/// "photo.tar.gz" → ("photo.tar", "gz"); ".bashrc" and "Makefile" have no
+/// extension.
 fn split_ext(name: &[u8]) -> (&[u8], &[u8]) {
     match name.iter().rposition(|&b| b == b'.') {
         Some(0) | None => (name, b""),
@@ -169,7 +169,7 @@ fn split_ext(name: &[u8]) -> (&[u8], &[u8]) {
     }
 }
 
-/// Aspas simples do shell: `it's` → `'it'\''s'`.
+/// Shell single quoting: `it's` → `'it'\''s'`.
 fn quote(s: &OsStr) -> Vec<u8> {
     let mut out = vec![b'\''];
     for &b in s.as_bytes() {
@@ -193,7 +193,7 @@ mod tests {
     use super::*;
     use std::process::Command;
 
-    /// Roda pelo shell de verdade e devolve os argumentos que chegaram.
+    /// Runs through the real shell and returns the arguments that arrived.
     fn args_seen_by_shell(line: &OsStr) -> Vec<Vec<u8>> {
         let mut script = OsString::from("for a in ");
         script.push(line);
@@ -259,7 +259,7 @@ mod tests {
         let marker = tmp.path().join("opened");
         let opener = format!("cp {} -- ", tmp.path().join("src").display());
         std::fs::write(tmp.path().join("src"), "x").unwrap();
-        // "cp src -- <arquivo>": prova que o programa recebeu o caminho.
+        // "cp src -- <file>": proves the program received the path.
         open_detached(&marker, &opener).unwrap();
         for _ in 0..100 {
             if marker.exists() {

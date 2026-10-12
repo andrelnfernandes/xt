@@ -1,5 +1,5 @@
-//! Arquivo de configuração (`~/.config/xt/config.toml`), temas de cores e
-//! os formatos de data e número. A tela de configuração (F12) grava aqui.
+//! Configuration file (`~/.config/xt/config.toml`), color themes and
+//! the date and number formats. The configuration screen (F12) saves here.
 
 use std::collections::HashMap;
 use std::fs::OpenOptions;
@@ -15,67 +15,67 @@ use crate::keymap::Keymap;
 use crate::model::sort::{Sort, SortKey};
 use crate::pane::FileDisplay;
 
-/// Exemplo comentado, impresso por `xt --default-config`. Os valores são os
-/// padrões: um arquivo com só isto equivale a não ter arquivo.
-pub const DEFAULT_CONFIG: &str = r##"# Configuração do xt: ~/.config/xt/config.toml
-# (ou $XDG_CONFIG_HOME/xt/config.toml). Tudo é opcional. A tela de
-# configuração (F12 dentro do xt) muda estes valores e mantém os comentários.
+/// Commented example, printed by `xt --default-config`. The values are the
+/// defaults: a file with only this is the same as having no file.
+pub const DEFAULT_CONFIG: &str = r##"# xt configuration: ~/.config/xt/config.toml
+# (or $XDG_CONFIG_HOME/xt/config.toml). Everything is optional. The
+# configuration screen (F12 inside xt) changes these values and keeps the comments.
 
-# Tema: "classic" (azul do XTree), "dark", "light", "mono" (cores do
-# próprio terminal), "norton", "solarized", "gruvbox" ou "nord".
+# Theme: "classic" (XTree blue), "dark", "light", "mono" (the terminal's
+# own colors), "norton", "solarized", "gruvbox" or "nord".
 theme = "classic"
 
 [options]
-# Editor da tecla E. Vazio: $VISUAL, $EDITOR, editor ou vi.
+# Editor for the E key. Empty: $VISUAL, $EDITOR, editor or vi.
 editor = ""
-# Programa da tecla O (abrir com o programa padrão). Vazio: xdg-open.
+# Program for the O key (open with the default program). Empty: xdg-open.
 opener = ""
-# Datas: "yyyy-mm-dd", "dd/mm/yyyy" ou "mm/dd/yyyy".
+# Dates: "yyyy-mm-dd", "dd/mm/yyyy" or "mm/dd/yyyy".
 date_format = "yyyy-mm-dd"
-# Números: "1,234", "1.234", "1 234" ou "1234".
+# Numbers: "1,234", "1.234", "1 234" or "1234".
 number_format = "1,234"
-# Mostrar arquivos e diretórios ocultos (que começam com ponto).
+# Show hidden files and directories (those starting with a dot).
 show_hidden = true
-# Enter na janela de arquivos visualiza o arquivo (em vez de voltar à árvore).
+# Enter in the files window views the file (instead of going back to the tree).
 enter_views = false
-# Modo inicial da janela de arquivos (Alt+F muda durante o uso): "names"
-# (várias colunas), "names_size" (colunas com tamanho), "details" (uma
-# coluna com tamanho, data e permissões) ou "long_names" (uma coluna, só
-# nomes).
+# Initial mode of the files window (Alt+F changes it while running): "names"
+# (several columns), "names_size" (columns with size), "details" (one
+# column with size, date and permissions) or "long_names" (one column, names
+# only).
 file_display = "details"
-# Ordenação inicial dos arquivos: "name", "ext", "date" ou "size"
-# (Alt+S muda durante o uso).
+# Initial file sort order: "name", "ext", "date" or "size"
+# (Alt+S changes it while running).
 sort = "name"
 sort_descending = false
-# Perguntar antes de sair.
+# Ask before quitting.
 confirm_quit = true
-# Para confirmar um Prune (Alt+P), digitar: "prune" (a palavra PRUNE),
-# "name" (o nome do diretório) ou "y".
+# To confirm a Prune (Alt+P), type: "prune" (the word PRUNE),
+# "name" (the directory name) or "y".
 prune_confirmation = "prune"
-# Não guardar no histórico entradas que começam com "@" (útil para comandos
-# com senha no eXecute; o "@" é tirado antes de executar).
+# Don't keep entries starting with "@" in the history (useful for commands
+# with passwords in eXecute; the "@" is stripped before running).
 history_skip_at = false
-# Compare: datas com até 2 segundos de diferença são iguais (FAT/exFAT).
+# Compare: dates up to 2 seconds apart are equal (FAT/exFAT).
 compare_ignore_2s = true
-# Compare: diferença de exatamente 1 hora conta como igual (horário de verão).
+# Compare: a difference of exactly 1 hour counts as equal (daylight saving).
 compare_ignore_1h = false
-# Reler sozinho o diretório atual quando outro programa o muda.
+# Re-read the current directory by itself when another program changes it.
 auto_refresh = true
 
-# Cores individuais, por cima do tema. Valores: nomes ("yellow",
-# "lightblue", "darkgray"...), "#rrggbb" ou um índice de 0 a 255.
-# Nomes: background, text, border, active_border, key, dim, highlight,
+# Individual colors, on top of the theme. Values: names ("yellow",
+# "lightblue", "darkgray"...), "#rrggbb" or an index from 0 to 255.
+# Names: background, text, border, active_border, key, dim, highlight,
 # highlight_text, inactive_highlight, error, message, tagged, executable,
 # symlink, special.
 [colors]
 # key = "yellow"
 # background = "#1e1e2e"
 
-# Teclas: "tecla" = "comando". Teclas: letras, "F1".."F12", "enter",
-# "esc", "tab", "space", "plus", "minus", setas ("up"...), "pageup"...,
-# com "ctrl+" e/ou "alt+" na frente. "none" desliga a tecla.
-# Comandos: veja a lista com F1 dentro do xt; os nomes são os do
-# arquivo-fonte keymap.rs (view, copy, copy_tagged, copy_tagged_paths,
+# Keys: "key" = "command". Keys: letters, "F1".."F12", "enter",
+# "esc", "tab", "space", "plus", "minus", arrows ("up"...), "pageup"...,
+# with "ctrl+" and/or "alt+" in front. "none" disables the key.
+# Commands: see the list with F1 inside xt; the names are those in the
+# source file keymap.rs (view, copy, copy_tagged, copy_tagged_paths,
 # move_tagged, relog, compare, execute...).
 [keys.any]
 # "ctrl+r" = "relog"
@@ -96,8 +96,8 @@ pub struct Config {
     pub keys: Keys,
 }
 
-/// Trocas de teclas: `[keys.any]` vale nas duas janelas, `[keys.tree]` e
-/// `[keys.files]` só numa delas (e têm prioridade).
+/// Key remaps: `[keys.any]` applies in both windows, `[keys.tree]` and
+/// `[keys.files]` only in one of them (and take priority).
 #[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Keys {
@@ -120,21 +120,21 @@ impl Default for Config {
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Options {
-    /// Editor da tecla E; vazio usa as variáveis de ambiente.
+    /// Editor for the E key; empty uses the environment variables.
     pub editor: String,
-    /// Programa da tecla O; vazio usa o xdg-open.
+    /// Program for the O key; empty uses xdg-open.
     pub opener: String,
     pub date_format: DateFormat,
     pub number_format: NumberFormat,
     pub show_hidden: bool,
     pub enter_views: bool,
-    /// Modo inicial da janela de arquivos (Alt+F muda durante o uso).
+    /// Initial mode of the files window (Alt+F changes it while running).
     pub file_display: FileDisplay,
-    /// Ordenação inicial dos arquivos.
+    /// Initial file sort order.
     pub sort: SortKey,
     pub sort_descending: bool,
     pub confirm_quit: bool,
-    /// O que digitar para confirmar um Prune.
+    /// What to type to confirm a Prune.
     pub prune_confirmation: PruneConfirm,
     pub history_skip_at: bool,
     pub compare_ignore_2s: bool,
@@ -173,7 +173,7 @@ impl Options {
         }
     }
 
-    /// Os valores como ficam no arquivo, para gravar.
+    /// The values as they are in the file, for saving.
     fn entries(&self) -> Vec<(&'static str, toml_edit::Value)> {
         use toml_edit::Value;
         let s = |v: &str| Value::from(v);
@@ -204,8 +204,8 @@ impl Options {
     }
 }
 
-/// Uma opção de lista fechada: o texto no arquivo e a próxima da lista
-/// (a tela de configuração alterna entre elas).
+/// A closed-list option: the text in the file and the next one in the list
+/// (the configuration screen cycles through them).
 pub trait Choice: Copy + PartialEq + 'static {
     const ALL: &'static [Self];
     fn as_str(self) -> &'static str;
@@ -239,7 +239,7 @@ impl Choice for DateFormat {
 }
 
 impl DateFormat {
-    /// Formato do chrono, com hora.
+    /// chrono format, with time.
     pub fn pattern(self) -> &'static str {
         match self {
             DateFormat::Iso => "%Y-%m-%d %H:%M",
@@ -293,12 +293,12 @@ impl NumberFormat {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PruneConfirm {
-    /// A palavra PRUNE.
+    /// The word PRUNE.
     #[default]
     Prune,
-    /// O nome do diretório.
+    /// The directory name.
     Name,
-    /// Só Y.
+    /// Just Y.
     Y,
 }
 
@@ -358,8 +358,8 @@ impl Config {
         Ok(config)
     }
 
-    /// Lê o arquivo do usuário. Sem arquivo, valem os padrões; com erro,
-    /// também, e o erro volta junto para ser mostrado.
+    /// Reads the user's file. With no file, the defaults apply; on error,
+    /// too, and the error is returned along so it can be shown.
     pub fn load() -> (Config, Option<String>) {
         let Some(path) = Self::path() else {
             return (Config::default(), None);
@@ -384,9 +384,9 @@ impl Config {
         }
     }
 
-    /// Grava o tema e as opções em `path`, mantendo o resto do arquivo
-    /// (comentários, cores, teclas) como está. Sem arquivo, parte do
-    /// exemplo comentado.
+    /// Saves the theme and options to `path`, keeping the rest of the file
+    /// (comments, colors, keys) as is. With no file, starts from the
+    /// commented example.
     pub fn save(&self, path: &Path) -> Result<(), String> {
         let text = match std::fs::read_to_string(path) {
             Ok(t) => t,
@@ -405,7 +405,7 @@ impl Config {
             .ok_or("[options] is not a table")?;
         for (key, value) in self.options.entries() {
             match options.get_mut(key).and_then(|i| i.as_value_mut()) {
-                // Troca só o valor: o comentário acima da linha fica.
+                // Replaces only the value: the comment above the line stays.
                 Some(old) => {
                     let decor = old.decor().clone();
                     *old = value;
@@ -434,7 +434,7 @@ fn write_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
     std::fs::rename(&tmp, path)
 }
 
-/// Cores da interface.
+/// UI colors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Theme {
     pub background: Color,
@@ -454,10 +454,10 @@ pub struct Theme {
     pub special: Color,
 }
 
-/// Um tema pronto: nome e como montá-lo.
+/// A ready-made theme: name and how to build it.
 type NamedTheme = (&'static str, fn() -> Theme);
 
-/// Os temas prontos, na ordem em que aparecem no F4.
+/// The ready-made themes, in the order they appear in F4.
 pub const THEMES: &[NamedTheme] = &[
     ("classic", Theme::classic),
     ("dark", Theme::dark),
@@ -528,7 +528,7 @@ impl Theme {
         }
     }
 
-    /// As cores do próprio terminal, com poucos destaques.
+    /// The terminal's own colors, with few highlights.
     pub fn mono() -> Self {
         Theme {
             background: Color::Reset,
@@ -549,7 +549,7 @@ impl Theme {
         }
     }
 
-    /// Como o Norton Commander: azul com texto ciano.
+    /// Like Norton Commander: blue with cyan text.
     pub fn norton() -> Self {
         Theme {
             text: Color::LightCyan,
@@ -658,15 +658,15 @@ impl Theme {
     }
 }
 
-/// Como datas e números aparecem na tela.
+/// How dates and numbers appear on screen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Formats {
     pub date: DateFormat,
     pub number: NumberFormat,
 }
 
-// Tema e formatos podem mudar durante o uso (tela de configuração), e são
-// lidos em todo desenho: ficam em globais simples.
+// Theme and formats can change while running (configuration screen), and are
+// read on every redraw: they live in simple globals.
 static THEME: RwLock<Option<Theme>> = RwLock::new(None);
 static FORMATS: RwLock<Formats> = RwLock::new(Formats {
     date: DateFormat::Iso,
@@ -677,7 +677,7 @@ pub fn set_theme(theme: Theme) {
     *THEME.write().unwrap_or_else(|e| e.into_inner()) = Some(theme);
 }
 
-/// O tema em uso (o clássico, se nenhum foi definido).
+/// The theme in use (the classic one, if none was set).
 pub fn theme() -> Theme {
     THEME
         .read()
@@ -806,13 +806,13 @@ mod tests {
         };
         config.save(&path).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains("# Configuração do xt"));
+        assert!(text.contains("# xt configuration"));
         assert_eq!(Config::load_from(&path).0, config);
     }
 
     #[test]
     fn config_path_ends_in_xt_dir() {
-        // Só lê a variável; não mexe no ambiente dos outros testes.
+        // Only reads the variable; doesn't touch the environment of the other tests.
         let path = Config::path().unwrap();
         assert!(path.ends_with("xt/config.toml"));
     }

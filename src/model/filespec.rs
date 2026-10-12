@@ -1,16 +1,16 @@
-//! Filespec: o filtro de arquivos do XTree (tecla `F`).
+//! Filespec: XTree's file filter (`F` key).
 //!
-//! Especificações separadas por espaço, `;` ou `,` (entre aspas, um nome
-//! pode ter espaços). Três tipos, como no ZTreeWin:
+//! Specs separated by space, `;` or `,` (inside quotes, a name
+//! may contain spaces). Three kinds, as in ZTreeWin:
 //!
-//! - **nome**: glob (`*.rs`, `a?c*`, `[abc]*`), sem diferenciar maiúsculas;
-//! - **data**: `<`, `=`, `>`, `<=`, `>=` ou `<>` e uma data (`>01/05/2026`,
+//! - **name**: glob (`*.rs`, `a?c*`, `[abc]*`), case-insensitive;
+//! - **date**: `<`, `=`, `>`, `<=`, `>=` or `<>` and a date (`>01/05/2026`,
 //!   `=TODAY`, `>TODAY-7`);
-//! - **tamanho**: o mesmo com `s` (`>=s200000`, `<s10K`, `>s1G`).
+//! - **size**: the same with `s` (`>=s200000`, `<s10K`, `>s1G`).
 //!
-//! Um `-` na frente nega a especificação. Dentro de cada tipo, as positivas
-//! valem com "ou" (exceto `>a` logo seguido de `<b`, que forma a faixa entre
-//! as duas) e as negativas com "e não"; entre tipos, vale "e".
+//! A leading `-` negates the spec. Within each kind, positive specs
+//! combine with "or" (except `>a` immediately followed by `<b`, which forms
+//! the range between the two) and negative ones with "and not"; across kinds, "and" applies.
 
 use std::ffi::OsStr;
 use std::time::SystemTime;
@@ -20,8 +20,8 @@ use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 
 use super::tree::FileEntry;
 
-/// Ordem de dia, mês e ano nas datas digitadas (a do formato de data
-/// configurado). `aaaa-mm-dd` é sempre aceito.
+/// Order of day, month and year in typed dates (the one from the configured
+/// date format). `yyyy-mm-dd` is always accepted.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum DateOrder {
     #[default]
@@ -52,7 +52,7 @@ impl Op {
         }
     }
 
-    /// `-<` é `>=`, `-=` é `<>`, e assim por diante.
+    /// `-<` is `>=`, `-=` is `<>`, and so on.
     fn negated(self) -> Op {
         match self {
             Op::Less => Op::GreaterEq,
@@ -65,19 +65,19 @@ impl Op {
     }
 }
 
-/// Uma condição de data (dias desde 1970, no fuso local) ou de tamanho.
+/// A date condition (days since 1970, in local time) or a size condition.
 #[derive(Debug, Clone, Copy)]
 struct Cond {
     op: Op,
     value: i64,
 }
 
-/// Condições de um tipo (data ou tamanho), já agrupadas.
+/// Conditions of one kind (date or size), already grouped.
 #[derive(Debug, Default)]
 struct Conds {
-    /// Positivas: basta uma (cada uma pode ser uma faixa de duas).
+    /// Positive: any one is enough (each may be a two-part range).
     any: Vec<Vec<Cond>>,
-    /// `<>`: nenhuma pode valer igualdade.
+    /// `<>`: none may be equal.
     none: Vec<Cond>,
 }
 
@@ -90,7 +90,7 @@ impl Conds {
                 conds.none.push(c);
                 continue;
             }
-            // ">a" seguido de "<b" (b > a): faixa, as duas valem juntas.
+            // ">a" followed by "<b" (b > a): a range, both must hold together.
             let lower = matches!(c.op, Op::Greater | Op::GreaterEq);
             if lower
                 && let Some(next) = iter.peek()
@@ -208,17 +208,17 @@ impl Filespec {
         })
     }
 
-    /// Texto normalizado, para mostrar na tela.
+    /// Normalized text, for display.
     pub fn text(&self) -> &str {
         &self.text
     }
 
-    /// Só a parte dos nomes.
+    /// Names only.
     pub fn matches(&self, name: &OsStr) -> bool {
         self.include.as_ref().is_none_or(|s| s.is_match(name)) && !self.exclude.is_match(name)
     }
 
-    /// Nome, data e tamanho.
+    /// Name, date and size.
     pub fn matches_entry(&self, f: &FileEntry) -> bool {
         if !self.matches(&f.name) {
             return false;
@@ -235,15 +235,15 @@ impl Filespec {
     }
 }
 
-/// Uma especificação: o texto (sem o `-` de negação nem as aspas).
+/// One spec: the text (without the negating `-` or the quotes).
 struct Token {
     text: String,
     quoted: bool,
     negated: bool,
 }
 
-/// Divide o texto em especificações. Entre aspas, separadores e um `-` no
-/// começo são parte do nome; o `-` só nega fora delas (`-"a b*"`).
+/// Splits the text into specs. Inside quotes, separators and a leading `-`
+/// are part of the name; the `-` only negates outside them (`-"a b*"`).
 fn tokenize(text: &str) -> Vec<Token> {
     let mut out = Vec::new();
     let mut cur = String::new();
@@ -302,8 +302,8 @@ fn parse_size(s: &str) -> Option<i64> {
     Some((n * mult) as i64)
 }
 
-/// Dia (desde 1970) de uma data digitada: `TODAY`, `TODAY-n`, ou dia,
-/// mês e ano na ordem configurada, separados por `/`, `.` ou `-`.
+/// Day (since 1970) of a typed date: `TODAY`, `TODAY-n`, or day,
+/// month and year in the configured order, separated by `/`, `.` or `-`.
 fn parse_date(s: &str, order: DateOrder) -> Option<i64> {
     let upper = s.to_ascii_uppercase();
     if let Some(rest) = upper.strip_prefix("TODAY") {
@@ -337,9 +337,9 @@ fn parse_date(s: &str, order: DateOrder) -> Option<i64> {
     Some(day_number(date))
 }
 
-/// Uma data e hora digitada (New date): `now`, `today`, ou a data na ordem
-/// configurada seguida, opcionalmente, de `HH:MM` ou `HH:MM:SS`. Devolve a
-/// data e, se veio, a hora.
+/// A typed date and time (New date): `now`, `today`, or the date in the
+/// configured order optionally followed by `HH:MM` or `HH:MM:SS`. Returns the
+/// date and, if present, the time.
 pub fn parse_date_time(
     text: &str,
     order: DateOrder,
@@ -374,7 +374,7 @@ fn day_number(d: NaiveDate) -> i64 {
     d.signed_duration_since(NaiveDate::default()).num_days()
 }
 
-/// Dia local de uma data de modificação.
+/// Local day of a modification date.
 fn local_day(t: SystemTime) -> i64 {
     day_number(DateTime::<Local>::from(t).date_naive())
 }
@@ -457,7 +457,7 @@ mod tests {
         assert!(me(">s0.1M", &big));
         assert!(me("-<s200000", &big), "-< is >=");
         assert!(!me("<>s100", &small));
-        // Faixa: >a seguido de <b.
+        // Range: >a followed by <b.
         assert!(me(">s50,<s200", &small) && !me(">s50,<s200", &big));
         assert!(Filespec::parse("<sabc").is_err());
     }
@@ -466,12 +466,12 @@ mod tests {
     fn date_specs_follow_configured_order() {
         let may10 = file("x.txt", 1, "2026-05-10");
         let june = file("y.txt", 1, "2026-06-02");
-        // Maio de 2026, em dd/mm/aaaa (e aaaa-mm-dd sempre vale).
+        // May 2026, in dd/mm/yyyy (and yyyy-mm-dd always works).
         assert!(me("=>01/05/2026,=<31/05/2026", &may10));
         assert!(!me("=>01/05/2026,=<31/05/2026", &june));
         assert!(me(">2026-05-31", &june));
         assert!(me("=10.05.26", &may10));
-        // Fora de maio: "<1/5" ou ">31/5".
+        // Outside May: "<1/5" or ">31/5".
         assert!(me("<01/05/2026,>31/05/2026", &june));
         assert!(!me("<01/05/2026,>31/05/2026", &may10));
         let mdy = Filespec::parse_with("=05/10/2026", DateOrder::Mdy).unwrap();
@@ -488,7 +488,7 @@ mod tests {
         let old = file("o.txt", 10, "2001-01-01");
         assert!(me("=TODAY", &now) && !me("=TODAY", &old));
         assert!(me(">TODAY-7", &now) && me("<TODAY-7", &old));
-        // Nome, data e tamanho juntos: "e".
+        // Name, date and size together: "and".
         assert!(me("*.txt,=TODAY,<s100", &now));
         assert!(!me("*.rs,=TODAY", &now));
         assert!(!me("*.txt,=TODAY,>s100", &now));
@@ -523,7 +523,7 @@ mod tests {
         assert!(!m("\"meu arquivo*\"", "meu.txt"));
         assert!(m("-\"a b*\"", "c.txt"));
         assert!(!m("-\"a b*\"", "a b.txt"));
-        // Entre aspas, o hífen é parte do nome.
+        // Inside quotes, the hyphen is part of the name.
         assert!(m("\"-*.txt\"", "-notas.txt"));
         assert!(!m("\"-*.txt\"", "notas.txt"));
         assert_eq!(

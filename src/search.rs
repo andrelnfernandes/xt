@@ -1,26 +1,26 @@
-//! Busca de texto ou bytes: em arquivos marcados (Ctrl+S) e dentro do
-//! visualizador (F, B, /, \, +, -, Espaço), como no ZTreeWin.
+//! Text or byte search: in tagged files (Ctrl+S) and inside the
+//! viewer (F, B, /, \, +, -, Space), as in ZTreeWin.
 //!
-//! Texto é procurado linha a linha: um `*` no meio do termo casa qualquer
-//! coisa na mesma linha (`erro*disco`), e um termo nunca atravessa uma
-//! quebra de linha. Sem diferenciar maiúsculas, acentos também contam
-//! (`AÇÃO` acha `ação`).
+//! Text is searched line by line: a `*` in the middle of the term matches anything
+//! on the same line (`erro*disco`), and a term never crosses a
+//! line break. When ignoring case, accents count too
+//! (`AÇÃO` finds `ação`).
 
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-/// Linhas maiores que isto (ex.: arquivos binários) são procuradas em
-/// pedaços; um termo partido entre dois pedaços pode não ser achado.
+/// Lines longer than this (e.g. binary files) are searched in
+/// chunks; a term split between two chunks may not be found.
 const MAX_LINE: usize = 1024 * 1024;
 
-/// O que procurar e como.
+/// What to search for and how.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchSpec {
     pub text: String,
     pub case_sensitive: bool,
-    /// `text` são pares hexadecimais: "4d 5a 90".
+    /// `text` is hexadecimal pairs: "4d 5a 90".
     pub hex: bool,
 }
 
@@ -33,7 +33,7 @@ impl SearchSpec {
         }
     }
 
-    /// Ex.: "text, ignore case".
+    /// E.g. "text, ignore case".
     pub fn mode_label(&self) -> &'static str {
         match (self.hex, self.case_sensitive) {
             (true, _) => "hex",
@@ -43,10 +43,10 @@ impl SearchSpec {
     }
 }
 
-/// Um termo pronto para procurar.
+/// A term ready to search for.
 #[derive(Debug, Clone)]
 pub enum Pattern {
-    /// Partes separadas pelos `*` internos, já em minúsculas se for o caso.
+    /// Parts separated by the inner `*`, already lowercased if applicable.
     Text {
         parts: Vec<Vec<char>>,
         case_sensitive: bool,
@@ -72,8 +72,8 @@ impl Pattern {
         }
         let case = spec.case_sensitive;
         let norm = |s: &str| -> Vec<char> { s.chars().map(|c| fold(c, case)).collect() };
-        // `*` só é curinga entre dois caracteres; nas pontas é literal, e
-        // então todos os outros também são (regra do ZTreeWin).
+        // `*` is a wildcard only between two characters; at the ends it is literal,
+        // and then so are all the others (ZTreeWin rule).
         let t = &spec.text;
         let wildcards = !t.starts_with('*') && !t.ends_with('*');
         let parts = if wildcards {
@@ -87,14 +87,14 @@ impl Pattern {
         })
     }
 
-    /// Primeira ocorrência numa linha, a partir do caractere `from`:
-    /// devolve (início, fim) em caracteres.
+    /// First occurrence in a line, starting at character `from`:
+    /// returns (start, end) in characters.
     pub fn find_in_line(&self, line: &str, from: usize) -> Option<(usize, usize)> {
         let chars: Vec<char> = line.chars().collect();
         self.find_in_chars(&chars, from)
     }
 
-    /// Última ocorrência que começa antes do caractere `before`.
+    /// Last occurrence that starts before character `before`.
     pub fn rfind_in_line(&self, line: &str, before: usize) -> Option<(usize, usize)> {
         let chars: Vec<char> = line.chars().collect();
         let mut best = None;
@@ -116,8 +116,8 @@ impl Pattern {
                 case_sensitive,
             } => {
                 let line: Vec<char> = chars.iter().map(|&c| fold(c, *case_sensitive)).collect();
-                // Cada parte o mais à esquerda possível depois da anterior:
-                // se assim não casa, começando mais à direita também não.
+                // Each part as far left as possible after the previous one:
+                // if it doesn't match that way, starting further right won't either.
                 let first = find_chars(&line, &parts[0], from)?;
                 let mut end = first + parts[0].len();
                 for part in &parts[1..] {
@@ -126,7 +126,7 @@ impl Pattern {
                 Some((first, end))
             }
             Pattern::Bytes(bytes) => {
-                // Bytes numa linha de texto: compara com os bytes UTF-8.
+                // Bytes in a text line: compares against the UTF-8 bytes.
                 let text: String = chars.iter().collect();
                 let hay = text.as_bytes();
                 let pos = find_bytes(hay, bytes, char_to_byte(&text, from))?;
@@ -137,8 +137,8 @@ impl Pattern {
         }
     }
 
-    /// Posição em bytes da próxima ocorrência em `data` a partir de `from`
-    /// (para o modo hex do visualizador).
+    /// Byte position of the next occurrence in `data` starting at `from`
+    /// (for the viewer's hex mode).
     pub fn find_in_bytes(&self, data: &[u8], from: usize) -> Option<(usize, usize)> {
         let needle = self.as_bytes();
         let pos = match self {
@@ -151,7 +151,7 @@ impl Pattern {
         Some((pos, pos + needle.len()))
     }
 
-    /// Última ocorrência em `data` que começa antes de `before`.
+    /// Last occurrence in `data` that starts before `before`.
     pub fn rfind_in_bytes(&self, data: &[u8], before: usize) -> Option<(usize, usize)> {
         let mut best = None;
         let mut from = 0;
@@ -165,7 +165,7 @@ impl Pattern {
         best
     }
 
-    /// O termo como bytes (o texto com os `*` literais).
+    /// The term as bytes (the text with literal `*`).
     fn as_bytes(&self) -> Vec<u8> {
         match self {
             Pattern::Bytes(b) => b.clone(),
@@ -176,7 +176,7 @@ impl Pattern {
         }
     }
 
-    /// O conteúdo tem o termo? Texto é lido linha a linha.
+    /// Does the content have the term? Text is read line by line.
     pub fn matches_reader(&self, mut reader: impl BufRead) -> io::Result<bool> {
         if let Pattern::Bytes(needle) = self {
             return stream_contains(reader, needle);
@@ -198,7 +198,7 @@ impl Pattern {
     }
 }
 
-/// Minúscula, se não diferencia maiúsculas (`Ç` → `ç`).
+/// Lowercase, if case-insensitive (`Ç` → `ç`).
 fn fold(c: char, case_sensitive: bool) -> char {
     if case_sensitive {
         c
@@ -238,8 +238,8 @@ fn char_to_byte(s: &str, chars: usize) -> usize {
     s.char_indices().nth(chars).map_or(s.len(), |(i, _)| i)
 }
 
-/// Procura bytes num fluxo, em blocos que se sobrepõem (para achar o termo
-/// mesmo partido entre dois blocos).
+/// Searches for bytes in a stream, in overlapping blocks (to find the term
+/// even when split between two blocks).
 fn stream_contains(mut reader: impl BufRead, needle: &[u8]) -> io::Result<bool> {
     let mut carry: Vec<u8> = Vec::new();
     loop {
@@ -258,16 +258,16 @@ fn stream_contains(mut reader: impl BufRead, needle: &[u8]) -> io::Result<bool> 
     }
 }
 
-/// Abre o conteúdo de um arquivo para a busca.
+/// Opens a file's content for the search.
 pub type Opener = Box<dyn Fn(&Path) -> io::Result<Box<dyn BufRead>>>;
 
-/// Uma busca nos arquivos marcados em andamento (Ctrl+S). Cada item
-/// carrega uma identificação de quem chamou (`T`), devolvida no resultado.
+/// A search over the tagged files in progress (Ctrl+S). Each item
+/// carries a caller-supplied identifier (`T`), returned in the result.
 pub struct SearchJob<T> {
     pub spec: SearchSpec,
     pattern: Pattern,
     items: Vec<(T, PathBuf)>,
-    /// Lê o conteúdo de um item (no disco, ou de dentro de um ZIP/TAR).
+    /// Reads an item's content (from disk, or from inside a ZIP/TAR).
     open: Opener,
     next: usize,
     pub found: usize,
@@ -303,9 +303,9 @@ impl<T: Copy> SearchJob<T> {
         self.items.get(self.next).map(|(_, p)| p.as_path())
     }
 
-    /// Procura nos próximos arquivos até estourar `budget`. Devolve, para
-    /// cada um, se ele contém o termo. Arquivos que não puderam ser lidos
-    /// ficam marcados (e o erro é guardado), como o "Keep" do ZTreeWin.
+    /// Searches the next files until `budget` runs out. Returns, for
+    /// each one, whether it contains the term. Files that could not be read
+    /// stay tagged (and the error is kept), like ZTreeWin's "Keep".
     pub fn step(&mut self, budget: Duration) -> Vec<(T, bool)> {
         let start = Instant::now();
         let mut results = Vec::new();
@@ -341,7 +341,7 @@ impl<T: Copy> SearchJob<T> {
     }
 }
 
-/// Abre um arquivo do disco para a busca.
+/// Opens a file from disk for the search.
 pub fn open_file(path: &Path) -> io::Result<Box<dyn BufRead>> {
     Ok(Box::new(BufReader::new(File::open(path)?)))
 }
@@ -375,7 +375,7 @@ mod tests {
             Some((3, 16))
         );
         assert_eq!(pat("erro*disco").find_in_line("disco e erro", 0), None);
-        // Nas pontas, o `*` é literal (e todos os outros também).
+        // At the ends, `*` is literal (and so are all the others).
         assert_eq!(pat("*a*b").find_in_line("x *a*b y", 0), Some((2, 6)));
         assert_eq!(pat("*a*b").find_in_line("x a  b y", 0), None);
     }
@@ -413,7 +413,7 @@ mod tests {
                 .unwrap()
         );
         assert!(!p.matches_reader(Cursor::new(b"foo\nbar".to_vec())).unwrap());
-        // Bytes partidos entre dois blocos do leitor ainda são achados.
+        // Bytes split between two reader blocks are still found.
         let needle = Pattern::Bytes(b"XYZ".to_vec());
         let reader = BufReader::with_capacity(4, Cursor::new(b"aaXYZbb".to_vec()));
         assert!(needle.matches_reader(reader).unwrap());

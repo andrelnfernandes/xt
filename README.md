@@ -1,33 +1,48 @@
 # xt
 
-Gerenciador de arquivos em modo texto para Linux, inspirado no XTree e no ZTreeWin.
+[Leia em português](README.pt-BR.md)
 
-## Instalação
+Text-mode file manager for Linux, inspired by XTree and ZTreeWin.
 
-Requer Rust (via [rustup](https://rustup.rs)). Na pasta do projeto:
+## Why xt?
+
+I have used some flavor of XTree since the 1990s, and ZTreeWin is still, to
+me, the best text-mode file manager there is. I wrote xt because I missed
+something as good as it running on Linux: the existing alternatives seem to be
+abandoned.
+
+As much as I like ZTreeWin, its development is extremely slow. That is why xt
+will probably get a Windows version too.
+
+xt follows ZTreeWin's keys and way of working whenever possible; the
+differences are listed in [Comparison with ZTreeWin](#comparison-with-ztreewin).
+
+## Installation
+
+Requires Rust (via [rustup](https://rustup.rs)). In the project folder:
 
 ```bash
 cargo install --path .
 ```
 
-O binário vai para `~/.cargo/bin/xt` (que o rustup já coloca no `PATH`).
-Para atualizar depois de mudanças no código, rode o mesmo comando de novo;
-para remover, `cargo uninstall xt`.
+The binary goes to `~/.cargo/bin/xt` (which rustup already puts on your `PATH`).
+To update after code changes, run the same command again;
+to remove it, `cargo uninstall xt`.
 
-## Uso
+## Usage
 
 ```bash
-xt [diretório]
+xt [directory]
 ```
 
-Sem argumento, abre o diretório atual. `xt --help` mostra as opções.
+With no argument, it opens the current directory. `xt --help` shows the options.
 
-### Sair mudando o diretório do shell (Alt+Q)
+### Quitting and changing the shell's directory (Alt+Q)
 
-Um programa não consegue mudar o diretório do shell que o chamou. Por isso,
-como nos outros gerenciadores de arquivos, o **Alt+Q** grava o diretório
-atual num arquivo (`--cwd-file`) e uma pequena função do shell faz o `cd`.
-Coloque no `~/.bashrc` (ou `~/.zshrc`):
+A program cannot change the directory of the shell that launched it. So,
+as in other file managers, **Alt+Q** writes the current directory to a file
+(`--cwd-file`) and a small shell function does the `cd`.
+Put this in your `~/.bashrc` (or `~/.zshrc`):
 
 ```bash
 xt() {
@@ -40,420 +55,420 @@ xt() {
 }
 ```
 
-Com ela, `xt` funciona como antes; só ao sair com **Alt+Q** o shell fica no
-diretório em que você estava no xt. `Q` e F10 saem sem mudar nada.
+With it, `xt` works as before; only when you quit with **Alt+Q** does the shell
+end up in the directory you were in inside xt. `Q` and F10 quit without changing anything.
 
-## Configuração
+## Configuration
 
-A forma mais fácil é a **tela de configuração: F12** (ou Alt+F10, como no
-ZTreeWin; no Ubuntu/GNOME o Alt+F10 costuma maximizar a janela e não chega ao
-xt). Ela tem quatro páginas:
+The easiest way is the **configuration screen: F12** (or Alt+F10, as in
+ZTreeWin; on Ubuntu/GNOME, Alt+F10 usually maximizes the window and never
+reaches xt). It has four pages:
 
-| Página | Opções |
+| Page | Options |
 |---|---|
-| 1. Programas e formatos | editor, formato de data, formato de número |
-| 2. Exibição e ordenação | mostrar ocultos, ordenação inicial e sentido, o que o Enter faz na janela de arquivos, modo inicial da janela de arquivos |
-| 3. Confirmações e histórico | confirmar ao sair, confirmação do Prune, não guardar entradas com `@` |
-| 4. Compare e atualização | ignorar 2 s, ignorar 1 h, atualização automática |
+| 1. Programs and formats | editor, date format, number format |
+| 2. Display and sorting | show hidden files, initial sort order and direction, what Enter does in the file window, initial mode of the file window |
+| 3. Confirmations and history | confirm on quit, Prune confirmation, don't keep entries containing `@` |
+| 4. Compare and refresh | ignore 2 s, ignore 1 h, automatic refresh |
 
-A letra da opção (ou Enter) troca o valor, PgUp/PgDn ou 1–4 mudam de página,
-**F4** escolhe o tema numa lista (com prévia na hora), **F3** grava e aplica,
-**Esc** desiste (pergunta se houver mudanças).
+The option's letter (or Enter) changes the value, PgUp/PgDn or 1–4 switch pages,
+**F4** picks the theme from a list (with an instant preview), **F3** saves and applies,
+**Esc** cancels (it asks if there are changes).
 
-Tudo fica em `~/.config/xt/config.toml` (ou `$XDG_CONFIG_HOME/xt/`), que
-também pode ser editado à mão; a tela mantém os seus comentários. Para começar
-de um arquivo comentado com todos os padrões:
+Everything is stored in `~/.config/xt/config.toml` (or `$XDG_CONFIG_HOME/xt/`),
+which can also be edited by hand; the screen preserves your comments. To start
+from a commented file with all the defaults:
 
 ```bash
 mkdir -p ~/.config/xt && xt --default-config > ~/.config/xt/config.toml
 ```
 
-- `theme`: `classic` (azul do XTree), `dark`, `light`, `mono` (cores do
-  próprio terminal), `norton`, `solarized`, `gruvbox` ou `nord`.
-- `[options]`: as opções da tela de configuração.
-- `[colors]`: troca cores individuais por cima do tema, com nomes
-  (`"yellow"`), `"#rrggbb"` ou índices de 0 a 255.
-- `[keys.any]`, `[keys.tree]`, `[keys.files]`: troca teclas, nas duas
-  janelas ou só numa (esta tem prioridade). Ex.: `"f3" = "view"`,
-  `"ctrl+r" = "relog"`; `"none"` desliga uma tecla. **F1** dentro do xt
-  mostra as teclas em vigor, já com as suas trocas.
+- `theme`: `classic` (XTree blue), `dark`, `light`, `mono` (the terminal's
+  own colors), `norton`, `solarized`, `gruvbox` or `nord`.
+- `[options]`: the options from the configuration screen.
+- `[colors]`: overrides individual colors on top of the theme, using names
+  (`"yellow"`), `"#rrggbb"` or indexes from 0 to 255.
+- `[keys.any]`, `[keys.tree]`, `[keys.files]`: rebind keys, in both
+  windows or in just one (this one takes precedence). E.g.: `"f3" = "view"`,
+  `"ctrl+r" = "relog"`; `"none"` disables a key. **F1** inside xt
+  shows the keys currently in effect, including your changes.
 
-Um erro no arquivo não impede o xt de abrir: ele usa os padrões e mostra o
-erro no rodapé (e a tela de configuração não grava até o arquivo ser
-corrigido, para não apagar o que você escreveu).
+An error in the file does not stop xt from starting: it uses the defaults and shows the
+error in the footer (and the configuration screen will not save until the file is
+fixed, so it doesn't erase what you wrote).
 
-## Teclas
+## Keys
 
-### Navegação
+### Navigation
 
-| Tecla | Árvore | Janela de arquivos |
+| Key | Tree | File window |
 |---|---|---|
-| ↑ ↓ PgUp PgDn Home End | move o cursor | move o cursor |
-| → / `+` | expande o diretório | |
-| ← / `-` | recolhe (ou vai para o pai) | página acima (em colunas: arquivo anterior) |
-| → | expande | página abaixo (em colunas: próximo arquivo) |
-| Alt+F | | modo de exibição: colunas de nomes, colunas com tamanho, detalhes, nomes longos |
-| Backspace | diretório pai | mostra os arquivos do diretório pai |
-| Espaço | desce uma linha | idem |
-| `*` | loga e expande o ramo inteiro | |
-| `\` | Treespec: vai a um diretório digitando o caminho | idem (no Branch/Showall: vai ao diretório do arquivo) |
-| Shift+letra, 0–9 | próximo diretório que começa com ela | próximo arquivo que começa com ela |
-| Alt+K | mostra o tamanho ou o nº de arquivos de cada diretório na árvore | idem |
-| `B` | Branch: arquivos do ramo inteiro (loga antes) | idem |
-| `S` | Showall: arquivos de tudo o que foi logado | idem |
-| `F` | Filespec: filtro de arquivos | idem |
-| Alt+S | ordena os arquivos: nome, extensão, data, tamanho; ordem | idem |
-| F3 (ou F2) | relê o diretório do disco | idem |
-| `V` | | visualiza o arquivo (texto/hex, com busca) |
-| F7 | Autoview: lista com o conteúdo do arquivo selecionado ao lado | idem |
-| Ctrl+S | | procura um texto nos marcados e desmarca os que não o têm |
-| Ctrl+V | | visualiza os marcados em sequência |
-| `O` | | abre o arquivo no programa padrão (`xdg-open`) |
-| Ctrl+O | | abre os arquivos marcados no programa padrão |
-| Alt+F5 | | abre um ZIP/TAR como diretório |
-| `E` | | abre o arquivo no editor |
-| `X` | executa um comando do shell | idem |
-| `L` | Log: abre outro diretório na janela | |
-| `C` | Compare: compara com a outra janela e marca | |
-| F8 | divide a tela em duas janelas (ou volta a uma) | idem |
-| Tab | troca de janela (tela dividida) | idem |
-| Enter | abre a janela de arquivos | volta para a árvore |
-| Esc | | volta para a árvore (no diretório do arquivo) |
-| Alt+I | Info: detalhes do diretório (e o que está logado nele) | Info: detalhes do arquivo |
-| `A` | Avail: sistemas de arquivos montados e espaço livre | |
-| `?` | estatísticas da janela | idem |
-| F1 | ajuda: lista das teclas em vigor | idem |
-| F12 / Alt+F10 | tela de configuração | idem |
-| `Q` / F10 | sair (pede confirmação) | sair |
-| Alt+Q | sai deixando o shell no diretório atual (veja acima) | idem |
+| ↑ ↓ PgUp PgDn Home End | moves the cursor | moves the cursor |
+| → / `+` | expands the directory | |
+| ← / `-` | collapses (or goes to the parent) | page up (in columns: previous file) |
+| → | expands | page down (in columns: next file) |
+| Alt+F | | display mode: name columns, columns with size, details, long names |
+| Backspace | parent directory | shows the files of the parent directory |
+| Space | down one line | same |
+| `*` | logs and expands the whole branch | |
+| `\` | Treespec: go to a directory by typing the path | same (in Branch/Showall: goes to the file's directory) |
+| Shift+letter, 0–9 | next directory starting with it | next file starting with it |
+| Alt+K | shows the size or file count of each directory in the tree | same |
+| `B` | Branch: files of the whole branch (logs first) | same |
+| `S` | Showall: files of everything that has been logged | same |
+| `F` | Filespec: file filter | same |
+| Alt+S | sorts the files: name, extension, date, size; order | same |
+| F3 (or F2) | rereads the directory from disk | same |
+| `V` | | views the file (text/hex, with search) |
+| F7 | Autoview: list with the contents of the selected file alongside | same |
+| Ctrl+S | | searches for text in the tagged files and untags those without it |
+| Ctrl+V | | views the tagged files in sequence |
+| `O` | | opens the file in the default program (`xdg-open`) |
+| Ctrl+O | | opens the tagged files in the default program |
+| Alt+F5 | | opens a ZIP/TAR as a directory |
+| `E` | | opens the file in the editor |
+| `X` | runs a shell command | same |
+| `L` | Log: opens another directory in the window | |
+| `C` | Compare: compares with the other window and tags | |
+| F8 | splits the screen into two windows (or back to one) | same |
+| Tab | switches window (split screen) | same |
+| Enter | opens the file window | goes back to the tree |
+| Esc | | goes back to the tree (at the file's directory) |
+| Alt+I | Info: directory details (and what is logged in it) | Info: file details |
+| `A` | Avail: mounted file systems and free space | |
+| `?` | window statistics | same |
+| F1 | help: list of the keys in effect | same |
+| F12 / Alt+F10 | configuration screen | same |
+| `Q` / F10 | quit (asks for confirmation) | quit |
+| Alt+Q | quits, leaving the shell in the current directory (see above) | same |
 
-### Tags e operações
+### Tags and operations
 
-| Tecla | Árvore | Janela de arquivos |
+| Key | Tree | File window |
 |---|---|---|
-| `T` / `U` | marca / desmarca os arquivos do diretório | marca / desmarca o arquivo e desce |
-| Ctrl+T / Ctrl+U | marca / desmarca tudo o que foi logado (filespec) | marca / desmarca a lista inteira |
-| `I` | inverte as marcas do diretório | inverte as marcas da lista |
-| Ctrl+F7 / F8 / F9 | marca / desmarca / inverte os arquivos logados do ramo | |
-| `C` | | copia o arquivo |
-| `M` | cria um subdiretório | move o arquivo |
-| `D` | apaga o diretório (só se vazio) | apaga o arquivo |
-| Alt+P | Prune: apaga o diretório com tudo dentro | |
-| `R` | renomeia o diretório | renomeia o arquivo |
-| `A` | | permissões (octal, ex.: `644`) |
-| `N` | muda a data do diretório | muda a data do arquivo (Ctrl+N: dos marcados) |
-| Ctrl+B | | Batch: cria um script ou lista com uma linha por marcado |
-| F5 / Ctrl+F5 | | cria um ZIP/TAR com o arquivo / com os marcados |
-| Ctrl + `C` `M` `D` `A` | idem, nos arquivos marcados | idem, nos arquivos marcados |
-| Alt+C | Compare do ramo inteiro | copia os marcados **recriando os caminhos** |
-| Alt+M | | move os marcados **recriando os caminhos** |
+| `T` / `U` | tags / untags the files in the directory | tags / untags the file and moves down |
+| Ctrl+T / Ctrl+U | tags / untags everything logged (filespec) | tags / untags the whole list |
+| `I` | inverts the directory's tags | inverts the list's tags |
+| Ctrl+F7 / F8 / F9 | tags / untags / inverts the logged files of the branch | |
+| `C` | | copies the file |
+| `M` | creates a subdirectory | moves the file |
+| `D` | deletes the directory (only if empty) | deletes the file |
+| Alt+P | Prune: deletes the directory with everything in it | |
+| `R` | renames the directory | renames the file |
+| `A` | | permissions (octal, e.g. `644`) |
+| `N` | changes the directory's date | changes the file's date (Ctrl+N: of the tagged files) |
+| Ctrl+B | | Batch: creates a script or list with one line per tagged file |
+| F5 / Ctrl+F5 | | creates a ZIP/TAR with the file / with the tagged files |
+| Ctrl + `C` `M` `D` `A` | same, on the tagged files | same, on the tagged files |
+| Alt+C | Compare of the whole branch | copies the tagged files, **recreating the paths** |
+| Alt+M | | moves the tagged files, **recreating the paths** |
 
-As operações em grupo agem sobre os arquivos marcados **da lista atual**
-(o diretório, ou o Branch/Showall aberto).
+Group operations act on the tagged files **of the current list**
+(the directory, or the open Branch/Showall).
 
-**Com ou sem caminhos:** Ctrl+C / Ctrl+M copiam ou movem os marcados todos
-direto para o destino. Alt+C / Alt+M recriam no destino os subdiretórios,
-relativos à raiz da lista (o diretório atual, a raiz do Branch, ou a raiz da
-árvore no Showall): `proj/src/model/tree.rs` → `destino/src/model/tree.rs`.
-No prompt do destino, **F6** troca entre os dois modos, e o modo atual aparece
-no próprio prompt. Alt+D e Alt+A funcionam como Ctrl+D e Ctrl+A.
+**With or without paths:** Ctrl+C / Ctrl+M copy or move all the tagged files
+straight into the destination. Alt+C / Alt+M recreate the subdirectories at the destination,
+relative to the list's root (the current directory, the Branch root, or the root of the
+tree in Showall): `proj/src/model/tree.rs` → `destino/src/model/tree.rs`.
+At the destination prompt, **F6** switches between the two modes, and the current mode is shown
+in the prompt itself. Alt+D and Alt+A work like Ctrl+D and Ctrl+A.
 
-**Tela dividida:** F8 abre uma segunda janela, começando no mesmo diretório;
-Tab alterna entre elas (sem a divisão, Tab faz o mesmo que Enter). Cada janela
-tem a sua árvore, cursor e filespec; use `L` para abrir outro diretório nela.
-Com a tela dividida, o Copy/Move sugere como destino o diretório da outra
-janela, e as duas são atualizadas depois de qualquer operação.
+**Split screen:** F8 opens a second window, starting in the same directory;
+Tab switches between them (without the split, Tab does the same as Enter). Each window
+has its own tree, cursor and filespec; use `L` to open another directory in it.
+With the screen split, Copy/Move suggests the other window's directory as the destination,
+and both windows are refreshed after any operation.
 
-**Compare (`C` na árvore, com a tela dividida):** compara os arquivos do
-diretório atual com os do diretório da outra janela e marca, à escolha:
-**U**nique (não existem do outro lado), **N**ewer, **O**lder, **I**dentical
-(mesmo tamanho e data), **D**ifferent, ou **A**ll new (únicos + mais novos:
-o que falta copiar para atualizar o outro lado). **B** (ou Alt+C na árvore,
-como no ZTreeWin) troca o escopo para o
-ramo inteiro: o xt loga o ramo, compara seguindo os caminhos relativos
-(`src/a.rs` ↔ `<outro>/src/a.rs`) e abre o Branch com os arquivos marcados.
-Datas com até 2 segundos de diferença contam como iguais (FAT/exFAT).
+**Compare (`C` in the tree, with the screen split):** compares the files of the
+current directory with those of the other window's directory and tags, as you choose:
+**U**nique (not present on the other side), **N**ewer, **O**lder, **I**dentical
+(same size and date), **D**ifferent, or **A**ll new (unique + newer:
+what is missing to bring the other side up to date). **B** (or Alt+C in the tree,
+as in ZTreeWin) switches the scope to the whole branch: xt logs the branch,
+compares following the relative paths
+(`src/a.rs` ↔ `<other>/src/a.rs`) and opens the Branch with the tagged files.
+Dates up to 2 seconds apart count as equal (FAT/exFAT).
 
-Para sincronizar: `C` `B` `A` e depois Alt+C (copiar com caminhos), que já
-sugere a outra janela como destino.
+To synchronize: `C` `B` `A` and then Alt+C (copy with paths), which
+already suggests the other window as the destination.
 
-**Ordenação (Alt+S):** **N**ame, **E**xt, **D**ate ou **S**ize; **O**rder
-alterna crescente/decrescente e **P**ath first agrupa por diretório no
-Branch/Showall. A ordem atual aparece no título da janela de arquivos (ex.:
-`Size↓`) e o cursor fica no mesmo arquivo. A ordem inicial vem de `sort` e
-`sort_descending` na configuração; novas janelas (F8, Log) herdam a atual.
+**Sorting (Alt+S):** **N**ame, **E**xt, **D**ate or **S**ize; **O**rder
+toggles ascending/descending and **P**ath first groups by directory in
+Branch/Showall. The current order appears in the file window's title (e.g.
+`Size↓`) and the cursor stays on the same file. The initial order comes from `sort` and
+`sort_descending` in the configuration; new windows (F8, Log) inherit the current one.
 
-**Treespec (`\`):** abre um prompt com o caminho atual; enquanto você digita,
-o cursor da árvore vai para o primeiro diretório que começa com o que foi
-digitado (sem diferenciar maiúsculas). `/` ou `\` completam o nome e descem
-um nível; Tab e Shift+Tab completam e depois passam para o próximo/anterior
-diretório do mesmo nível; Backspace volta níveis; Enter confirma; Esc volta
-para onde estava. ↑ traz o histórico (salvo entre execuções). Um caminho fora
-da árvore vira um Log ao confirmar. No Branch/Showall, `\` vai direto ao
-diretório do arquivo selecionado, com ele em destaque.
+**Treespec (`\`):** opens a prompt with the current path; as you type,
+the tree cursor goes to the first directory starting with what you have
+typed (case-insensitive). `/` or `\` complete the name and go down
+one level; Tab and Shift+Tab complete and then move to the next/previous
+directory at the same level; Backspace goes back up levels; Enter confirms; Esc returns
+to where you were. ↑ brings up the history (saved between runs). A path outside
+the tree becomes a Log when confirmed. In Branch/Showall, `\` goes straight to the
+directory of the selected file, with it highlighted.
 
-**Modos de exibição (Alt+F):** alterna, na ordem do ZTreeWin, entre
-**nomes em várias colunas**, **nomes e tamanhos em colunas**, **detalhes**
-(uma coluna com tamanho, data e permissões, o padrão) e **nomes longos** (uma
-coluna, só os nomes inteiros). Nos modos de colunas, os arquivos seguem da
-esquerda para a direita, ← → andam um arquivo e ↑ ↓ uma linha; nomes com mais
-de 20 caracteres são cortados com `…`. O modo inicial fica em `file_display`
-(página 2 da configuração).
+**Display modes (Alt+F):** cycles, in ZTreeWin's order, between
+**names in several columns**, **names and sizes in columns**, **details**
+(one column with size, date and permissions, the default) and **long names** (one
+column, full names only). In the column modes, files run from
+left to right, ← → move one file and ↑ ↓ one row; names longer than
+20 characters are cut off with `…`. The initial mode is set in `file_display`
+(page 2 of the configuration).
 
-**Autoview (F7):** divide a tela entre a lista de arquivos e o conteúdo do
-arquivo selecionado, que acompanha o cursor. As teclas da janela de arquivos
-continuam valendo (T marca, por exemplo); Shift+↑/↓/PgUp/PgDn/Home/End
-rolam o conteúdo; F7, Esc ou Enter saem. Mostra o primeiro 1 MiB de cada
-arquivo (o V mostra até 16 MiB).
+**Autoview (F7):** splits the screen between the file list and the contents of the
+selected file, which follows the cursor. The file window's keys
+keep working (T tags, for example); Shift+↑/↓/PgUp/PgDn/Home/End
+scroll the contents; F7, Esc or Enter exit. It shows the first 1 MiB of each
+file (V shows up to 16 MiB).
 
-**KByte (Alt+K):** mostra à direita de cada diretório da árvore o
-**S**ize (total em K) ou o **C**ount (nº de arquivos); **N**one desliga.
-Antes de escolher, **A**ll/**T**agged contam todos ou só os marcados, e
-**B**ranch/**D**irectory somam o ramo inteiro ou só o diretório. Diretórios
-ainda não logados mostram `?`. Cada janela tem a sua escolha.
+**KByte (Alt+K):** shows to the right of each directory in the tree the
+**S**ize (total in K) or the **C**ount (number of files); **N**one turns it off.
+Before choosing, **A**ll/**T**agged count all files or only the tagged ones, and
+**B**ranch/**D**irectory add up the whole branch or just the directory. Directories
+not yet logged show `?`. Each window has its own setting.
 
-**Edit e eXecute:** `E` abre o arquivo no editor (`$VISUAL`, `$EDITOR`, o
-`editor` do Debian/Ubuntu ou `vi`). `X` pede uma linha de comando e a roda com
-`sh` no diretório atual; `%f` vira o arquivo sob o cursor, `%t` os arquivos
-marcados e `%d` o diretório atual, todos já entre aspas (`%%` é um `%`).
-Exemplo: `tar czf backup.tgz %t`. No fim, o xt espera Enter para você ler a
-saída. Ao voltar, os diretórios abertos são relidos.
+**Edit and eXecute:** `E` opens the file in the editor (`$VISUAL`, `$EDITOR`, Debian/Ubuntu's
+`editor` or `vi`). `X` asks for a command line and runs it with
+`sh` in the current directory; `%f` becomes the file under the cursor, `%t` the tagged
+files and `%d` the current directory, all already quoted (`%%` is a literal `%`).
+Example: `tar czf backup.tgz %t`. At the end, xt waits for Enter so you can read the
+output. When it returns, the open directories are reread.
 
-**Histórico:** nos prompts, ↑/↓ trazem as entradas anteriores. Cada tipo de
-prompt (Filespec, destino do Copy/Move, Log, eXecute...) tem o seu histórico,
-guardado em `~/.local/state/xt/history.toml` (ou `$XDG_STATE_HOME/xt/`), com
-permissão só para você, já que pode conter comandos digitados.
+**History:** at prompts, ↑/↓ bring up previous entries. Each type of
+prompt (Filespec, Copy/Move destination, Log, eXecute...) has its own history,
+stored in `~/.local/state/xt/history.toml` (or `$XDG_STATE_HOME/xt/`), readable
+only by you, since it may contain typed commands.
 
-**Open (`O`):** abre o arquivo no programa padrão do sistema (`xdg-open`:
-imagens no visualizador de imagens, PDFs no leitor de PDF etc.), em
-segundo plano, sem sair do xt. Ctrl+O abre todos os marcados. Dentro de um
-arquivo compactado, a entrada é extraída antes para uma pasta temporária,
-apagada ao sair do xt. Outro programa pode ser escolhido em `opener` (ou na
-tela de configuração).
+**Open (`O`):** opens the file in the system's default program (`xdg-open`:
+images in the image viewer, PDFs in the PDF reader, etc.), in the
+background, without leaving xt. Ctrl+O opens all the tagged files. Inside an
+archive, the entry is first extracted to a temporary folder,
+deleted when xt exits. Another program can be chosen in `opener` (or in the
+configuration screen).
 
-**Arquivos compactados:** Alt+F5 na janela de arquivos abre `.zip`, `.jar`,
-`.war`, `.apk`, `.tar`, `.tar.gz` ou `.tgz` como uma árvore, somente leitura:
-navegação, Filespec, Branch, Showall, tags, View e Compare funcionam dentro
-dele, e Copy (inclusive Ctrl+C e Alt+C com caminhos) extrai os arquivos.
-`Esc` na árvore fecha o arquivo e volta para onde estava. Por segurança,
-entradas com `..` ou caminho absoluto são ignoradas, e links simbólicos
-dentro de arquivos compactados nunca são extraídos.
+**Archives:** Alt+F5 in the file window opens `.zip`, `.jar`,
+`.war`, `.apk`, `.tar`, `.tar.gz` or `.tgz` as a tree, read-only:
+navigation, Filespec, Branch, Showall, tags, View and Compare work inside
+it, and Copy (including Ctrl+C and Alt+C with paths) extracts the files.
+`Esc` in the tree closes the archive and returns to where you were. For safety,
+entries containing `..` or an absolute path are ignored, and symbolic links
+inside archives are never extracted.
 
-**Atualização automática:** o xt observa (via inotify) o diretório atual de
-cada janela e relê sozinho quando outro programa cria, apaga, renomeia ou
-altera arquivos ali, mantendo o cursor no mesmo arquivo. As mudanças são
-agrupadas (no máximo uma releitura a cada meio segundo) e esperam o fim de
-uma operação em andamento. Outros diretórios continuam com F3.
+**Automatic refresh:** xt watches (via inotify) the current directory of
+each window and rereads it on its own when another program creates, deletes, renames or
+modifies files there, keeping the cursor on the same file. Changes are
+batched (at most one reread every half second) and wait for the end of
+any operation in progress. Other directories still need F3.
 
-**Menus Ctrl/Alt:** como no ZTree, o rodapé mostra só os comandos de uma
-tecla. **F9** alterna para o menu de Ctrl, depois o de Alt, e volta. Com um
-desses menus aberto pelo F9, a próxima letra vale como Ctrl+letra ou
-Alt+letra (ex.: `F9` `M` = Ctrl+M); `Esc` desiste. Nos terminais com o
-protocolo de teclado do kitty, basta **segurar Ctrl ou Alt** para o menu
-correspondente aparecer enquanto a tecla estiver pressionada.
+**Ctrl/Alt menus:** as in ZTree, the footer shows only the one-key commands. **F9**
+switches to the Ctrl menu, then the Alt menu, and back. With one of
+these menus opened by F9, the next letter counts as Ctrl+letter or
+Alt+letter (e.g. `F9` `M` = Ctrl+M); `Esc` cancels. In terminals with the
+kitty keyboard protocol, just **holding Ctrl or Alt** makes the
+corresponding menu appear while the key is pressed.
 
-**Ctrl+M:** na maioria dos terminais, Ctrl+M chega igual a Enter. O xt liga
-automaticamente o protocolo de teclado do kitty quando o terminal o suporta
-(kitty, WezTerm, foot, Ghostty, Alacritty recente, iTerm2), e aí Ctrl+M move
-os arquivos marcados como no ZTree. Nos terminais baseados em VTE (GNOME
-Terminal, Ptyxis, Terminator, Tilix) use **F9 M** (ou Alt+M e F6 no prompt).
+**Ctrl+M:** in most terminals, Ctrl+M arrives the same as Enter. xt
+automatically enables the kitty keyboard protocol when the terminal supports it
+(kitty, WezTerm, foot, Ghostty, recent Alacritty, iTerm2), and then Ctrl+M moves
+the tagged files as in ZTree. In VTE-based terminals (GNOME
+Terminal, Ptyxis, Terminator, Tilix) use **F9 M** (or Alt+M and F6 at the prompt).
 
-Durante um log demorado, o progresso aparece no rodapé e `Esc` cancela.
+During a long log, progress appears in the footer and `Esc` cancels.
 
-**Filespec (`F`):** especificações separadas por espaço, `;` ou `,`, de três
-tipos, como no ZTreeWin:
+**Filespec (`F`):** specifications separated by spaces, `;` or `,`, of three
+kinds, as in ZTreeWin:
 
-- **nome:** glob (`*.rs`, `a?c*`, `[abc]*`), sem diferenciar maiúsculas;
-  entre aspas, o nome pode ter espaços (`"meu arquivo*"`);
-- **data:** `<`, `=`, `>`, `<=`, `>=` ou `<>` e uma data na ordem do formato
-  configurado, com `/`, `.` ou `-` e ano de 2 ou 4 dígitos (`>01/05/2026`;
-  `2026-05-01` sempre vale), ou `TODAY` e `TODAY-n` (`>TODAY-7`: últimos 7
-  dias);
-- **tamanho:** o mesmo com `s` depois do operador (`>=s200000`); no xt
-  também valem K, M e G (`>s100M`).
+- **name:** glob (`*.rs`, `a?c*`, `[abc]*`), case-insensitive;
+  in quotes, the name can contain spaces (`"meu arquivo*"`);
+- **date:** `<`, `=`, `>`, `<=`, `>=` or `<>` and a date in the order of the
+  configured format, with `/`, `.` or `-` and a 2- or 4-digit year (`>01/05/2026`;
+  `2026-05-01` always works), or `TODAY` and `TODAY-n` (`>TODAY-7`: last 7
+  days);
+- **size:** the same with an `s` after the operator (`>=s200000`); in xt
+  K, M and G also work (`>s100M`).
 
-Um `-` na frente nega (`-*.bak`; `-<s1K` é o mesmo que `>=s1K`). Dentro de
-cada tipo, as especificações positivas valem com "ou", exceto `>a` logo
-seguido de `<b`, que é a faixa entre os dois (`>=01/05/2026,<=31/05/2026`:
-maio); `<>` exclui. Entre os tipos vale "e": `*.txt,=TODAY,<s1000` são os
-`.txt` de hoje com menos de 1000 bytes.
+A leading `-` negates (`-*.bak`; `-<s1K` is the same as `>=s1K`). Within
+each kind, positive specifications are ORed together, except `>a` immediately
+followed by `<b`, which is the range between the two (`>=01/05/2026,<=31/05/2026`:
+May); `<>` excludes. Between kinds, AND applies: `*.txt,=TODAY,<s1000` are the
+`.txt` files from today smaller than 1000 bytes.
 
-**Copy/Move:** o destino pode ser um diretório (relativo ao diretório do
-cursor da árvore, absoluto ou com `~`) ou, para um único arquivo, um novo nome. Se o destino já existe,
-o xt pergunta: Yes / No / All / Skip all. A cópia é feita num temporário que
-só substitui o destino no fim: cancelar (`Esc`) ou um erro nunca deixa um
-arquivo pela metade. Permissões e data de modificação são preservadas, e links
-simbólicos são copiados como links. Mover entre discos copia e depois apaga.
+**Copy/Move:** the destination can be a directory (relative to the directory under the
+tree cursor, absolute, or with `~`) or, for a single file, a new name. If the destination already exists,
+xt asks: Yes / No / All / Skip all. The copy is made to a temporary file that
+only replaces the destination at the end: canceling (`Esc`) or an error never leaves a
+half-written file. Permissions and modification time are preserved, and symbolic
+links are copied as links. Moving across disks copies and then deletes.
 
-**New date (`N`):** muda a data de modificação. O prompt já vem com a data
-atual no seu formato; aceita também `now` e `today`. Só com a data (sem
-`HH:MM`), cada arquivo mantém a sua hora. Links simbólicos são pulados (a
-data mudaria a do arquivo para onde apontam).
+**New date (`N`):** changes the modification date. The prompt comes pre-filled with the
+current date in your format; it also accepts `now` and `today`. With only the date (no
+`HH:MM`), each file keeps its own time of day. Symbolic links are skipped (the
+date would change that of the file they point to).
 
-**Batch (Ctrl+B):** pede o nome do arquivo a criar e uma máscara de linha,
-e escreve uma linha por arquivo marcado. Parâmetros: `%f` caminho, `%d`
-diretório, `%n` nome, `%b` nome sem extensão, `%e` extensão, `%s` tamanho.
-Em minúsculas saem entre aspas, seguros para o shell (`convert %f %b.png`);
-em maiúsculas, como texto puro, para listas (`%N;%S`). Um arquivo `.sh`
-ganha `#!/bin/sh` e permissão de execução (rode-o com `X`). Um arquivo que
-já existe não é sobrescrito.
+**Batch (Ctrl+B):** asks for the name of the file to create and a line mask,
+and writes one line per tagged file. Parameters: `%f` path, `%d`
+directory, `%n` name, `%b` name without extension, `%e` extension, `%s` size.
+In lowercase they come out quoted, safe for the shell (`convert %f %b.png`);
+in uppercase, as plain text, for lists (`%N;%S`). A `.sh` file
+gets `#!/bin/sh` and execute permission (run it with `X`). An existing file
+is not overwritten.
 
-**Criar compactado (F5 / Ctrl+F5):** cria um `.zip`, `.tar`, `.tar.gz` ou
-`.tgz` (pelo nome digitado) com o arquivo atual ou com os marcados. Os
-caminhos lá dentro são relativos à raiz da lista, como no Alt+C: num Branch,
-as subpastas são mantidas. Tem progresso e `Esc` cancela; o arquivo é escrito
-num temporário e só ganha o nome no fim, então nunca fica pela metade. Links
-simbólicos entram como links. Um arquivo que já existe não é sobrescrito.
+**Create archive (F5 / Ctrl+F5):** creates a `.zip`, `.tar`, `.tar.gz` or
+`.tgz` (according to the name you type) with the current file or the tagged files. The
+paths inside are relative to the list's root, as with Alt+C: in a Branch,
+subfolders are kept. It shows progress and `Esc` cancels; the file is written
+to a temporary file and only gets its name at the end, so it is never left
+half-written. Symbolic links are stored as links. An existing file is not overwritten.
 
-**Info, Avail e estatísticas:** Alt+I mostra tipo, tamanho, permissões,
-dono e grupo, datas (modificação, acesso e mudança), inode, links e
-dispositivo do arquivo ou diretório (de um link, para onde aponta; de um
-diretório, também o que está logado nele e no ramo). `A` na árvore lista os
-sistemas de arquivos montados com total, usado, livre e % de uso, como o
-`df`. `?` resume a janela: o que está logado, a lista, os marcados e o disco.
+**Info, Avail and statistics:** Alt+I shows type, size, permissions,
+owner and group, dates (modification, access and change), inode, links and
+device of the file or directory (for a link, where it points; for a
+directory, also what is logged in it and in its branch). `A` in the tree lists the mounted
+file systems with total, used, free and % used, like
+`df`. `?` summarizes the window: what is logged, the list, the tagged files and the disk.
 
-**Delete** apaga de verdade (não vai para a lixeira) e sempre pede confirmação.
+**Delete** really deletes (it does not go to the trash) and always asks for confirmation.
 
-**Prune (Alt+P na árvore):** loga o ramo inteiro, mostra quantos arquivos,
-diretórios e bytes serão apagados e pede que você **digite PRUNE** (ou o nome
-do diretório, ou Y, conforme `prune_confirmation`). Apaga os arquivos e depois
-os diretórios, do mais fundo para cima, com progresso e `Esc` para cancelar.
-Links simbólicos são removidos sem seguir o destino, e **outros pontos de
-montagem dentro do ramo são pulados** (um pendrive montado ali dentro não é
-apagado). A raiz da árvore não pode sofrer Prune.
+**Prune (Alt+P in the tree):** logs the whole branch, shows how many files,
+directories and bytes will be deleted and asks you to **type PRUNE** (or the
+directory's name, or Y, depending on `prune_confirmation`). It deletes the files and then
+the directories, from the deepest up, with progress and `Esc` to cancel.
+Symbolic links are removed without following the target, and **other mount
+points inside the branch are skipped** (a USB drive mounted in there is not
+deleted). The tree's root cannot be pruned.
 
-**Visualizador:** setas/PgUp/PgDn/Home/End rolam, ←→ deslocam na horizontal,
-`H` alterna texto/hex, `Esc` fecha. Arquivos binários abrem em hex.
-Arquivos acima de 16 MiB mostram só o começo. Busca, como no ZTreeWin:
-**F** procura do início, **B** para trás a partir do fim, **/** (ou S) a
-partir da página atual e **\\** para trás a partir dela; **Espaço**
-continua na mesma direção, **+** e **-** escolhem a direção. O trecho achado
-fica destacado.
+**Viewer:** arrows/PgUp/PgDn/Home/End scroll, ←→ scroll horizontally,
+`H` toggles text/hex, `Esc` closes. Binary files open in hex.
+Files over 16 MiB show only the beginning. Search, as in ZTreeWin:
+**F** searches from the start, **B** backwards from the end, **/** (or S) from
+the current page and **\\** backwards from it; **Space**
+continues in the same direction, **+** and **-** choose the direction. The match
+is highlighted.
 
-**Procurar nos marcados (Ctrl+S) e visualizá-los (Ctrl+V):** Ctrl+S procura
-um texto em todos os arquivos marcados da lista e **desmarca os que não o
-contêm**, com progresso e `Esc` para parar. Ctrl+V abre os que sobraram no
-visualizador, um depois do outro: **N**ext e **P**rev trocam de arquivo
-(Alt+Home/Alt+End: primeiro/último) e **U** desmarca o atual. O termo é o
-mesmo nas duas buscas: depois de um Ctrl+S, o **Espaço** no Ctrl+V já vai
-para o próximo trecho, passando para o próximo marcado quando o arquivo
-acaba. Nos prompts de busca, **F2** liga/desliga diferenciar maiúsculas
-(sem diferenciar, acentos também contam: `AÇÃO` acha `ação`) e **F4** troca
-entre texto e hex (pares como `4d 5a`). Um `*` no meio do termo casa
-qualquer coisa na mesma linha (`erro*disco`); um termo nunca atravessa uma
-quebra de linha. Funciona também dentro de ZIP/TAR.
+**Searching the tagged files (Ctrl+S) and viewing them (Ctrl+V):** Ctrl+S searches
+for text in all the tagged files of the list and **untags those that do not
+contain it**, with progress and `Esc` to stop. Ctrl+V opens the remaining ones in the
+viewer, one after another: **N**ext and **P**rev switch files
+(Alt+Home/Alt+End: first/last) and **U** untags the current one. The term is the
+same in both searches: after a Ctrl+S, **Space** in Ctrl+V goes
+straight to the next match, moving on to the next tagged file when the file
+ends. At the search prompts, **F2** toggles case sensitivity
+(when case-insensitive, accents also count: `AÇÃO` finds `ação`) and **F4** switches
+between text and hex (byte pairs such as `4d 5a`). A `*` in the middle of the term matches
+anything on the same line (`erro*disco`); a term never crosses a
+line break. It also works inside ZIP/TAR.
 
-Na árvore, `+` no conector (`├─+`) indica um diretório recolhido que tem subdiretórios.
+In the tree, a `+` on the connector (`├─+`) marks a collapsed directory that has subdirectories.
 
-## Estrutura
+## Structure
 
-- `src/model/` — árvore de diretórios em memória (arena), sem dependência da UI
-- `src/app.rs` — estado global (prompts, operações) e execução de comandos
-- `src/pane.rs` — uma janela: árvore, lista de arquivos, cursores e filespec
-- `src/input.rs` — comandos e o campo de texto dos prompts
-- `src/keymap.rs` — teclas padrão, trocas da configuração e ajuda (F1)
-- `src/ui.rs` — desenho da tela (ratatui)
-- `src/viewer.rs` — visualizador texto/hex
-- `src/archive.rs` — leitura de ZIP/TAR
-- `src/watch.rs` — avisos de mudanças no disco (inotify)
-- `src/shell.rs` — editor e comandos do shell (com aspas seguras)
-- `src/config.rs` — arquivo de configuração, temas e formatos
-- `src/settings.rs` — tela de configuração (F12)
-- `src/state.rs` — histórico dos prompts entre execuções
-- `src/model/compare.rs` — regras do Compare
-- `src/model/filespec.rs` — filtro de arquivos
-- `src/ops/` — copiar, mover e apagar, em passos (progresso, conflitos, cancelamento)
+- `src/model/` — in-memory directory tree (arena), independent of the UI
+- `src/app.rs` — global state (prompts, operations) and command execution
+- `src/pane.rs` — one window: tree, file list, cursors and filespec
+- `src/input.rs` — commands and the prompts' text field
+- `src/keymap.rs` — default keys, configuration overrides and help (F1)
+- `src/ui.rs` — screen drawing (ratatui)
+- `src/viewer.rs` — text/hex viewer
+- `src/archive.rs` — ZIP/TAR reading
+- `src/watch.rs` — notifications of changes on disk (inotify)
+- `src/shell.rs` — editor and shell commands (with safe quoting)
+- `src/config.rs` — configuration file, themes and formats
+- `src/settings.rs` — configuration screen (F12)
+- `src/state.rs` — prompt history between runs
+- `src/model/compare.rs` — Compare rules
+- `src/model/filespec.rs` — file filter
+- `src/ops/` — copy, move and delete, in steps (progress, conflicts, cancellation)
 
-## Roteiro
+## Roadmap
 
-- [x] Fase 0 — tela clássica, árvore navegável, janela de arquivos
-- [x] Fase 1 — Filespec, Showall/Branch, viewer texto/hex, log com progresso
-- [x] Fase 2 — tagging, copy/move/delete/rename, makedir, permissões, re-log
-- [x] Fase 3 — janela dividida (F8), Log, Compare, ZIP/TAR, inotify, Edit,
-  eXecute, histórico nos prompts
-- [x] Fase 4 — configuração, temas, teclas configuráveis, ajuda (F1),
-  histórico persistente, build de release e instalação
+- [x] Phase 0 — classic screen, navigable tree, file window
+- [x] Phase 1 — Filespec, Showall/Branch, text/hex viewer, log with progress
+- [x] Phase 2 — tagging, copy/move/delete/rename, makedir, permissions, re-log
+- [x] Phase 3 — split window (F8), Log, Compare, ZIP/TAR, inotify, Edit,
+  eXecute, history in prompts
+- [x] Phase 4 — configuration, themes, configurable keys, help (F1),
+  persistent history, release build and installation
 
-### Para depois
+### For later
 
-- pacote `.deb` (falta definir licença e mantenedor)
-- versões para macOS e Windows
-- os itens de "Não implementado" abaixo
+- `.deb` package (license and maintainer still to be decided)
+- Windows version (and maybe macOS)
+- the items under "Not implemented" below
 
-## Comparação com o ZTreeWin
+## Comparison with ZTreeWin
 
-Levantamento feito comando a comando a partir do manual oficial do ZTreeWin
-v2.2 ([ztwhlp.pdf](https://www.zedtek.com/download/ztwhlp.pdf), de 2011, em
-especial a "Quick Command Table" e a seção 3.7 de configuração). Versões mais
-novas do ZTreeWin podem ter mudado detalhes.
+A command-by-command survey based on the official ZTreeWin v2.2 manual
+([ztwhlp.pdf](https://www.zedtek.com/download/ztwhlp.pdf), from 2011, in
+particular the "Quick Command Table" and section 3.7 on configuration). Newer
+versions of ZTreeWin may have changed details.
 
-### Implementado
+### Implemented
 
-Árvore com log sob demanda (`+`, `*`), janela de arquivos, Filespec, Branch,
-Showall, tags (T, U, I, Ctrl+T/U), Copy/Move/Delete/Rename com as versões
-Ctrl (marcados) e Alt (marcados com caminhos), Make dir, Delete dir, Prune,
-Attributes, View, Edit, eXecute, Compare (diretório e ramo), Sort, Log,
-janela dividida (F8 e Tab), relog (F3), Open (`O`), atualização automática, navegação e
-extração de arquivos compactados, histórico nos prompts, ajuda (F1) e tela de
-configuração (Alt+F10).
+Tree with on-demand log (`+`, `*`), file window, Filespec, Branch,
+Showall, tags (T, U, I, Ctrl+T/U), Copy/Move/Delete/Rename with the
+Ctrl (tagged) and Alt (tagged with paths) versions, Make dir, Delete dir, Prune,
+Attributes, View, Edit, eXecute, Compare (directory and branch), Sort, Log,
+split window (F8 and Tab), relog (F3), Open (`O`), automatic refresh, browsing and
+extraction of archives, history in prompts, help (F1) and configuration
+screen (Alt+F10).
 
-### Simplificado
+### Simplified
 
-| Recurso | No ZTreeWin | No xt |
+| Feature | In ZTreeWin | In xt |
 |---|---|---|
-| Filespec | nome com regras próprias de nome e extensão, data, tamanho, atributo, filespec invertido (Ctrl+I), rótulos | glob para os nomes, data e tamanho como no ZTreeWin (com K/M/G); sem atributos, inversão e rótulos |
-| Visualizador | modos Alpha, Dump, Hex, Junk e Wrap; conjuntos de caracteres; edição hex; marcadores; auto-scroll | texto (UTF-8) ou hex, com a busca do ZTreeWin (F, B, /, \\, Espaço, + e -), sem quebra de linha; até 16 MiB |
-| Ctrl+S | texto, hex ou Unicode; busca só no índice de ZIPs | texto ou hex |
-| Attributes | atributos do Windows (R, A, S, H) | permissões do Unix em octal (`644`); sem dono/grupo |
-| Sort | Name, Ext, Date, Time, Length, Alpha, nuMber, Size, Value, Unsorted; Charset; same/diff na tela dividida | Name, Ext, Date, Size, crescente/decrescente, Path first; cada janela tem a sua ordem |
-| Compare | opções Identical, Unique, Newer, Older, Size, Binary, Case; filtro de exibição | marca únicos, mais novos, mais antigos, idênticos, diferentes ou únicos+mais novos; sem comparação binária |
-| Prune | apaga só os subdiretórios ou também o atual; só diretórios vazios; lixeira | apaga sempre o diretório inteiro, permanentemente; confirmação configurável |
-| Delete | lixeira opcional | apaga de vez |
-| Log | vários drives logados, Global, troca de drive | uma raiz por janela; `L` abre outro diretório |
-| eXecute | parâmetros de batch `%1`–`%8`, nova janela (NTW) | `sh` com `%f`, `%t` e `%d`; sempre no terminal do xt |
-| Histórico | janela de histórico com marcadores | ↑/↓ no prompt, um histórico por tipo, salvo entre execuções |
-| Configuração | 7 páginas, editor de cores (F4) por elemento, Alt-Export | 4 páginas com as opções que fazem sentido no Linux; F4 escolhe entre 8 temas prontos; cores individuais no `config.toml` |
-| Arquivos compactados | qualquer formato com archiver externo, criar (F5), extrair (Alt-F5) | ZIP/JAR/WAR/APK/TAR/TGZ: abrir (Alt+F5), extrair com Copy, criar com F5 (ZIP, TAR e TAR.GZ) |
-| Tela dividida | painéis de estatísticas opcionais por lado | sem painel de estatísticas |
-| Menus | menu de Ctrl/Alt ao segurar a tecla | igual em terminais com o protocolo do kitty; F9 em qualquer terminal |
+| Filespec | name with its own name and extension rules, date, size, attribute, inverted filespec (Ctrl+I), labels | glob for names, date and size as in ZTreeWin (with K/M/G); no attributes, inversion or labels |
+| Viewer | Alpha, Dump, Hex, Junk and Wrap modes; character sets; hex editing; bookmarks; auto-scroll | text (UTF-8) or hex, with ZTreeWin's search (F, B, /, \\, Space, + and -), no line wrapping; up to 16 MiB |
+| Ctrl+S | text, hex or Unicode; searches only the ZIP index | text or hex |
+| Attributes | Windows attributes (R, A, S, H) | Unix permissions in octal (`644`); no owner/group |
+| Sort | Name, Ext, Date, Time, Length, Alpha, nuMber, Size, Value, Unsorted; Charset; same/diff in split screen | Name, Ext, Date, Size, ascending/descending, Path first; each window has its own order |
+| Compare | options Identical, Unique, Newer, Older, Size, Binary, Case; display filter | tags unique, newer, older, identical, different or unique+newer; no binary comparison |
+| Prune | deletes only the subdirectories or the current one too; only empty directories; recycle bin | always deletes the whole directory, permanently; configurable confirmation |
+| Delete | optional recycle bin | deletes for good |
+| Log | several logged drives, Global, drive switching | one root per window; `L` opens another directory |
+| eXecute | batch parameters `%1`–`%8`, new window (NTW) | `sh` with `%f`, `%t` and `%d`; always in xt's terminal |
+| History | history window with bookmarks | ↑/↓ at the prompt, one history per type, saved between runs |
+| Configuration | 7 pages, per-element color editor (F4), Alt-Export | 4 pages with the options that make sense on Linux; F4 chooses among 8 ready-made themes; individual colors in `config.toml` |
+| Archives | any format with an external archiver, create (F5), extract (Alt-F5) | ZIP/JAR/WAR/APK/TAR/TGZ: open (Alt+F5), extract with Copy, create with F5 (ZIP, TAR and TAR.GZ) |
+| Split screen | optional statistics panels per side | no statistics panel |
+| Menus | Ctrl/Alt menu when holding the key | same in terminals with the kitty protocol; F9 in any terminal |
 
-Opções de configuração do ZTreeWin que não foram trazidas por serem do
-Windows: atributos RSH, lixeira, junctions, OEM/ANSI, EBCDIC, tamanho da
-janela, atalhos (.lnk). As demais dependem de recursos ainda não feitos
-(abaixo).
+ZTreeWin configuration options that were not brought over because they are
+Windows-specific: RSH attributes, recycle bin, junctions, OEM/ANSI, EBCDIC, window
+size, shortcuts (.lnk). The rest depend on features not yet built
+(below).
 
-### Teclas diferentes
+### Different keys
 
-As teclas seguem as do ZTreeWin. As exceções:
+The keys follow ZTreeWin's. The exceptions:
 
-| Função | ZTreeWin | xt |
+| Function | ZTreeWin | xt |
 |---|---|---|
-| Configuração | Alt+F10 | F12 ou Alt+F10 (no GNOME, Alt+F10 maximiza a janela e não chega ao xt) |
-| Mover marcados | Ctrl+M | Ctrl+M em terminais com o protocolo do kitty; nos outros, `F9` `M` (ou Alt+M e F6) |
-| `-` na árvore | descarrega o ramo da memória | só recolhe (continua logado) |
-| F2 | (nada) | relê o diretório, igual ao F3 |
-| F9 | menu de aplicativos (não implementado) | menus de Ctrl/Alt |
-| F12 | macros (não implementadas) | configuração |
-| Ctrl+C, Ctrl+M na árvore | (nada) | Copy/Move dos marcados do diretório atual |
+| Configuration | Alt+F10 | F12 or Alt+F10 (on GNOME, Alt+F10 maximizes the window and never reaches xt) |
+| Move tagged | Ctrl+M | Ctrl+M in terminals with the kitty protocol; in others, `F9` `M` (or Alt+M and F6) |
+| `-` in the tree | unloads the branch from memory | only collapses (stays logged) |
+| F2 | (nothing) | rereads the directory, same as F3 |
+| F9 | applications menu (not implemented) | Ctrl/Alt menus |
+| F12 | macros (not implemented) | configuration |
+| Ctrl+C, Ctrl+M in the tree | (nothing) | Copy/Move of the current directory's tagged files |
 
-Todas as teclas podem ser trocadas em `[keys]` no `config.toml`.
+All keys can be rebound under `[keys]` in `config.toml`.
 
-### Não implementado
+### Not implemented
 
-- **Árvore:** Global (G), Graft (Alt+G), Mirror (Alt+M), Oops
-  (O, recuperar apagados), Release/descarregar da memória (Alt+R, `-`,
+- **Tree:** Global (G), Graft (Alt+G), Mirror (Alt+M), Oops
+  (O, recover deleted files), Release/unload from memory (Alt+R, `-`,
   Ctrl+Backspace), Hide (Alt+H), Wash (Alt+W), Volume
-  (Ctrl+V), F5/F6 (esconder níveis de subdiretórios),
-  marcar por atributo (Alt+T/U),
-  Treespec em modo de edição (F5, curingas) e pastas especiais (F6), busca
-  ao digitar com prompt (`|`) e modo ativo, troca de drive (`<` e `>`).
-- **Arquivos:** Open em nova janela de terminal (Alt+O), Batch do arquivo atual (Alt+B), JFC (J, comparar o conteúdo de dois arquivos), ZAAP
-  (Y), sHortcut (H), Print (P), Rename com máscara, localizar e trocar e mudança de maiúsculas,
-  dono/grupo (chown), Megaview (Ctrl+F7 na janela de arquivos), juntar marcados entre as
-  janelas (Ctrl+F6), Partial Untag (Ctrl+F8), copiar caminho para a área de
-  transferência (Ctrl+Insert).
-- **Geral:** macros (F12), menu de aplicativos (F9), marcadores (F11, `[`
-  e `]`), Quit and shell (Ctrl+Q), salvar e
-  carregar o log (Zlist, Ctrl/Alt+Z), lixeira, cores por nome e atributo
-  (ZCOLORS.INI), mouse, opções de linha de comando do ZTreeWin, comandos de
-  vídeo (Alt+F6–F9).
+  (Ctrl+V), F5/F6 (hide subdirectory levels),
+  tag by attribute (Alt+T/U),
+  Treespec in edit mode (F5, wildcards) and special folders (F6), type-ahead
+  search with prompt (`|`) and active mode, drive switching (`<` and `>`).
+- **Files:** Open in a new terminal window (Alt+O), Batch of the current file (Alt+B), JFC (J, compare the contents of two files), ZAAP
+  (Y), sHortcut (H), Print (P), Rename with mask, find and replace and case change,
+  owner/group (chown), Megaview (Ctrl+F7 in the file window), merge tagged files between
+  windows (Ctrl+F6), Partial Untag (Ctrl+F8), copy path to the
+  clipboard (Ctrl+Insert).
+- **General:** macros (F12), applications menu (F9), bookmarks (F11, `[`
+  and `]`), Quit and shell (Ctrl+Q), saving and
+  loading the log (Zlist, Ctrl/Alt+Z), recycle bin, colors by name and attribute
+  (ZCOLORS.INI), mouse, ZTreeWin command-line options, video
+  commands (Alt+F6–F9).

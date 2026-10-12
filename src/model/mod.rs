@@ -1,4 +1,4 @@
-//! Modelo de dados: independe da interface e pode ser testado sozinho.
+//! Data model: independent of the UI and testable on its own.
 
 pub mod compare;
 pub mod filespec;

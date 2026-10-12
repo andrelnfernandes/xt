@@ -1,5 +1,5 @@
-//! Visualizador de arquivos (tecla `V`; Ctrl+V para os marcados), em modo
-//! texto ou hexadecimal, com busca.
+//! File viewer (`V` key; Ctrl+V for the tagged files), in text or
+//! hexadecimal mode, with search.
 
 use std::fs::File;
 use std::io::{self, Read};
@@ -9,7 +9,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::search::Pattern;
 
-/// Arquivos maiores são exibidos só até este limite.
+/// Larger files are displayed only up to this limit.
 pub const MAX_BYTES: u64 = 16 * 1024 * 1024;
 pub const HEX_WIDTH: usize = 16;
 const TAB_WIDTH: usize = 8;
@@ -21,40 +21,40 @@ pub enum ViewMode {
     Hex,
 }
 
-/// De onde uma busca nova começa.
+/// Where a new search starts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SearchFrom {
-    /// Início do arquivo (F) ou fim, na busca para trás (B).
+    /// Start of the file (F) or end, in a backward search (B).
     Edge,
-    /// Topo da página, ou o fim dela na busca para trás (`/` e `\`).
+    /// Top of the page, or its end in a backward search (`/` and `\`).
     Page,
 }
 
-/// O que uma tecla pede a quem abriu o visualizador.
+/// What a key asks of whoever opened the viewer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
     None,
     Close,
-    /// Ctrl+V: próximo/anterior/primeiro/último arquivo marcado.
+    /// Ctrl+V: next/previous/first/last tagged file.
     Next,
     Prev,
     First,
     Last,
-    /// Ctrl+V: desmarca o arquivo atual.
+    /// Ctrl+V: untags the current file.
     Untag,
-    /// Pede o termo e procura.
+    /// Asks for the term and searches.
     Search {
         forward: bool,
         from: SearchFrom,
     },
-    /// Continua a última busca (`None`: na mesma direção, com Espaço).
+    /// Continues the last search (`None`: same direction, with Space).
     Continue {
         forward: Option<bool>,
     },
 }
 
-/// Trecho encontrado: no modo texto, linha e colunas (em caracteres); no
-/// hex, `line` é a linha de 16 bytes e `start..end` os bytes no arquivo.
+/// Match found: in text mode, line and columns (in characters); in
+/// hex, `line` is the 16-byte row and `start..end` the bytes in the file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Hit {
     pub mode: ViewMode,
@@ -69,24 +69,24 @@ pub struct Viewer {
     pub mode: ViewMode,
     data: Vec<u8>,
     lines: Vec<String>,
-    /// Primeira linha visível.
+    /// First visible line.
     pub top: usize,
-    /// Deslocamento horizontal (modo texto).
+    /// Horizontal offset (text mode).
     pub left: usize,
-    /// Altura e largura úteis no último desenho.
+    /// Usable height and width as of the last draw.
     pub page: usize,
     pub width: usize,
-    /// Último trecho encontrado, destacado na tela.
+    /// Last match found, highlighted on screen.
     pub hit: Option<Hit>,
-    /// Direção da última busca.
+    /// Direction of the last search.
     pub forward: bool,
-    /// Aviso no rodapé (ex.: "Not found").
+    /// Footer notice (e.g. "Not found").
     pub note: Option<String>,
 }
 
 impl Viewer {
-    /// Lê só o começo do arquivo (o Autoview usa um limite menor, para
-    /// andar rápido por arquivos grandes).
+    /// Reads only the start of the file (Autoview uses a smaller limit, to
+    /// move quickly through large files).
     pub fn open_limited(path: PathBuf, limit: u64) -> io::Result<Self> {
         let file = File::open(&path)?;
         let size = file.metadata()?.len();
@@ -95,7 +95,7 @@ impl Viewer {
         Ok(Self::from_bytes(path, size, data))
     }
 
-    /// Rolagem do Autoview (Shift+setas): só move o conteúdo.
+    /// Autoview scrolling (Shift+arrows): only moves the content.
     pub fn scroll(&mut self, code: KeyCode) {
         let page = self.page.max(1);
         let max_top = self.line_count().saturating_sub(page);
@@ -111,7 +111,7 @@ impl Viewer {
         .min(max_top);
     }
 
-    /// Visualiza bytes já lidos (ex.: uma entrada de um arquivo compactado).
+    /// Views bytes already read (e.g. an entry of an archive).
     pub fn from_bytes(path: PathBuf, size: u64, data: Vec<u8>) -> Self {
         let mode = if looks_binary(&data) {
             ViewMode::Hex
@@ -145,8 +145,8 @@ impl Viewer {
         }
     }
 
-    /// As linhas que cabem em `height`, já com o deslocamento aplicado, e
-    /// o trecho a destacar em cada uma (colunas na linha exibida).
+    /// The lines that fit in `height`, with the offset already applied, and
+    /// the match to highlight in each one (columns in the displayed line).
     #[cfg(test)]
     pub fn visible_lines(&self, height: usize) -> Vec<String> {
         self.visible(height).into_iter().map(|(l, _)| l).collect()
@@ -179,8 +179,8 @@ impl Viewer {
         }
     }
 
-    /// Trata uma tecla; o que não é do próprio visualizador (fechar, trocar
-    /// de arquivo, buscar) volta como `Action`.
+    /// Handles a key; what does not belong to the viewer itself (close, switch
+    /// file, search) comes back as an `Action`.
     pub fn handle_key(&mut self, key: KeyEvent) -> Action {
         let page = self.page.max(1);
         let max_top = self.line_count().saturating_sub(page);
@@ -274,7 +274,7 @@ impl Viewer {
         self.left = 0;
     }
 
-    /// Busca nova, a partir do início/fim do arquivo ou da página atual.
+    /// New search, from the start/end of the file or the current page.
     pub fn search(&mut self, pattern: &Pattern, forward: bool, from: SearchFrom) -> bool {
         self.forward = forward;
         let pos = match (from, forward) {
@@ -286,7 +286,7 @@ impl Viewer {
         self.find_from(pattern, forward, pos)
     }
 
-    /// Próximo trecho depois do último encontrado (ou da página).
+    /// Next match after the last one found (or the page).
     pub fn search_next(&mut self, pattern: &Pattern, forward: bool) -> bool {
         self.forward = forward;
         let pos = match self.hit.filter(|h| h.mode == self.mode) {
@@ -297,8 +297,8 @@ impl Viewer {
         self.find_from(pattern, forward, pos)
     }
 
-    /// Procura a partir de (linha, coluna) — no hex, a coluna é ignorada e
-    /// a posição vem em bytes.
+    /// Searches from (line, column) — in hex, the column is ignored and
+    /// the position is in bytes.
     fn find_from(&mut self, pattern: &Pattern, forward: bool, (line, col): (usize, usize)) -> bool {
         let hit = match self.mode {
             ViewMode::Text => self.find_text(pattern, forward, line, col),
@@ -363,7 +363,7 @@ impl Viewer {
         }
     }
 
-    /// Rola até o trecho, deixando um pouco de contexto acima.
+    /// Scrolls to the match, leaving a little context above.
     fn show(&mut self, hit: Hit) {
         self.hit = Some(hit);
         let page = self.page.max(1);
@@ -380,12 +380,12 @@ impl Viewer {
     }
 }
 
-/// Heurística simples: há um byte nulo no começo do arquivo.
+/// Simple heuristic: there is a null byte near the start of the file.
 fn looks_binary(data: &[u8]) -> bool {
     data.iter().take(8192).any(|&b| b == 0)
 }
 
-/// Quebra em linhas, expande tabs e troca caracteres de controle por `·`.
+/// Splits into lines, expands tabs and replaces control characters with `·`.
 fn text_lines(data: &[u8]) -> Vec<String> {
     let text = String::from_utf8_lossy(data);
     let mut lines: Vec<String> = text
@@ -407,7 +407,7 @@ fn text_lines(data: &[u8]) -> Vec<String> {
             out
         })
         .collect();
-    // O '\n' final não abre uma linha nova.
+    // The final '\n' does not open a new line.
     if lines.len() > 1 && lines.last().is_some_and(String::is_empty) {
         lines.pop();
     }
@@ -581,7 +581,7 @@ mod tests {
         assert!(v.search_next(&p, true));
         assert_eq!(v.hit.unwrap().line, 15);
         assert!(v.top <= 15 && 15 < v.top + 10, "hit is visible");
-        // Destaque nas colunas certas.
+        // Highlight in the right columns.
         let shown = v.visible(10);
         let (line, mark) = &shown[15 - v.top];
         assert!(line.contains("ALVO"));

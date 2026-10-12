@@ -1,9 +1,9 @@
-//! Operações em arquivos: copiar, mover e apagar.
+//! File operations: copy, move and delete.
 //!
-//! Uma [`Operation`] é executada aos poucos (`step`), para a interface mostrar
-//! o progresso, perguntar sobre conflitos e permitir cancelar. Arquivos são
-//! copiados em blocos para um temporário, que só no fim substitui o destino:
-//! um cancelamento ou erro nunca deixa um destino pela metade.
+//! An [`Operation`] runs in small steps (`step`), so the UI can show progress,
+//! ask about conflicts and allow cancelling. Files are copied in blocks to a
+//! temporary file, which replaces the destination only at the end:
+//! a cancellation or error never leaves a half-written destination.
 
 use std::collections::HashMap;
 use std::fs::{self, File};
@@ -21,7 +21,7 @@ pub enum OpKind {
     Copy,
     Move,
     Delete,
-    /// Apaga um ramo: arquivos e depois diretórios, do mais fundo para cima.
+    /// Deletes a branch: files and then directories, deepest first.
     Prune,
 }
 
@@ -45,7 +45,7 @@ impl OpKind {
     }
 }
 
-/// Um arquivo de origem, com o tamanho já conhecido (para o progresso).
+/// A source file, with its size already known (for progress).
 #[derive(Debug, Clone)]
 pub struct Source {
     pub path: PathBuf,
@@ -55,14 +55,14 @@ pub struct Source {
 #[derive(Debug, Clone)]
 struct Item {
     src: PathBuf,
-    /// Vazio no Delete.
+    /// Empty on Delete.
     dst: PathBuf,
     size: u64,
-    /// Diretório a remover (só no Prune; já estará vazio).
+    /// Directory to remove (Prune only; it will already be empty).
     is_dir: bool,
 }
 
-/// Resposta do usuário a um conflito ("o destino já existe").
+/// User's answer to a conflict ("the destination already exists").
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Answer {
     Yes,
@@ -78,15 +78,15 @@ enum Overwrite {
     Never,
 }
 
-/// Origem dos arquivos quando eles saem de dentro de um ZIP/TAR.
+/// Origin of the files when they come from inside a ZIP/TAR.
 struct ArchiveSource {
     reader: archive::Reader,
-    /// Caminho do arquivo compactado: raiz dos caminhos virtuais.
+    /// Path of the archive: root of the virtual paths.
     root: PathBuf,
     entries: HashMap<PathBuf, archive::Entry>,
 }
 
-/// Cópia de um arquivo em andamento.
+/// A copy of a file in progress.
 struct Transfer {
     reader: File,
     writer: File,
@@ -99,18 +99,18 @@ pub struct Operation {
     next: usize,
     transfer: Option<Transfer>,
     overwrite: Overwrite,
-    /// O item `next` já teve o conflito resolvido com "sim".
+    /// Item `next` already had its conflict resolved with "yes".
     approved: bool,
-    /// Destino em conflito, esperando [`Operation::answer`].
+    /// Conflicting destination, waiting for [`Operation::answer`].
     pub conflict: Option<PathBuf>,
     pub done_files: usize,
     pub skipped: usize,
     pub done_bytes: u64,
     pub total_bytes: u64,
     pub errors: Vec<String>,
-    /// Os arquivos de origem estão dentro deste arquivo compactado.
+    /// The source files are inside this archive.
     archive: Option<ArchiveSource>,
-    /// Só para testes: finge que origem e destino estão em discos diferentes.
+    /// Tests only: pretends source and destination are on different disks.
     #[cfg(test)]
     force_cross_device: bool,
 }
@@ -129,8 +129,8 @@ impl Operation {
         Self::new(OpKind::Delete, items)
     }
 
-    /// Prepara um Prune: apaga `files` e depois `dirs`, dos mais fundos
-    /// para os mais rasos (cada um já estará vazio quando chegar a vez).
+    /// Prepares a Prune: deletes `files` and then `dirs`, deepest first
+    /// (each one will already be empty by its turn).
     pub fn prune(files: Vec<Source>, mut dirs: Vec<PathBuf>) -> Self {
         dirs.sort_by_key(|d| std::cmp::Reverse(d.components().count()));
         let mut op = Self::delete(files);
@@ -144,12 +144,12 @@ impl Operation {
         op
     }
 
-    /// Prepara uma cópia ou movimentação para `dest`. Se `dest` for um
-    /// diretório existente, os arquivos vão para dentro dele; com um único
-    /// arquivo, `dest` também pode ser o novo nome.
+    /// Prepares a copy or move to `dest`. If `dest` is an existing directory,
+    /// the files go inside it; with a single file, `dest` can also be the new
+    /// name.
     ///
-    /// Com `paths_from`, cada arquivo vai para o mesmo caminho relativo a
-    /// esse diretório (`base/a/b/x` → `dest/a/b/x`), criando o que faltar.
+    /// With `paths_from`, each file goes to the same path relative to that
+    /// directory (`base/a/b/x` → `dest/a/b/x`), creating whatever is missing.
     pub fn transfer(
         kind: OpKind,
         sources: Vec<Source>,
@@ -212,9 +212,9 @@ impl Operation {
         }
     }
 
-    /// Indica que as origens são caminhos virtuais dentro de `archive`
-    /// (ex.: `/x/p.zip/src/a.rs`). Só cópia: arquivos compactados são
-    /// somente leitura.
+    /// Marks the sources as virtual paths inside `archive`
+    /// (e.g. `/x/p.zip/src/a.rs`). Copy only: archives are
+    /// read-only.
     pub fn reading_archive(mut self, archive: &Path) -> Result<Self, String> {
         if self.kind != OpKind::Copy {
             return Err("Archives are read-only".into());
@@ -242,12 +242,12 @@ impl Operation {
         self.next >= self.items.len() && self.transfer.is_none()
     }
 
-    /// Arquivo sendo processado agora.
+    /// File being processed right now.
     pub fn current(&self) -> Option<&Path> {
         self.items.get(self.next).map(|i| i.src.as_path())
     }
 
-    /// Diretórios cujo conteúdo pode ter mudado.
+    /// Directories whose contents may have changed.
     pub fn touched_dirs(&self) -> Vec<PathBuf> {
         let mut dirs: Vec<PathBuf> = self
             .items
@@ -280,7 +280,7 @@ impl Operation {
         }
     }
 
-    /// Interrompe a operação, apagando o temporário de uma cópia em curso.
+    /// Stops the operation, deleting the temporary file of a copy in progress.
     pub fn cancel(&mut self) {
         if let Some(t) = self.transfer.take() {
             drop(t.writer);
@@ -290,7 +290,7 @@ impl Operation {
         self.conflict = None;
     }
 
-    /// Trabalha até terminar, estourar `budget` ou precisar de uma resposta.
+    /// Works until done, `budget` runs out or an answer is needed.
     pub fn step(&mut self, budget: Duration) {
         let start = Instant::now();
         while self.conflict.is_none() && !self.is_done() {
@@ -346,7 +346,7 @@ impl Operation {
             return;
         }
 
-        // Dentro de um arquivo compactado não há metadados no disco.
+        // Inside an archive there is no metadata on disk.
         let src_meta = match self.archive {
             Some(_) => None,
             None => match fs::symlink_metadata(&item.src) {
@@ -392,14 +392,14 @@ impl Operation {
                     self.done_bytes += item.size;
                     return self.finish_item();
                 }
-                Err(e) if e.kind() == ErrorKind::CrossesDevices => {} // copia e apaga
+                Err(e) if e.kind() == ErrorKind::CrossesDevices => {} // copy and delete
                 Err(e) => return self.fail(&item.src, e),
             }
         }
 
         let ft = src_meta.file_type();
         if ft.is_symlink() {
-            // Copia o link, não o arquivo para onde ele aponta.
+            // Copies the link, not the file it points to.
             let result = fs::read_link(&item.src).and_then(|target| {
                 let tmp = tmp_path(&item.dst);
                 std::os::unix::fs::symlink(target, &tmp)?;
@@ -431,8 +431,8 @@ impl Operation {
         }
     }
 
-    /// Extrai uma entrada do arquivo compactado para o destino, via
-    /// temporário, com as permissões e a data guardadas no arquivo.
+    /// Extracts an entry from the archive to the destination, via a
+    /// temporary file, with the permissions and date stored in the archive.
     fn extract_item(&mut self, item: &Item) {
         let source = self.archive.as_mut().expect("archive source");
         let entry = item.src.strip_prefix(&source.root).unwrap_or(&item.src);
@@ -490,7 +490,7 @@ impl Operation {
         }
     }
 
-    /// Fim da leitura: copia permissões e data, e põe o arquivo no lugar.
+    /// End of reading: copies permissions and date, and puts the file in place.
     fn finish_transfer(&mut self) {
         let t = self.transfer.take().unwrap();
         let item = self.items[self.next].clone();
@@ -515,7 +515,7 @@ impl Operation {
         }
     }
 
-    /// Cópia pronta; no Move entre discos, falta apagar a origem.
+    /// Copy done; on a cross-disk Move, the source still needs to be deleted.
     fn complete_copy(&mut self, src: &Path) {
         if self.kind == OpKind::Move
             && let Err(e) = fs::remove_file(src)
@@ -528,7 +528,7 @@ impl Operation {
         self.finish_item();
     }
 
-    /// Resumo para mostrar no fim.
+    /// Summary to show at the end.
     pub fn summary(&self) -> String {
         let noun = match self.kind {
             OpKind::Prune => "files and directories",
@@ -552,15 +552,15 @@ impl Operation {
     }
 }
 
-/// Temporário escondido, no mesmo diretório do destino (para o rename final
-/// ser atômico).
+/// Hidden temporary file, in the same directory as the destination (so the final
+/// rename is atomic).
 fn tmp_path(dst: &Path) -> PathBuf {
     let name = dst.file_name().unwrap_or_default().to_string_lossy();
     dst.with_file_name(format!(".{name}.xt-{}.tmp", std::process::id()))
 }
 
-/// Interpreta o destino digitado: `~` vira o home, caminhos relativos
-/// partem de `base`, e `.`/`..` são resolvidos no texto.
+/// Interprets the typed destination: `~` becomes home, relative paths
+/// start from `base`, and `.`/`..` are resolved in the text.
 pub fn resolve_path(input: &str, base: &Path) -> PathBuf {
     let input = input.trim();
     let home = std::env::var_os("HOME").map(PathBuf::from);
@@ -583,7 +583,7 @@ pub fn resolve_path(input: &str, base: &Path) -> PathBuf {
     out
 }
 
-/// Valida um nome de arquivo ou diretório digitado.
+/// Validates a typed file or directory name.
 pub fn check_name(name: &str) -> Result<(), String> {
     if name.is_empty() || name == "." || name == ".." {
         Err("Invalid name".into())
@@ -594,7 +594,7 @@ pub fn check_name(name: &str) -> Result<(), String> {
     }
 }
 
-/// Interpreta permissões em octal, ex.: "644" ou "0755".
+/// Interprets octal permissions, e.g.: "644" or "0755".
 pub fn parse_mode(text: &str) -> Result<u32, String> {
     let text = text.trim();
     let valid = (3..=4).contains(&text.len()) && text.chars().all(|c| ('0'..='7').contains(&c));
@@ -697,14 +697,14 @@ mod tests {
         assert_eq!(fs::read_to_string(b.join("x/y/deep.txt")).unwrap(), "deep");
         assert!(op.touched_dirs().contains(&b.join("x/y")));
 
-        // Sem paths_from, tudo vai direto para o destino.
+        // Without paths_from, everything goes straight to the destination.
         let flat = tmp.path().join("flat");
         fs::create_dir(&flat).unwrap();
         let mut op = Operation::transfer(OpKind::Copy, sources.clone(), &flat, None).unwrap();
         run(&mut op);
         assert!(flat.join("deep.txt").exists());
 
-        // Com caminhos, o destino precisa ser um diretório existente.
+        // With paths, the destination must be an existing directory.
         assert!(Operation::transfer(OpKind::Copy, sources, &b.join("nope"), Some(&a)).is_err());
     }
 
@@ -842,8 +842,8 @@ mod tests {
         fs::write(&big, vec![7u8; CHUNK * 3 + 10]).unwrap();
 
         let mut op = Operation::transfer(OpKind::Copy, vec![src(&big)], &b, None).unwrap();
-        op.step(Duration::ZERO); // abre os arquivos
-        op.step(Duration::ZERO); // primeiro bloco
+        op.step(Duration::ZERO); // opens the files
+        op.step(Duration::ZERO); // first block
         assert_eq!(op.done_bytes, CHUNK as u64);
         assert!(!op.is_done());
 
@@ -882,7 +882,7 @@ mod tests {
         assert_eq!(mode & 0o777, 0o755);
         assert!(no_temp_files(&b));
 
-        // Archives são somente leitura.
+        // Archives are read-only.
         let moving = Operation::transfer(OpKind::Move, vec![virt("README")], &b, None).unwrap();
         assert!(moving.reading_archive(&zip).is_err());
     }
@@ -921,7 +921,7 @@ mod tests {
         assert!(op.errors.is_empty(), "{:?}", op.errors);
         assert_eq!(op.done_files, 7);
         assert!(!a.exists());
-        // O link foi removido, não o que ele aponta.
+        // The link was removed, not what it points to.
         assert!(tmp.path().join("b").exists());
         assert!(
             op.summary()

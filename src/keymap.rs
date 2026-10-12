@@ -1,5 +1,5 @@
-//! Mapa de teclas: os padrões, as trocas do arquivo de configuração e o
-//! texto da ajuda (F1). Tudo sai das tabelas abaixo.
+//! Key map: the defaults, the overrides from the config file and the
+//! help text (F1). Everything is derived from the tables below.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -10,8 +10,8 @@ use crate::config::{Keys, Options};
 use crate::input::Command;
 use crate::pane::Focus;
 
-/// Todos os comandos que podem ir para uma tecla: nome no arquivo de
-/// configuração, comando e descrição na ajuda.
+/// Every command that can be bound to a key: its name in the config
+/// file, the command and its description in the help.
 const COMMANDS: &[(&str, Command, &str)] = &[
     ("up", Command::Up, "move up"),
     ("down", Command::Down, "move down"),
@@ -283,8 +283,8 @@ pub enum Scope {
 
 use Scope::{Any, Files, Tree};
 
-/// As teclas padrão. Ctrl+letra age nos arquivos marcados; Alt+letra
-/// também, e no Copy/Move recria os caminhos.
+/// The default keys. Ctrl+letter acts on the tagged files; so does Alt+letter,
+/// and in Copy/Move it recreates the paths.
 const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("up", Any, "up"),
     ("down", Any, "down"),
@@ -368,8 +368,8 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("v", Files, "view"),
 ];
 
-/// Uma tecla com modificadores, já normalizada: letras em minúsculas e só
-/// Ctrl e Alt contam (Shift já está na própria letra).
+/// A key with modifiers, already normalized: lowercase letters, and only
+/// Ctrl and Alt count (Shift is already part of the letter).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct KeySpec {
     code: KeyCode,
@@ -388,8 +388,8 @@ impl KeySpec {
         }
     }
 
-    /// `"x"`, `"F3"`, `"ctrl+r"`, `"alt+shift+x"` (Shift é ignorado),
-    /// `"plus"` para `+`.
+    /// `"x"`, `"F3"`, `"ctrl+r"`, `"alt+shift+x"` (Shift is ignored),
+    /// `"plus"` for `+`.
     pub fn parse(text: &str) -> Result<Self, String> {
         let lower = text.trim().to_lowercase();
         let (mods_part, key) = match lower.as_str() {
@@ -478,7 +478,7 @@ fn command_by_name(name: &str) -> Result<Option<Command>, String> {
         .ok_or_else(|| format!("unknown command '{name}'"))
 }
 
-/// Tecla → comando, por janela. `None` desliga a tecla.
+/// Key → command, per window. `None` unbinds the key.
 #[derive(Debug, Clone)]
 pub struct Keymap {
     maps: HashMap<Scope, HashMap<KeySpec, Option<Command>>>,
@@ -499,7 +499,7 @@ impl Default for Keymap {
 }
 
 impl Keymap {
-    /// Os padrões com as trocas do arquivo de configuração.
+    /// The defaults with the config file's overrides applied.
     pub fn from_config(keys: &Keys, options: &Options) -> Result<Self, String> {
         let mut keymap = Keymap::default();
         if options.enter_views {
@@ -517,8 +517,8 @@ impl Keymap {
                 let spec = KeySpec::parse(key)?;
                 let cmd = command_by_name(name)?;
                 if scope == Any {
-                    // Uma troca "em qualquer janela" vale também onde o
-                    // padrão era específico de uma janela.
+                    // An "any window" override also applies where the
+                    // default was specific to one window.
                     for s in [Tree, Files] {
                         keymap.maps.entry(s).or_default().remove(&spec);
                     }
@@ -543,7 +543,7 @@ impl Keymap {
         None
     }
 
-    /// Texto da ajuda (F1): as teclas em vigor, por janela.
+    /// Help text (F1): the keys currently in effect, per window.
     pub fn help_text(&self) -> String {
         let mut out = String::from(
             "xt - keys in use (F1 shows this; Esc closes)\n\
@@ -723,7 +723,7 @@ mod tests {
             km.lookup(key(KeyCode::F(3)), Focus::Files),
             Some(Command::View)
         );
-        // "c" em qualquer janela vence os padrões das duas janelas.
+        // "c" in any window beats the defaults of both windows.
         assert_eq!(
             km.lookup(key(KeyCode::Char('c')), Focus::Tree),
             Some(Command::Edit)
@@ -732,7 +732,7 @@ mod tests {
             km.lookup(key(KeyCode::Char('c')), Focus::Files),
             Some(Command::Edit)
         );
-        // "none" desliga; o resto continua padrão.
+        // "none" unbinds; the rest stays default.
         assert_eq!(km.lookup(key(KeyCode::Char('q')), Focus::Files), None);
         assert_eq!(
             km.lookup(key(KeyCode::Char('q')), Focus::Tree),

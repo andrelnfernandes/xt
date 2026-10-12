@@ -1,4 +1,4 @@
-//! Ordenação da lista de arquivos (Alt+S).
+//! Sorting of the file list (Alt+S).
 
 use std::time::SystemTime;
 
@@ -18,12 +18,12 @@ pub enum SortKey {
 pub struct Sort {
     pub key: SortKey,
     pub descending: bool,
-    /// No Branch/Showall: agrupa por diretório antes de ordenar.
+    /// In Branch/Showall: groups by directory before sorting.
     pub path_first: bool,
 }
 
 impl Sort {
-    /// Ex.: "Name↑", "Size↓".
+    /// E.g. "Name↑", "Size↓".
     pub fn label(&self) -> String {
         let key = match self.key {
             SortKey::Name => "Name",
@@ -34,8 +34,8 @@ impl Sort {
         format!("{key}{}", if self.descending { "↓" } else { "↑" })
     }
 
-    /// Chave de ordenação de um arquivo. `dir_rank` é a posição do seu
-    /// diretório na árvore: desempata nomes iguais (ou vem primeiro, com
+    /// Sort key of a file. `dir_rank` is the position of its directory
+    /// in the tree: it breaks ties between equal names (or comes first, with
     /// `path_first`).
     pub fn key_for(&self, file: &FileEntry, dir_rank: usize) -> SortKeyValue {
         let name = file.name.to_string_lossy().to_lowercase();
@@ -54,8 +54,8 @@ impl Sort {
     }
 }
 
-/// Valor comparável montado uma vez por arquivo (ordenar centenas de
-/// milhares de arquivos não pode recalcular nomes em cada comparação).
+/// Comparable value built once per file (sorting hundreds of thousands
+/// of files can't recompute names on every comparison).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SortKeyValue {
     group: usize,
@@ -71,7 +71,7 @@ enum Primary {
     Size(u64),
 }
 
-/// Extensão (sem o ponto); arquivos ocultos como ".bashrc" não têm.
+/// Extension (without the dot); hidden files like ".bashrc" have none.
 fn extension(name: &str) -> &str {
     match name.rfind('.') {
         Some(0) | None => "",
@@ -79,9 +79,9 @@ fn extension(name: &str) -> &str {
     }
 }
 
-/// Ordena `items`, calculando a chave de cada um uma única vez.
-/// Na ordem decrescente, os grupos de diretório (com `path_first`) seguem
-/// na ordem da árvore; só o conteúdo de cada grupo é invertido.
+/// Sorts `items`, computing each one's key only once.
+/// In descending order, directory groups (with `path_first`) stay
+/// in tree order; only the contents of each group are reversed.
 pub fn sort_by<T>(items: &mut Vec<T>, sort: &Sort, key: impl Fn(&T) -> SortKeyValue) {
     let mut keyed: Vec<(SortKeyValue, T)> = items.drain(..).map(|t| (key(&t), t)).collect();
     keyed.sort_by(|a, b| a.0.cmp(&b.0));

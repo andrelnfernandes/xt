@@ -1,7 +1,7 @@
-//! Avisos do sistema (inotify) quando um diretório mostrado muda.
+//! System notifications (inotify) when a displayed directory changes.
 //!
-//! Só os diretórios atuais das janelas são observados, sem recursão: assim
-//! árvores enormes não esgotam o limite de observações do sistema.
+//! Only the windows' current directories are watched, non-recursively: this way
+//! huge trees don't exhaust the system's watch limit.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -25,19 +25,19 @@ impl Watcher {
         })
     }
 
-    /// Passa a observar exatamente `dirs`.
+    /// Starts watching exactly `dirs`.
     pub fn watch_only(&mut self, dirs: HashSet<PathBuf>) {
         for gone in self.watched.difference(&dirs) {
             let _ = self.inner.unwatch(gone);
         }
         for new in dirs.difference(&self.watched) {
-            // Sem permissão ou já apagado: simplesmente não é observado.
+            // No permission or already deleted: it's simply not watched.
             let _ = self.inner.watch(new, RecursiveMode::NonRecursive);
         }
         self.watched = dirs;
     }
 
-    /// Diretórios que mudaram desde a última chamada.
+    /// Directories that changed since the last call.
     pub fn changed_dirs(&self) -> HashSet<PathBuf> {
         let mut dirs = HashSet::new();
         for event in self.events.try_iter().flatten() {
@@ -51,8 +51,8 @@ impl Watcher {
         dirs
     }
 
-    /// O diretório observado afetado por uma mudança em `path`: ele mesmo
-    /// ou o diretório onde ele está.
+    /// The watched directory affected by a change at `path`: itself
+    /// or the directory it is in.
     fn dir_of(&self, path: &Path) -> Option<PathBuf> {
         if self.watched.contains(path) {
             return Some(path.to_path_buf());
@@ -68,7 +68,7 @@ mod tests {
     use super::*;
     use std::time::{Duration, Instant};
 
-    /// Junta os avisos até chegar algum, por no máximo 3 s.
+    /// Gathers notifications until some arrive, for at most 3 s.
     fn wait_for(w: &Watcher) -> HashSet<PathBuf> {
         let start = Instant::now();
         let mut all = HashSet::new();
@@ -95,7 +95,7 @@ mod tests {
         std::fs::write(a.join("new"), "").unwrap();
         assert_eq!(wait_for(&w), HashSet::from([a.clone()]));
 
-        // Trocando o observado, `a` deixa de avisar.
+        // After changing what is watched, `a` stops notifying.
         w.watch_only(HashSet::from([b.clone()]));
         std::fs::write(a.join("again"), "").unwrap();
         std::fs::remove_file(b.join("ignored")).unwrap();

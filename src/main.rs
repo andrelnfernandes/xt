@@ -1,6 +1,6 @@
-//! xt — gerenciador de arquivos em modo texto inspirado no XTree/ZTreeWin.
+//! xt — text-mode file manager inspired by XTree/ZTreeWin.
 //!
-//! Uso: `xt [diretório]` (padrão: diretório atual); `xt --help` para mais.
+//! Usage: `xt [directory]` (default: current directory); `xt --help` for more.
 
 mod app;
 mod archive;
@@ -90,7 +90,7 @@ fn main() -> anyhow::Result<()> {
     let mut app = App::new(root);
     app.set_sort(config.options.initial_sort());
     app.display = config.options.file_display;
-    // `load` já validou; com erro no arquivo, `config` são os padrões.
+    // `load` already validated; with an error in the file, `config` is the defaults.
     let _ = app.apply_config(&config);
     app.config_file = config::Config::path();
     app.config_error = config_error.clone();
@@ -99,15 +99,15 @@ fn main() -> anyhow::Result<()> {
     if let Some(path) = &app.history_file {
         app.history = state::load_history(path);
     }
-    // `init` também instala um panic hook que restaura o terminal.
+    // `init` also installs a panic hook that restores the terminal.
     let mut terminal = ratatui::init();
     let mut keyboard = Keyboard::detect();
     let result = run(&mut terminal, &mut app, &mut keyboard);
     keyboard.restore();
     ratatui::restore();
-    // Arquivos extraídos de ZIP/TAR para abrir com O.
+    // Files extracted from ZIP/TAR to open with O.
     let _ = std::fs::remove_dir_all(app::temp_dir());
-    // Alt+Q: deixa o diretório para a função do shell fazer o cd.
+    // Alt+Q: leaves the directory for the shell function to cd into.
     if let Some(dir) = &app.quit_dir {
         match &cwd_file {
             Some(file) => std::fs::write(file, dir.as_os_str().as_encoded_bytes())
@@ -121,17 +121,17 @@ fn main() -> anyhow::Result<()> {
     result
 }
 
-/// Protocolo de teclado do kitty, quando o terminal o suporta (kitty,
+/// Kitty keyboard protocol, when the terminal supports it (kitty,
 /// WezTerm, foot, Ghostty, Alacritty...).
 ///
-/// - Modo simples: Ctrl+M chega separado de Enter e Esc deixa de ser
-///   ambíguo. Usado enquanto um prompt está aberto, para a digitação
-///   (acentos, teclas mortas) continuar como sempre.
-/// - Modo completo: o terminal também avisa quando cada tecla é pressionada
-///   e solta, inclusive Ctrl e Alt sozinhos; é o que permite trocar o menu
-///   enquanto o Ctrl/Alt está pressionado, como no ZTree.
+/// - Simple mode: Ctrl+M arrives separately from Enter and Esc is no longer
+///   ambiguous. Used while a prompt is open, so typing
+///   (accents, dead keys) keeps working as usual.
+/// - Full mode: the terminal also reports when each key is pressed
+///   and released, including bare Ctrl and Alt; this is what allows switching the menu
+///   while Ctrl/Alt is held, as in ZTree.
 ///
-/// Sem suporte (ex.: terminais VTE como o Terminator), nada disso é ligado.
+/// Without support (e.g. VTE terminals like Terminator), none of this is enabled.
 struct Keyboard {
     supported: bool,
     full: bool,
@@ -148,10 +148,10 @@ impl Keyboard {
         let supported = terminal::supports_keyboard_enhancement().unwrap_or(false)
             && execute!(stdout(), PushKeyboardEnhancementFlags(Self::SIMPLE)).is_ok();
         if supported {
-            // Se o programa entrar em pânico, desliga o protocolo antes de o
-            // hook do ratatui restaurar o terminal; senão o shell ficaria
-            // recebendo códigos de tecla estranhos. Desempilhar a mais é
-            // inofensivo.
+            // If the program panics, turn the protocol off before ratatui's
+            // hook restores the terminal; otherwise the shell would keep
+            // receiving strange key codes. Popping once too often is
+            // harmless.
             let previous = std::panic::take_hook();
             std::panic::set_hook(Box::new(move |info| {
                 let _ = execute!(stdout(), PopKeyboardEnhancementFlags);
@@ -165,7 +165,7 @@ impl Keyboard {
         }
     }
 
-    /// Liga o modo completo fora dos prompts e o desliga dentro deles.
+    /// Enables full mode outside prompts and disables it inside them.
     fn sync(&mut self, app: &mut App) -> std::io::Result<()> {
         let want_full = self.supported && app.prompt.is_none();
         if want_full == self.full {
@@ -177,7 +177,7 @@ impl Keyboard {
             execute!(stdout(), PopKeyboardEnhancementFlags)?;
         }
         self.full = want_full;
-        // No modo simples a soltura do Ctrl/Alt não é avisada.
+        // In simple mode the release of Ctrl/Alt is not reported.
         app.held = None;
         Ok(())
     }
@@ -192,7 +192,7 @@ impl Keyboard {
         self.full = false;
     }
 
-    /// Volta ao modo simples depois de um `restore` (ex.: na volta do editor).
+    /// Returns to simple mode after a `restore` (e.g. on coming back from the editor).
     fn resume(&mut self) {
         if self.supported {
             let _ = execute!(stdout(), PushKeyboardEnhancementFlags(Self::SIMPLE));
@@ -200,8 +200,8 @@ impl Keyboard {
     }
 }
 
-/// Entrega o terminal a um programa externo (editor, comando) e o pega de
-/// volta quando ele termina.
+/// Hands the terminal to an external program (editor, command) and takes it
+/// back when it finishes.
 fn run_external(
     terminal: &mut DefaultTerminal,
     keyboard: &mut Keyboard,
@@ -233,8 +233,8 @@ fn run(
     app: &mut App,
     keyboard: &mut Keyboard,
 ) -> anyhow::Result<()> {
-    // Sem inotify (limite esgotado, sistema sem suporte), só não há
-    // atualização automática.
+    // Without inotify (limit exhausted, unsupported system), there is just no
+    // automatic refresh.
     let mut watcher = watch::Watcher::new().ok();
     while !app.should_quit {
         keyboard.sync(app)?;
@@ -247,22 +247,22 @@ fn run(
             w.watch_only(dirs);
         }
         terminal.draw(|frame| ui::draw(frame, app))?;
-        // Com trabalho em andamento (log, cópia...), não bloqueia esperando tecla:
-        // processa um pedaço e redesenha o progresso.
+        // With work in progress (log, copy...), don't block waiting for a key:
+        // process a chunk and redraw the progress.
         if app.busy() && !event::poll(Duration::ZERO)? {
             app.tick(Duration::from_millis(50));
             continue;
         }
-        // Parado, espera uma tecla por até meio segundo; nesse meio-tempo,
-        // aplica as mudanças vistas no disco (agrupadas, para uma cópia
-        // grande feita por outro programa não reler a cada arquivo).
+        // Idle, wait for a key for up to half a second; in the meantime,
+        // apply the changes seen on disk (batched, so a large copy
+        // done by another program doesn't trigger a reread per file).
         if !event::poll(Duration::from_millis(500))? {
             if let Some(w) = &watcher {
                 app.fs_changed(w.changed_dirs());
             }
             continue;
         }
-        // Pressionar, repetir e soltar: o App decide o que usar.
+        // Press, repeat and release: the App decides which to use.
         if let Event::Key(key) = event::read()? {
             app.handle_key(key);
         }

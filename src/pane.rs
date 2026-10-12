@@ -1,7 +1,7 @@
-//! Uma janela do xt: árvore, lista de arquivos, filespec e cursores.
+//! A xt window: tree, file list, filespec and cursors.
 //!
-//! Na tela normal há uma; com a janela dividida (F8), duas, cada uma com
-//! a sua árvore.
+//! The normal screen has one; with the window split (F8) there are two, each with
+//! its own tree.
 
 use std::path::{Component, Path, PathBuf};
 
@@ -20,36 +20,36 @@ pub enum Focus {
     Files,
 }
 
-/// O que a janela de arquivos está listando.
+/// What the file window is listing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileView {
-    /// Arquivos do diretório sob o cursor da árvore.
+    /// Files of the directory under the tree cursor.
     Dir,
-    /// Arquivos do ramo a partir deste diretório (tecla `B`).
+    /// Files of the branch starting at this directory (`B` key).
     Branch(NodeId),
-    /// Arquivos de tudo o que foi logado (tecla `S`).
+    /// Files of everything that was logged (`S` key).
     Showall,
 }
 
-/// Referência a um arquivo dentro da árvore.
+/// Reference to a file inside the tree.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FileRef {
     pub dir: NodeId,
     pub idx: usize,
 }
 
-/// Modos da janela de arquivos (Alt+F), na ordem do ZTreeWin.
+/// File window modes (Alt+F), in ZTreeWin order.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FileDisplay {
-    /// Várias colunas, só os nomes.
+    /// Several columns, names only.
     Names,
-    /// Várias colunas: nome, tamanho e permissões.
+    /// Several columns: name, size and permissions.
     NamesSize,
-    /// Uma coluna: nome, tamanho, data e permissões.
+    /// One column: name, size, date and permissions.
     #[default]
     Details,
-    /// Uma coluna, só os nomes (inteiros).
+    /// One column, names only (full length).
     LongNames,
 }
 
@@ -68,13 +68,13 @@ impl FileDisplay {
     }
 }
 
-/// O que o Alt+K mostra ao lado dos diretórios.
+/// What Alt+K shows next to the directories.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Kbyte {
     pub show: KbyteShow,
-    /// Só os arquivos marcados.
+    /// Tagged files only.
     pub tagged_only: bool,
-    /// Soma o ramo inteiro, não só o diretório.
+    /// Sums the whole branch, not just the directory.
     pub branch: bool,
 }
 
@@ -102,29 +102,29 @@ impl Kbyte {
 
 pub struct Pane {
     pub tree: Tree,
-    /// Cache das linhas visíveis; recalculado quando a árvore muda.
+    /// Cache of the visible rows; recomputed when the tree changes.
     pub rows: Vec<VisibleRow>,
     pub tree_state: ListState,
     pub focus: Focus,
     pub view: FileView,
-    /// Arquivos listados na janela de arquivos, já filtrados.
+    /// Files listed in the file window, already filtered.
     pub files: Vec<FileRef>,
     pub file_state: ListState,
     pub filespec: Filespec,
     pub sort: Sort,
-    /// Alt+K: tamanho ou nº de arquivos ao lado de cada diretório.
+    /// Alt+K: size or file count next to each directory.
     pub kbyte: Kbyte,
-    /// Alt+F: como a janela de arquivos mostra a lista.
+    /// Alt+F: how the file window displays the list.
     pub display: FileDisplay,
-    /// Colunas da janela de arquivos no último desenho (modos de várias
-    /// colunas), para as setas andarem por linha.
+    /// File window columns as of the last draw (multi-column modes),
+    /// so the arrows move by row.
     pub file_cols: usize,
-    /// Altura útil das listas no último desenho (para PgUp/PgDn).
+    /// Usable height of the lists as of the last draw (for PgUp/PgDn).
     pub tree_page: usize,
     pub file_page: usize,
-    /// Com um ZIP/TAR aberto: o caminho dele (raiz da árvore virtual)...
+    /// With a ZIP/TAR open: its path (root of the virtual tree)...
     pub archive: Option<PathBuf>,
-    /// ...e a janela como estava antes de abri-lo, para voltar com Esc.
+    /// ...and the window as it was before opening it, to go back with Esc.
     pub outer: Option<Box<Pane>>,
 }
 
@@ -133,7 +133,7 @@ impl Pane {
         Self::with_tree(Tree::new(root))
     }
 
-    /// Janela mostrando o conteúdo de um arquivo compactado.
+    /// Window showing the contents of an archive.
     pub fn from_archive(path: &Path) -> std::io::Result<Self> {
         let mut reader = archive::Reader::open(path)?;
         let listing = reader
@@ -184,7 +184,7 @@ impl Pane {
         pane
     }
 
-    /// Diretório sob o cursor da árvore.
+    /// Directory under the tree cursor.
     pub fn current(&self) -> NodeId {
         self.rows[self.tree_state.selected().unwrap_or(0)].id
     }
@@ -205,8 +205,8 @@ impl Pane {
         self.tree.path(f.dir).join(&self.file(f).name)
     }
 
-    /// Diretório mostrado no cabeçalho: no Showall/Branch, é o do arquivo
-    /// sob o cursor.
+    /// Directory shown in the header: in Showall/Branch, that of the file
+    /// under the cursor.
     pub fn header_dir(&self) -> NodeId {
         match (self.view, self.selected_file()) {
             (FileView::Dir, _) | (_, None) => self.current(),
@@ -214,7 +214,7 @@ impl Pane {
         }
     }
 
-    /// Diretório-raiz da lista atual: o diretório, o Branch ou a árvore.
+    /// Root directory of the current list: the directory, the Branch or the tree.
     pub fn view_root(&self) -> NodeId {
         match self.view {
             FileView::Dir => self.current(),
@@ -223,8 +223,8 @@ impl Pane {
         }
     }
 
-    /// Arquivos sobre os quais uma operação age: os marcados da lista
-    /// atual ou o arquivo sob o cursor.
+    /// Files an operation acts on: the tagged ones in the current
+    /// list or the file under the cursor.
     pub fn sources(&self, tagged: bool) -> Vec<Source> {
         let refs: Vec<FileRef> = if tagged {
             self.files
@@ -252,12 +252,12 @@ impl Pane {
         }
     }
 
-    /// Todos os arquivos logados que passam no filespec.
+    /// All logged files that match the filespec.
     pub fn logged_matching_files(&self) -> Vec<FileRef> {
         self.branch_matching_files(ROOT)
     }
 
-    /// Os arquivos logados do ramo de `id` que passam no filespec.
+    /// The logged files of the branch of `id` that match the filespec.
     pub fn branch_matching_files(&self, id: NodeId) -> Vec<FileRef> {
         let mut refs = Vec::new();
         for dir in self.tree.visible_subtree(id) {
@@ -271,22 +271,22 @@ impl Pane {
         refs
     }
 
-    /// Relê `dir`; se ele ainda não está na árvore (ex.: acabou de ser
-    /// criado), relê o ancestral mais próximo que está.
+    /// Rereads `dir`; if it is not in the tree yet (e.g. it was just
+    /// created), rereads the nearest ancestor that is.
     pub fn rescan_path(&mut self, dir: &Path) {
         if let Some(id) = dir.ancestors().find_map(|d| self.tree.find(d)) {
             self.tree.rescan(id);
         }
     }
 
-    /// Atualiza a árvore e a lista de arquivos depois de mudanças no disco.
+    /// Updates the tree and the file list after changes on disk.
     pub fn after_change(&mut self) {
         self.refresh_rows(self.current());
         self.refresh_files();
     }
 
-    /// Relê `dirs` e atualiza a tela, mantendo o cursor no mesmo arquivo
-    /// (se ele ainda existir).
+    /// Rereads `dirs` and updates the screen, keeping the cursor on the same file
+    /// (if it still exists).
     pub fn rescan_paths<P: AsRef<Path>>(&mut self, dirs: &[P]) {
         self.keeping_cursor(|pane| {
             for dir in dirs {
@@ -295,16 +295,16 @@ impl Pane {
         });
     }
 
-    /// Troca a ordenação, mantendo o cursor no mesmo arquivo.
+    /// Changes the sort order, keeping the cursor on the same file.
     pub fn set_sort(&mut self, sort: Sort) {
         self.keeping_cursor(|pane| pane.sort = sort);
     }
 
-    /// Faz `change` e atualiza a tela com o cursor no mesmo arquivo de
-    /// antes (se ele ainda existir).
+    /// Runs `change` and updates the screen with the cursor on the same file as
+    /// before (if it still exists).
     fn keeping_cursor(&mut self, change: impl FnOnce(&mut Self)) {
-        // Guardado antes da mudança: depois, as referências da lista podem
-        // não valer mais.
+        // Saved before the change: afterwards, the references in the list may
+        // no longer be valid.
         let selected = self.selected_file().and_then(|f| {
             let entry = self.tree.node(f.dir).files.get(f.idx)?;
             Some((f.dir, entry.name.clone()))
@@ -321,8 +321,8 @@ impl Pane {
         }
     }
 
-    /// Leva o cursor da árvore até `path`, lendo e expandindo o caminho.
-    /// Para no último diretório existente; devolve se chegou ao destino.
+    /// Moves the tree cursor to `path`, reading and expanding the path.
+    /// Stops at the last existing directory; returns whether it reached the target.
     pub fn goto(&mut self, path: &Path) -> bool {
         match self.walk(path) {
             Some((id, reached)) => {
@@ -333,9 +333,9 @@ impl Pane {
         }
     }
 
-    /// Acha o diretório de `path` na árvore, lendo do disco o que faltar.
-    /// Devolve o mais fundo que existe e se chegou até o fim; `None` se o
-    /// caminho está fora da árvore.
+    /// Finds the directory for `path` in the tree, reading what is missing from disk.
+    /// Returns the deepest one that exists and whether it got all the way; `None` if
+    /// the path is outside the tree.
     fn walk(&mut self, path: &Path) -> Option<(NodeId, bool)> {
         let rel = path.strip_prefix(self.tree.path(ROOT)).ok()?;
         let mut cur = ROOT;
@@ -357,7 +357,7 @@ impl Pane {
         Some((cur, true))
     }
 
-    /// Põe o cursor da árvore em `id`, expandindo o caminho até ele.
+    /// Puts the tree cursor on `id`, expanding the path to it.
     pub fn show_node(&mut self, id: NodeId) {
         self.tree.reveal(id);
         self.tree.scan(id);
@@ -368,8 +368,8 @@ impl Pane {
         }
     }
 
-    /// Treespec: o diretório para um caminho digitado pela metade, onde o
-    /// último pedaço é o começo de um nome (`/home/an` → `/home/andre`).
+    /// Treespec: the directory for a half-typed path, where the last
+    /// piece is the start of a name (`/home/an` → `/home/andre`).
     pub fn treespec_target(&mut self, text: &str) -> Option<NodeId> {
         let (dir, partial) = split_partial(text);
         let (node, reached) = self.walk(Path::new(dir))?;
@@ -379,8 +379,8 @@ impl Pane {
         Some(self.treespec_match(node, partial).unwrap_or(node))
     }
 
-    /// Primeiro subdiretório de `parent` cujo nome começa com `partial`
-    /// (sem diferenciar maiúsculas). Ocultos só se o começo for um ponto.
+    /// First subdirectory of `parent` whose name starts with `partial`
+    /// (case-insensitive). Hidden ones only if the start is a dot.
     fn treespec_match(&self, parent: NodeId, partial: &str) -> Option<NodeId> {
         let partial = partial.to_lowercase();
         self.treespec_choices(parent, &partial)
@@ -406,7 +406,7 @@ impl Pane {
             .collect()
     }
 
-    /// Completa o último pedaço com o nome do diretório que ele indica.
+    /// Completes the last piece with the name of the directory it points to.
     pub fn treespec_complete(&mut self, text: &str) -> Option<String> {
         let (dir, partial) = split_partial(text);
         if partial.is_empty() {
@@ -422,8 +422,8 @@ impl Pane {
         ))
     }
 
-    /// Troca o último pedaço pelo próximo (ou anterior) diretório do mesmo
-    /// nível (Tab / Shift+Tab).
+    /// Replaces the last piece with the next (or previous) directory at the same
+    /// level (Tab / Shift+Tab).
     pub fn treespec_sibling(&mut self, text: &str, forward: bool) -> Option<String> {
         let (dir, partial) = split_partial(text);
         let (parent, true) = self.walk(Path::new(dir))? else {
@@ -448,8 +448,8 @@ impl Pane {
         ))
     }
 
-    /// Shift+letra: próximo diretório (na árvore) ou arquivo (na lista)
-    /// cujo nome começa com `c`, dando a volta no fim.
+    /// Shift+letter: next directory (in the tree) or file (in the list)
+    /// whose name starts with `c`, wrapping around at the end.
     pub fn spell_jump(&mut self, c: char) {
         let c = c.to_lowercase().next().unwrap_or(c);
         let starts = |name: &std::ffi::OsStr| name.to_string_lossy().to_lowercase().starts_with(c);
@@ -507,8 +507,8 @@ impl Pane {
             1
         };
         let target = match cmd {
-            // Em colunas, ← e → andam um arquivo e ↑ ↓ uma linha; numa
-            // coluna só, ← e → paginam (como no ZTreeWin).
+            // In columns, ← and → move one file and ↑ ↓ one row; in a
+            // single column, ← and → page (as in ZTreeWin).
             Command::Left if cols > 1 => pos.saturating_sub(1),
             Command::Right if cols > 1 => (pos + 1).min(len.saturating_sub(1)),
             Command::Left => move_cursor(Command::PageUp, pos, len, self.file_page),
@@ -521,7 +521,7 @@ impl Pane {
         self.file_state.select(Some(target));
     }
 
-    /// Alt+F: próximo modo de exibição.
+    /// Alt+F: next display mode.
     pub fn cycle_display(&mut self) {
         self.display = self.display.next();
         *self.file_state.offset_mut() = 0;
@@ -534,8 +534,8 @@ impl Pane {
         self.refresh_files();
     }
 
-    /// Volta para a árvore. Saindo do Showall/Branch, o cursor da árvore
-    /// vai para o diretório do arquivo que estava selecionado.
+    /// Back to the tree. Leaving Showall/Branch, the tree cursor
+    /// goes to the directory of the file that was selected.
     pub fn back_to_tree(&mut self) {
         let target = (self.view != FileView::Dir)
             .then(|| self.selected_file())
@@ -570,14 +570,14 @@ impl Pane {
         }
     }
 
-    /// Recalcula as linhas visíveis mantendo o cursor em `keep`.
+    /// Recomputes the visible rows, keeping the cursor on `keep`.
     pub fn refresh_rows(&mut self, keep: NodeId) {
         self.rows = self.tree.visible_rows();
         let i = self.rows.iter().position(|r| r.id == keep).unwrap_or(0);
         self.tree_state.select(Some(i));
     }
 
-    /// Refaz a lista da janela de arquivos conforme a visão e o filespec.
+    /// Rebuilds the file window list according to the view and the filespec.
     pub fn refresh_files(&mut self) {
         let dirs = match self.view {
             FileView::Dir => vec![self.current()],
@@ -613,7 +613,7 @@ fn split_partial(text: &str) -> (&str, &str) {
     }
 }
 
-/// Nova posição de um cursor numa lista de `len` itens.
+/// New position of a cursor in a list of `len` items.
 pub fn move_cursor(cmd: Command, pos: usize, len: usize, page: usize) -> usize {
     if len == 0 {
         return 0;
@@ -660,7 +660,7 @@ mod tests {
         let name = &pane.file(pane.selected_file().unwrap()).name;
         assert_eq!(name, "d");
 
-        // Se o arquivo sumiu, o cursor fica dentro da lista.
+        // If the file vanished, the cursor stays inside the list.
         std::fs::remove_file(tmp.path().join("d")).unwrap();
         pane.rescan_paths(&[tmp.path()]);
         assert_eq!(pane.file_state.selected(), Some(2));
@@ -684,7 +684,7 @@ mod tests {
         assert_eq!(name(&pane, id), "notes");
         let id = pane.treespec_target(&format!("{root}/.c")).unwrap();
         assert_eq!(name(&pane, id), ".config");
-        // Nada casa: fica no diretório de cima.
+        // Nothing matches: stays in the parent directory.
         let id = pane.treespec_target(&format!("{root}/zz")).unwrap();
         assert_eq!(id, ROOT);
         assert!(pane.treespec_target("/fora/da/arvore").is_none());
@@ -747,7 +747,7 @@ mod tests {
         pane.apply_files(Command::Left);
         assert_eq!(sel(&pane), 4);
 
-        // Numa coluna, ← e → paginam.
+        // In a single column, ← and → page.
         pane.display = FileDisplay::Details;
         pane.file_page = 3;
         pane.apply_files(Command::Right);
@@ -768,10 +768,10 @@ mod tests {
         assert_eq!(pane.current_path(), tmp.path().join("a/b/c"));
         assert!(pane.rows.iter().any(|r| r.id == pane.current()));
 
-        // Caminho que não existe: para no último diretório que existe.
+        // Path that does not exist: stops at the last directory that exists.
         assert!(!pane.goto(&tmp.path().join("a/x/y")));
         assert_eq!(pane.current_path(), tmp.path().join("a"));
-        // Fora da árvore: não se mexe.
+        // Outside the tree: no movement.
         assert!(!pane.goto(Path::new("/elsewhere")));
         assert_eq!(pane.current_path(), tmp.path().join("a"));
     }

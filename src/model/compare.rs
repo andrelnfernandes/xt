@@ -1,14 +1,14 @@
-//! Comparação de um arquivo com o seu correspondente em outro diretório.
+//! Comparison of a file with its counterpart in another directory.
 
 use std::fs::Metadata;
 use std::time::SystemTime;
 
-/// Quais diferenças de data contam como "mesma data".
+/// Which date differences count as "same date".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Tolerance {
-    /// Até 2 segundos: FAT/exFAT guardam a hora com essa precisão.
+    /// Up to 2 seconds: FAT/exFAT store the time with that precision.
     pub two_seconds: bool,
-    /// Exatamente 1 hora: mudança de horário de verão.
+    /// Exactly 1 hour: daylight saving time change.
     pub one_hour: bool,
 }
 
@@ -22,26 +22,26 @@ impl Tolerance {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Relation {
-    /// Não existe do outro lado.
+    /// Doesn't exist on the other side.
     Unique,
     Newer,
     Older,
-    /// Mesmo tamanho e mesma data.
+    /// Same size and same date.
     Identical,
-    /// Mesma data, tamanho diferente (ou o outro lado é um diretório).
+    /// Same date, different size (or the other side is a directory).
     Different,
 }
 
-/// O que marcar numa comparação.
+/// What to tag in a comparison.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompareMode {
     Unique,
     Newer,
     Older,
     Identical,
-    /// Tudo o que existe dos dois lados e não é idêntico.
+    /// Everything that exists on both sides and isn't identical.
     Different,
-    /// Únicos + mais novos: o que falta copiar para atualizar o outro lado.
+    /// Unique + newer: what still needs copying to update the other side.
     AllNew,
 }
 
@@ -82,7 +82,7 @@ impl CompareMode {
     }
 }
 
-/// Relação entre o arquivo de origem e o do outro lado (`other`).
+/// Relation between the source file and the one on the other side (`other`).
 pub fn relation(
     size: u64,
     modified: Option<SystemTime>,

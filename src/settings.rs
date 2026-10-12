@@ -1,6 +1,6 @@
-//! Tela de configuração (F12 ou Alt+F10), no estilo da do ZTreeWin:
-//! páginas de opções, a letra da opção muda o valor, F3 grava, Esc
-//! desiste e F4 escolhe o tema (com prévia na hora).
+//! Settings screen (F12 or Alt+F10), in the style of ZTreeWin's:
+//! pages of options, the option's letter changes the value, F3 saves, Esc
+//! cancels and F4 picks the theme (with an instant preview).
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -125,8 +125,8 @@ impl Opt {
         }
     }
 
-    /// Passa para o próximo valor. O Editor é texto: devolve `false` e a
-    /// tela abre um campo para digitar.
+    /// Moves to the next value. The Editor is text: returns `false` and the
+    /// screen opens a field for typing.
     fn cycle(self, c: &mut Config) -> bool {
         let o = &mut c.options;
         match self {
@@ -149,7 +149,7 @@ impl Opt {
     }
 }
 
-/// O que a tela pede ao App depois de uma tecla.
+/// What the screen asks of the App after a key.
 #[derive(Debug, PartialEq)]
 pub enum Outcome {
     Stay,
@@ -157,26 +157,26 @@ pub enum Outcome {
     Save(Box<Config>),
 }
 
-/// Lista de temas do F4.
+/// Theme list for F4.
 pub struct ThemePicker {
     pub index: usize,
 }
 
 pub struct Settings {
-    /// Cópia sendo editada.
+    /// Copy being edited.
     pub config: Config,
     original: Config,
     pub page: usize,
     pub selected: usize,
-    /// Editando uma opção de texto (editor, programa do Open).
+    /// Editing a text option (editor, Open program).
     pub editing: Option<(Opt, LineInput)>,
     pub picker: Option<ThemePicker>,
-    /// Esc com mudanças: o próximo Esc descarta.
+    /// Esc with changes: the next Esc discards them.
     pub confirm_discard: bool,
-    /// Mensagem no rodapé (ex.: erro ao gravar).
+    /// Footer message (e.g. error while saving).
     pub message: Option<String>,
-    /// O arquivo tinha erros ao abrir o xt: gravar apagaria o que o usuário
-    /// escreveu, então F3 fica bloqueado até ele corrigir.
+    /// The file had errors when xt opened it: saving would erase what the user
+    /// wrote, so F3 stays blocked until they fix it.
     pub load_error: Option<String>,
 }
 
@@ -306,7 +306,7 @@ impl Settings {
             }
             _ => return,
         }
-        // Prévia: a tela inteira já aparece com o tema sob o cursor.
+        // Preview: the whole screen already shows the theme under the cursor.
         let preview = Config {
             theme: THEMES[picker.index].0.to_string(),
             ..self.config.clone()
@@ -315,7 +315,7 @@ impl Settings {
     }
 }
 
-/// Mostra `config.theme` (com as cores trocadas em `[colors]`).
+/// Shows `config.theme` (with the colors overridden in `[colors]`).
 fn preview_theme(config: &Config) {
     if let Ok(theme) = Theme::from_config(config) {
         config::set_theme(theme);

@@ -1,4 +1,4 @@
-//! Comandos e o campo de texto dos prompts. O mapa de teclas está em
+//! Commands and the prompts' text field. The key map is in
 //! `keymap.rs`.
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -13,78 +13,78 @@ pub enum Command {
     End,
     Expand,
     Collapse,
-    /// Loga e expande o ramo inteiro.
+    /// Logs and expands the whole branch.
     ExpandAll,
-    /// Alterna entre a árvore e a janela de arquivos.
+    /// Switches between the tree and the file window.
     SwitchWindow,
-    /// Tab: troca de janela com a tela dividida.
+    /// Tab: switches window in split screen.
     SwitchPane,
-    /// F8: divide a tela em duas janelas (ou volta a uma).
+    /// F8: splits the screen into two windows (or back to one).
     Split,
-    /// Abre outro diretório na janela.
+    /// Opens another directory in the window.
     Log,
-    /// Compara com o diretório da outra janela e marca arquivos.
+    /// Compares with the other window's directory and tags files.
     Compare,
-    /// Abre um ZIP/TAR como se fosse um diretório (Alt+F5).
+    /// Opens a ZIP/TAR as if it were a directory (Alt+F5).
     OpenArchive,
-    /// Abre o arquivo (ou os marcados) no programa padrão do sistema.
+    /// Opens the file (or the tagged ones) in the system's default program.
     OpenWith {
         tagged: bool,
     },
-    /// Alt+C na árvore: Compare do ramo inteiro.
+    /// Alt+C in the tree: Compare of the whole branch.
     CompareBranch,
-    /// Backspace: diretório pai.
+    /// Backspace: parent directory.
     Parent,
-    /// Abre o arquivo no editor.
+    /// Opens the file in the editor.
     Edit,
-    /// Executa um comando do shell.
+    /// Runs a shell command.
     Execute,
-    /// F1: lista das teclas.
+    /// F1: key list.
     Help,
-    /// Alt+S: escolhe a ordenação dos arquivos.
+    /// Alt+S: chooses the file sort order.
     Sort,
-    /// Alt+P: apaga o diretório atual com tudo dentro.
+    /// Alt+P: deletes the current directory with everything inside.
     Prune,
-    /// F12 / Alt+F10: tela de configuração.
+    /// F12 / Alt+F10: settings screen.
     Settings,
-    /// Ctrl+S: procura um texto nos marcados e desmarca os que não o têm.
+    /// Ctrl+S: searches for text in the tagged files and untags those without it.
     SearchTagged,
-    /// Ctrl+V: visualiza os marcados, um depois do outro.
+    /// Ctrl+V: views the tagged files, one after the other.
     ViewTagged,
-    /// `\`: navega digitando o caminho.
+    /// `\`: navigates by typing the path.
     Treespec,
-    /// Alt+K: tamanho ou nº de arquivos por diretório na árvore.
+    /// Alt+K: size or number of files per directory in the tree.
     Kbyte,
-    /// Alt+Q: sai deixando o shell no diretório atual.
+    /// Alt+Q: quits, leaving the shell in the current directory.
     QuitChangeDir,
-    /// Alt+F: modo de exibição da janela de arquivos.
+    /// Alt+F: display mode of the file window.
     FileDisplay,
-    /// Ctrl+F7 / Ctrl+F8 / Ctrl+F9 na árvore: marca, desmarca ou inverte
-    /// os arquivos logados do ramo.
+    /// Ctrl+F7 / Ctrl+F8 / Ctrl+F9 in the tree: tags, untags or inverts
+    /// the branch's logged files.
     TagBranch,
     UntagBranch,
     InvertBranch,
-    /// F7: a lista de arquivos com o conteúdo do selecionado ao lado.
+    /// F7: the file list with the selected file's content beside it.
     Autoview,
-    /// N: muda a data de modificação (do arquivo, dos marcados ou do
-    /// diretório, na árvore).
+    /// N: changes the modification date (of the file, the tagged ones or the
+    /// directory, in the tree).
     NewDate {
         tagged: bool,
     },
-    /// Ctrl+B: cria um arquivo com uma linha por arquivo marcado.
+    /// Ctrl+B: creates a file with one line per tagged file.
     Batch,
-    /// Alt+I: detalhes do arquivo ou diretório.
+    /// Alt+I: details of the file or directory.
     Info,
-    /// A na árvore: sistemas de arquivos montados.
+    /// A in the tree: mounted file systems.
     Avail,
-    /// ?: estatísticas da janela.
+    /// ?: window statistics.
     Stats,
-    /// F5 / Ctrl+F5: cria um ZIP/TAR com o arquivo ou com os marcados.
+    /// F5 / Ctrl+F5: creates a ZIP/TAR with the file or the tagged ones.
     CreateArchive {
         tagged: bool,
     },
-    /// ← e → na janela de arquivos: arquivo anterior/próximo em colunas,
-    /// página acima/abaixo numa coluna só.
+    /// ← and → in the file window: previous/next file in columns,
+    /// page up/down in a single column.
     Left,
     Right,
     Back,
@@ -92,15 +92,15 @@ pub enum Command {
     Showall,
     Branch,
     View,
-    /// Relê o diretório atual do disco.
+    /// Rereads the current directory from disk.
     Relog,
     Tag,
     Untag,
     TagAll,
     UntagAll,
     Invert,
-    // `tagged`: age sobre os arquivos marcados em vez do arquivo atual.
-    // `paths`: recria os subdiretórios no destino (Alt+C / Alt+M).
+    // `tagged`: acts on the tagged files instead of the current file.
+    // `paths`: recreates the subdirectories at the destination (Alt+C / Alt+M).
     Copy {
         tagged: bool,
         paths: bool,
@@ -120,7 +120,7 @@ pub enum Command {
     Quit,
 }
 
-/// Resultado de uma tecla num campo de texto.
+/// Result of a key in a text field.
 #[derive(Debug, PartialEq, Eq)]
 pub enum LineEvent {
     Submit,
@@ -128,16 +128,16 @@ pub enum LineEvent {
     Editing,
 }
 
-/// Campo de texto de uma linha, usado nos prompts (Filespec etc.).
+/// Single-line text field, used in prompts (Filespec etc.).
 pub struct LineInput {
     pub text: String,
-    /// Posição do cursor, em caracteres.
+    /// Cursor position, in characters.
     pub cursor: usize,
-    /// Entradas anteriores deste tipo de prompt, da mais antiga à mais nova.
+    /// Previous entries of this kind of prompt, oldest to newest.
     history: Vec<String>,
-    /// Posição no histórico enquanto se navega com ↑/↓...
+    /// Position in the history while navigating with ↑/↓...
     history_pos: Option<usize>,
-    /// ...e o texto que estava sendo digitado, para voltar a ele.
+    /// ...and the text that was being typed, to go back to it.
     draft: String,
 }
 

@@ -1,12 +1,12 @@
-//! Desenho da tela no layout clássico do XTree:
+//! Screen drawing in the classic XTree layout:
 //!
 //! ```text
-//! ┌ caminho atual ──────────────────────────┐
-//! │ árvore                      │ estatíst. │
+//! ┌ current path ───────────────────────────┐
+//! │ tree                        │ stats     │
 //! ├─────────────────────────────┤           │
-//! │ arquivos do diretório       │           │
+//! │ directory files             │           │
 //! └─────────────────────────────┴───────────┘
-//!  menu de comandos (2 linhas)
+//!  command menu (2 lines)
 //! ```
 
 use std::ops::Range;
@@ -54,7 +54,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     draw_menu(frame, app, menu);
 
     if app.autoview.is_some() {
-        // F7: lista à esquerda, conteúdo do arquivo selecionado à direita.
+        // F7: list on the left, contents of the selected file on the right.
         let [list, view] =
             Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)])
                 .areas(main);
@@ -70,7 +70,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             draw_viewer_body(frame, v, format!(" Autoview: {name} "), view);
         }
     } else if app.is_split() {
-        // Duas janelas lado a lado; o painel de estatísticas sai para dar espaço.
+        // Two windows side by side; the statistics panel goes away to make room.
         let halves: [Rect; 2] =
             Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
                 .areas(main);
@@ -86,8 +86,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     }
 }
 
-/// Uma janela: árvore em cima e arquivos embaixo, ou só os arquivos.
-/// Com a tela dividida, o título da árvore mostra o diretório atual.
+/// One window: tree on top and files below, or just the files.
+/// With a split screen, the tree title shows the current directory.
 fn draw_pane(frame: &mut Frame, pane: &mut Pane, active: bool, split: bool, area: Rect) {
     match pane.focus {
         Focus::Tree => {
@@ -157,7 +157,7 @@ fn draw_tree(frame: &mut Frame, pane: &mut Pane, active: bool, title: String, ar
     pane.tree_page = area.height.saturating_sub(2) as usize;
 
     let (range, mut state) = visible_window(&mut pane.tree_state, pane.rows.len(), pane.tree_page);
-    // Alt+K: tamanho ou nº de arquivos à direita de cada diretório.
+    // Alt+K: size or file count to the right of each directory.
     let kbyte = pane.kbyte;
     let totals = (kbyte.show != KbyteShow::None)
         .then(|| pane.tree.dir_totals(kbyte.branch, kbyte.tagged_only));
@@ -255,9 +255,9 @@ fn draw_files(frame: &mut Frame, pane: &mut Pane, active: bool, area: Rect) {
     frame.render_stateful_widget(list, area, &mut state);
 }
 
-/// Ajusta a rolagem de `state` para o item selecionado ficar visível.
-/// Devolve a faixa de itens que cabe em `height` linhas e o estado a usar
-/// para desenhar só essa faixa (listas grandes não são montadas inteiras).
+/// Adjusts the scroll of `state` so the selected item stays visible.
+/// Returns the range of items that fits in `height` lines and the state to use
+/// to draw only that range (large lists are not built in full).
 fn visible_window(state: &mut ListState, len: usize, height: usize) -> (Range<usize>, ListState) {
     let height = height.max(1);
     let sel = state.selected().unwrap_or(0).min(len.saturating_sub(1));
@@ -265,7 +265,7 @@ fn visible_window(state: &mut ListState, len: usize, height: usize) -> (Range<us
     if sel >= offset + height {
         offset = sel + 1 - height;
     }
-    // Sem espaço vazio no fim quando a lista encolhe.
+    // No empty space at the end when the list shrinks.
     offset = offset.min(len.saturating_sub(height));
     *state.offset_mut() = offset;
     let range = offset..(offset + height).min(len);
@@ -275,12 +275,12 @@ fn visible_window(state: &mut ListState, len: usize, height: usize) -> (Range<us
     )
 }
 
-/// Nomes maiores são cortados com `…` nos modos de colunas, para caberem
-/// várias colunas (como no XTree, de colunas de largura fixa).
+/// Longer names are cut with `…` in the column modes, so that several columns
+/// fit (as in XTree, with fixed-width columns).
 const MAX_COLUMN_NAME: usize = 20;
 
-/// Modos de várias colunas (Alt+F): os arquivos vão da esquerda para a
-/// direita e depois para a linha de baixo, como no XTree.
+/// Multi-column modes (Alt+F): files run left to right and then onto the next
+/// row down, as in XTree.
 fn draw_file_columns(frame: &mut Frame, pane: &mut Pane, active: bool, area: Rect, title: String) {
     let block = panel(title, active);
     let inner = block.inner(area);
@@ -299,13 +299,13 @@ fn draw_file_columns(frame: &mut Frame, pane: &mut Pane, active: bool, area: Rec
         .max()
         .unwrap_or(1)
         .min(MAX_COLUMN_NAME);
-    // Marca de tag + nome + (tamanho e permissões) + espaço entre colunas.
+    // Tag mark + name + (size and permissions) + space between columns.
     let cell_w = 2 + name_w + if with_size { 23 } else { 0 } + 1;
     let cols = (width / cell_w).max(1);
     pane.file_cols = cols;
     pane.file_page = height * cols;
 
-    // Rolagem por linhas, com o arquivo selecionado sempre visível.
+    // Scroll by rows, with the selected file always visible.
     let sel = pane.file_state.selected().unwrap_or(0).min(n - 1);
     let rows = n.div_ceil(cols);
     let sel_row = sel / cols;
@@ -351,7 +351,7 @@ fn draw_file_columns(frame: &mut Frame, pane: &mut Pane, active: bool, area: Rec
     frame.render_widget(Paragraph::new(lines), inner);
 }
 
-/// Cor do nome conforme o tipo (e se está marcado).
+/// Name color by file type (and whether it is tagged).
 fn file_style(f: &FileEntry) -> Style {
     match f.kind {
         _ if f.tagged => Style::new().fg(theme().tagged).add_modifier(Modifier::BOLD),
@@ -362,13 +362,13 @@ fn file_style(f: &FileEntry) -> Style {
     }
 }
 
-/// Uma linha da janela de arquivos: nome, tamanho, data e permissões (ou
-/// só o nome, no modo de nomes longos).
+/// One row of the files window: name, size, date and permissions (or just
+/// the name, in long-names mode).
 fn file_line(f: &FileEntry, width: usize, names_only: bool) -> ListItem<'static> {
     let size = fmt_num(f.size);
     let date = f.modified.map(fmt_time).unwrap_or_default();
     let mode = fmt_mode(f.mode, f.kind);
-    // Em janelas estreitas (tela dividida), as colunas menos úteis saem.
+    // In narrow windows (split screen), the least useful columns are dropped.
     let details = if names_only {
         String::new()
     } else if width >= 72 {
@@ -379,7 +379,7 @@ fn file_line(f: &FileEntry, width: usize, names_only: bool) -> ListItem<'static>
         format!(" {size:>13}")
     };
 
-    // 2 colunas para a marca de tag.
+    // 2 columns for the tag mark.
     let name_width = width.saturating_sub(details.chars().count() + 2).max(8);
     let mut name: String = f.name.to_string_lossy().into_owned();
     if f.kind == FileKind::Symlink {
@@ -506,8 +506,8 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
             menu_line("", &[("Esc", "cancel")]),
         ]
     } else if let Some(confirm) = &app.confirm {
-        // Pergunta numa linha e opções na outra, para caminhos longos não
-        // empurrarem as opções para fora da tela.
+        // Question on one line and options on the other, so long paths don't
+        // push the options off the screen.
         let mut options = menu_words("", confirm.options);
         options.spans.extend(
             menu_line("", &[("Esc", "cancel")])
@@ -542,11 +542,11 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(Paragraph::new(lines), area);
 }
 
-/// Menu do rodapé sem nada em andamento: o normal ou o de Ctrl/Alt,
-/// conforme a tecla pressionada (ou escolhida com F9).
+/// Footer menu when nothing is in progress: the normal one or the Ctrl/Alt one,
+/// depending on the key held down (or chosen with F9).
 fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
     let tree = app.focus == Focus::Tree;
-    // Com F9, a próxima letra recebe o modificador: avisa como desistir.
+    // With F9, the next letter gets the modifier: tell how to back out.
     let sticky = app.held.is_none() && app.sticky != MenuMode::Normal;
     let hint: (&str, &str) = if sticky {
         ("Esc", "cancel")
@@ -681,7 +681,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
     }
 }
 
-/// Prompt no rodapé: o rótulo, o texto digitado (com o cursor) e as teclas.
+/// Footer prompt: the label, the typed text (with the cursor) and the keys.
 fn prompt_lines(frame: &mut Frame, prompt: &app::Prompt, area: Rect) -> Vec<Line<'static>> {
     let bold = Style::new().add_modifier(Modifier::BOLD);
     let col = area.x + (prompt.label.chars().count() + prompt.input.cursor) as u16;
@@ -707,7 +707,7 @@ fn prompt_lines(frame: &mut Frame, prompt: &app::Prompt, area: Rect) -> Vec<Line
     ]
 }
 
-/// Linha do visualizador com o trecho encontrado destacado.
+/// Viewer line with the matched span highlighted.
 fn highlighted(line: String, mark: Option<(usize, usize)>) -> Line<'static> {
     let Some((s, e)) = mark else {
         return Line::from(line);
@@ -722,8 +722,8 @@ fn highlighted(line: String, mark: Option<(usize, usize)>) -> Line<'static> {
     ])
 }
 
-/// Rodapé durante Copy/Move/Delete: arquivo atual e barra de progresso,
-/// ou a pergunta de conflito.
+/// Footer during Copy/Move/Delete: current file and progress bar,
+/// or the conflict question.
 fn op_lines(op: &Operation) -> Vec<Line<'static>> {
     let bold = Style::new().add_modifier(Modifier::BOLD);
     let name = |p: &std::path::Path| {
@@ -784,8 +784,8 @@ fn op_lines(op: &Operation) -> Vec<Line<'static>> {
     vec![first, second]
 }
 
-/// Linha de menu no estilo do XTree: a tecla de cada palavra é a primeira
-/// letra maiúscula ("Copy" → C, "eXecute" → X).
+/// XTree-style menu line: the key of each word is the first uppercase
+/// letter ("Copy" → C, "eXecute" → X).
 fn menu_words(title: &str, words: &[&str]) -> Line<'static> {
     let mut spans = vec![Span::styled(
         format!("{title:<9}"),
@@ -804,8 +804,8 @@ fn menu_words(title: &str, words: &[&str]) -> Line<'static> {
     Line::from(spans)
 }
 
-/// Tela de configuração: as opções da página, com a letra, a descrição e o
-/// valor; com F4, a lista de temas por cima.
+/// Configuration screen: the page's options, with letter, description and
+/// value; with F4, the theme list on top.
 fn draw_settings(frame: &mut Frame, s: &Settings) {
     let [header, body, menu] = Layout::vertical([
         Constraint::Length(1),
@@ -1027,7 +1027,7 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
     frame.render_widget(Paragraph::new(lines), menu);
 }
 
-/// O conteúdo do visualizador numa moldura (também usado pelo Autoview).
+/// The viewer contents in a frame (also used by Autoview).
 fn draw_viewer_body(frame: &mut Frame, v: &mut Viewer, title: String, area: Rect) {
     let inner = panel("", false).inner(area);
     v.page = inner.height as usize;
@@ -1065,7 +1065,7 @@ fn disk_space(path: &std::path::Path) -> Option<(u64, u64)> {
     Some((s.blocks() as u64 * frag, s.blocks_available() as u64 * frag))
 }
 
-/// Corta ou completa com espaços para caber em `width` colunas.
+/// Cuts or pads with spaces to fit `width` columns.
 fn fit(s: &str, width: usize) -> String {
     let len = s.chars().count();
     if len <= width {
@@ -1077,7 +1077,7 @@ fn fit(s: &str, width: usize) -> String {
     }
 }
 
-/// Como `fit`, mas guarda o fim do texto: "…/projetos/xt".
+/// Like `fit`, but keeps the end of the text: "…/projetos/xt".
 fn fit_tail(s: &str, width: usize) -> String {
     let len = s.chars().count();
     if len <= width {
@@ -1087,12 +1087,12 @@ fn fit_tail(s: &str, width: usize) -> String {
     format!("…{tail}")
 }
 
-/// Número com o separador de milhar configurado.
+/// Number with the configured thousands separator.
 fn fmt_num(n: u64) -> String {
     group_digits(n, formats().number.separator())
 }
 
-/// 1234567 -> "1,234,567" (com `,`).
+/// 1234567 -> "1,234,567" (with `,`).
 fn group_digits(n: u64, separator: Option<char>) -> String {
     let digits = n.to_string();
     let Some(sep) = separator else {
@@ -1114,7 +1114,7 @@ fn fmt_time(t: SystemTime) -> String {
         .to_string()
 }
 
-/// Permissões no formato do `ls -l`, ex.: "-rwxr-xr-x".
+/// Permissions in `ls -l` format, e.g.: "-rwxr-xr-x".
 fn fmt_mode(mode: u32, kind: FileKind) -> String {
     let mut s = String::with_capacity(10);
     s.push(match kind {
@@ -1174,11 +1174,11 @@ mod tests {
         let (range, local) = visible_window(&mut state, 100, 10);
         assert_eq!((range, local.selected()), (6..16, Some(9)));
 
-        // Subindo dentro da janela, ela não se move.
+        // Moving up inside the window, it doesn't move.
         state.select(Some(8));
         assert_eq!(visible_window(&mut state, 100, 10).0, 6..16);
 
-        // A lista encolheu: a janela recua.
+        // The list shrank: the window moves back.
         state.select(Some(2));
         assert_eq!(visible_window(&mut state, 5, 10).0, 0..5);
         assert_eq!(visible_window(&mut state, 0, 10).0, 0..0);
@@ -1190,8 +1190,8 @@ mod tests {
         let keys: Vec<&str> = line
             .spans
             .iter()
-            // As letras de tecla são as partes em negrito (o tema pode
-            // estar sendo trocado por outro teste ao mesmo tempo).
+            // The key letters are the bold parts (the theme may
+            // be getting switched by another test at the same time).
             .filter(|s| {
                 s.style.add_modifier.contains(Modifier::BOLD) && !s.content.trim().is_empty()
             })

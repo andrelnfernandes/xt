@@ -1,9 +1,9 @@
-//! Estado da aplicação e execução dos comandos.
+//! Application state and command execution.
 //!
-//! O estado de cada janela (árvore, cursores, filespec) fica em [`Pane`];
-//! aqui fica o que é global: prompts, perguntas, operações em andamento e
-//! o visualizador. `App` dá acesso direto à janela ativa (`app.tree`,
-//! `app.files`...), via `Deref`.
+//! The state of each window (tree, cursors, filespec) lives in [`Pane`];
+//! what is global lives here: prompts, questions, ongoing operations and
+//! the viewer. `App` gives direct access to the active window (`app.tree`,
+//! `app.files`...) via `Deref`.
 
 use std::collections::HashSet;
 use std::fs;
@@ -32,10 +32,10 @@ use crate::shell::{self, External};
 use crate::state::{self, History};
 use crate::viewer::{self, Action as ViewerAction, SearchFrom, Viewer};
 
-/// Leitura em andamento e o que fazer quando ela terminar.
+/// Ongoing read and what to do when it finishes.
 pub struct Job {
     pub log: LogJob,
-    /// Janela cuja árvore está sendo lida.
+    /// Window whose tree is being read.
     pane: usize,
     then: AfterLog,
 }
@@ -43,13 +43,13 @@ pub struct Job {
 enum AfterLog {
     Refresh,
     OpenBranch(NodeId),
-    /// Abre o Branch e compara com a outra janela.
+    /// Opens the Branch and compares it with the other window.
     CompareBranch(NodeId, CompareMode),
-    /// Pede a confirmação do Prune deste diretório.
+    /// Asks for confirmation of the Prune of this directory.
     Prune(NodeId),
 }
 
-/// Qual menu o rodapé mostra: o normal ou o dos comandos com Ctrl/Alt.
+/// Which menu the footer shows: the normal one or the Ctrl/Alt commands one.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum MenuMode {
     #[default]
@@ -58,7 +58,7 @@ pub enum MenuMode {
     Alt,
 }
 
-/// Campo de texto aberto no rodapé.
+/// Text field open in the footer.
 pub struct Prompt {
     pub label: String,
     pub input: LineInput,
@@ -71,7 +71,7 @@ enum PromptKind {
         kind: OpKind,
         sources: Vec<Source>,
         tagged: bool,
-        /// Recriar os subdiretórios a partir de `base` no destino.
+        /// Recreate the subdirectories from `base` at the destination.
         paths: bool,
         base: PathBuf,
     },
@@ -81,31 +81,31 @@ enum PromptKind {
     Chmod(Vec<PathBuf>),
     Log,
     Execute,
-    /// Ctrl+S: termo a procurar nos marcados (F2 e F4 mudam as opções).
+    /// Ctrl+S: term to search for in the tagged files (F2 and F4 change the options).
     SearchTagged {
         spec: SearchSpec,
     },
-    /// Busca dentro do visualizador.
+    /// Search inside the viewer.
     ViewerSearch {
         spec: SearchSpec,
         forward: bool,
         from: SearchFrom,
     },
-    /// Treespec: o cursor da árvore segue o que é digitado; Esc volta
-    /// para `origin`.
+    /// Treespec: the tree cursor follows what is typed; Esc goes back
+    /// to `origin`.
     Treespec {
         origin: NodeId,
     },
-    /// New date: data e hora para estes caminhos.
+    /// New date: date and time for these paths.
     NewDate(Vec<PathBuf>),
-    /// Batch: primeiro o arquivo a criar, depois a máscara de linha.
+    /// Batch: first the file to create, then the line mask.
     BatchFile,
     BatchMask {
         file: PathBuf,
     },
-    /// F5: nome do arquivo compactado a criar com estes arquivos.
+    /// F5: name of the archive to create from these files.
     CreateArchive(Vec<ArchiveItem>),
-    /// Confirmação de um Prune: o texto digitado tem de ser `word`.
+    /// Confirmation of a Prune: the typed text must be `word`.
     Prune {
         root: PathBuf,
         word: String,
@@ -115,7 +115,7 @@ enum PromptKind {
 }
 
 impl PromptKind {
-    /// Prompts do mesmo tipo dividem o histórico (↑/↓).
+    /// Prompts of the same kind share history (↑/↓).
     fn history_key(&self) -> Option<&'static str> {
         Some(match self {
             PromptKind::Filespec => "filespec",
@@ -159,25 +159,25 @@ impl PromptKind {
     }
 }
 
-/// Visualização dos marcados (Ctrl+V): os arquivos e qual está aberto.
+/// View of the tagged files (Ctrl+V): the files and which one is open.
 pub struct TaggedView {
     pub items: Vec<(FileRef, PathBuf)>,
     pub index: usize,
 }
 
-/// O Autoview lê só o começo de cada arquivo, para andar rápido.
+/// Autoview reads only the start of each file, to stay fast.
 const AUTOVIEW_BYTES: u64 = 1024 * 1024;
 
-/// Entradas guardadas por tipo de prompt.
+/// Entries kept per prompt kind.
 const HISTORY_SIZE: usize = 100;
 
 impl Prompt {
-    /// O prompt de Copy/Move de marcados aceita F6 (com/sem caminhos).
+    /// The Copy/Move prompt for tagged files accepts F6 (with/without paths).
     pub fn toggles_paths(&self) -> bool {
         matches!(self.kind, PromptKind::Transfer { tagged: true, .. })
     }
 
-    /// Prompts de busca aceitam F2 (maiúsculas) e F4 (texto/hex).
+    /// Search prompts accept F2 (case) and F4 (text/hex).
     pub fn is_search(&self) -> bool {
         matches!(
             self.kind,
@@ -196,8 +196,8 @@ fn transfer_label(kind: OpKind, sources: &[Source], tagged: bool, paths: bool) -
     format!("{verb} {}{mode} to: ", describe(sources))
 }
 
-/// Pergunta no rodapé, respondida com uma tecla: a primeira letra de uma
-/// das opções. Qualquer outra tecla desiste.
+/// Footer question, answered with a key: the first letter of one of
+/// the options. Any other key gives up.
 pub struct Confirm {
     pub question: String,
     pub options: &'static [&'static str],
@@ -217,17 +217,17 @@ const COMPARE_OPTIONS: &[&str] = &[
 
 enum ConfirmKind {
     Quit,
-    /// Alt+Q: sai e deixa este diretório para o shell.
+    /// Alt+Q: quit and leave this directory for the shell.
     QuitChangeDir(PathBuf),
     DeleteFiles(Vec<Source>),
     DeleteDir(NodeId),
-    /// `branch`: compara o ramo inteiro, não só o diretório.
+    /// `branch`: compares the whole branch, not just the directory.
     Compare {
         branch: bool,
     },
-    /// Ordenação sendo escolhida (Order e Path first mudam esta cópia).
+    /// Sort order being chosen (Order and Path first change this copy).
     Sort(Sort),
-    /// Alt+K sendo escolhido (All/Tagged e Branch/Directory mudam a cópia).
+    /// Alt+K being chosen (All/Tagged and Branch/Directory change the copy).
     Kbyte(Kbyte),
 }
 
@@ -244,60 +244,60 @@ const KBYTE_OPTIONS: &[&str] = &[
 const SORT_OPTIONS: &[&str] = &["Name", "Ext", "Date", "Size", "Order", "Path first"];
 
 pub struct App {
-    /// Uma janela, ou duas com a tela dividida (F8).
+    /// One window, or two with the screen split (F8).
     pub panes: Vec<Pane>,
     pub active: usize,
     pub prompt: Option<Prompt>,
     pub confirm: Option<Confirm>,
-    /// Mensagem mostrada até a próxima tecla.
+    /// Message shown until the next key.
     pub message: Option<String>,
     pub job: Option<Job>,
-    /// Ctrl+S em andamento.
+    /// Ongoing Ctrl+S.
     pub search_job: Option<SearchJob<FileRef>>,
-    /// Último termo procurado (Ctrl+S e visualizador usam o mesmo, para o
-    /// Espaço no Ctrl+V continuar a busca feita com Ctrl+S).
+    /// Last search term (Ctrl+S and the viewer share it, so that
+    /// Space in Ctrl+V continues the search done with Ctrl+S).
     pub search: Option<SearchSpec>,
     pub tagged_view: Option<TaggedView>,
-    /// F7: o conteúdo do arquivo selecionado ao lado da lista.
+    /// F7: the contents of the selected file next to the list.
     pub autoview: Option<Viewer>,
-    /// F5: arquivo compactado sendo criado.
+    /// F5: archive being created.
     pub archive_job: Option<ArchiveJob>,
-    /// Copy/Move/Delete em andamento.
+    /// Ongoing Copy/Move/Delete.
     pub op: Option<Operation>,
     pub viewer: Option<Viewer>,
-    /// Último destino digitado no Copy/Move.
+    /// Last destination typed in Copy/Move.
     last_dest: Option<String>,
-    /// Diretórios que mudaram no disco e ainda não foram relidos.
+    /// Directories that changed on disk and have not been re-read yet.
     pending_changes: HashSet<PathBuf>,
-    /// Histórico dos prompts, por tipo.
+    /// Prompt history, per kind.
     pub history: History,
-    /// Onde gravar o histórico a cada entrada nova (sem arquivo nos testes).
+    /// Where to save the history on each new entry (no file in tests).
     pub history_file: Option<PathBuf>,
-    /// Programa externo (editor, comando) a rodar pelo laço principal,
-    /// que entrega o terminal a ele.
+    /// External program (editor, command) to be run by the main loop,
+    /// which hands the terminal over to it.
     pub external: Option<External>,
-    /// Opções do arquivo de configuração.
+    /// Options from the configuration file.
     pub options: Options,
-    /// A configuração em vigor (a tela de configuração parte dela).
+    /// The configuration in effect (the config screen starts from it).
     pub config: Config,
-    /// Onde gravar a configuração (sem arquivo nos testes).
+    /// Where to save the configuration (no file in tests).
     pub config_file: Option<PathBuf>,
-    /// Erro ao ler o arquivo na inicialização.
+    /// Error reading the file at startup.
     pub config_error: Option<String>,
     pub settings: Option<Settings>,
-    /// Diretório sendo apagado por um Prune em andamento.
+    /// Directory being deleted by an ongoing Prune.
     pruning: Option<PathBuf>,
     pub keymap: Keymap,
     pub should_quit: bool,
-    /// Alt+Q: o diretório para o shell ir ao sair.
+    /// Alt+Q: the directory for the shell to go to on exit.
     pub quit_dir: Option<PathBuf>,
-    /// Ctrl/Alt pressionado agora (só em terminais que avisam isso).
+    /// Ctrl/Alt currently pressed (only on terminals that report it).
     pub held: Option<MenuMode>,
-    /// Menu escolhido com F9; a próxima letra recebe esse modificador.
+    /// Menu chosen with F9; the next letter receives that modifier.
     pub sticky: MenuMode,
 }
 
-/// A janela ativa.
+/// The active window.
 impl Deref for App {
     type Target = Pane;
 
@@ -351,13 +351,13 @@ impl App {
         self.panes.len() > 1
     }
 
-    /// A outra janela, com a tela dividida.
+    /// The other window, when the screen is split.
     pub fn other(&self) -> Option<&Pane> {
         self.is_split().then(|| &self.panes[1 - self.active])
     }
 
-    /// Aplica a configuração: opções, teclas, formatos e tema. Usado na
-    /// inicialização e quando a tela de configuração grava.
+    /// Applies the configuration: options, keys, formats and theme. Used at
+    /// startup and when the config screen saves.
     pub fn apply_config(&mut self, config: &Config) -> Result<(), String> {
         let keymap = Keymap::from_config(&config.keys, &config.options)?;
         let theme = Theme::from_config(config)?;
@@ -376,8 +376,8 @@ impl App {
         Ok(())
     }
 
-    /// F3 na tela de configuração: grava (mantendo os comentários do
-    /// arquivo) e aplica na hora.
+    /// F3 on the config screen: saves (keeping the file's comments)
+    /// and applies immediately.
     fn save_settings(&mut self, config: Config) {
         if let Some(path) = &self.config_file
             && let Err(e) = config.save(path)
@@ -403,7 +403,7 @@ impl App {
         }
     }
 
-    /// Ordem das datas digitadas no Filespec: a do formato configurado.
+    /// Order of dates typed in the Filespec: that of the configured format.
     fn date_order(&self) -> DateOrder {
         match self.options.date_format {
             DateFormat::Iso => DateOrder::Ymd,
@@ -412,8 +412,8 @@ impl App {
         }
     }
 
-    /// Diretórios a observar no disco: os atuais de cada janela (fora de
-    /// arquivos compactados).
+    /// Directories to watch on disk: the current ones of each window (excluding
+    /// archives).
     pub fn watched_dirs(&self) -> HashSet<PathBuf> {
         self.panes
             .iter()
@@ -422,9 +422,9 @@ impl App {
             .collect()
     }
 
-    /// Avisos de mudanças no disco. São aplicados assim que nada estiver
-    /// em andamento (no fim de um Copy, os diretórios são relidos de
-    /// qualquer jeito). Devolve se a tela mudou.
+    /// Disk change notices. They are applied as soon as nothing is
+    /// in progress (at the end of a Copy, the directories are re-read
+    /// anyway). Returns whether the screen changed.
     pub fn fs_changed(&mut self, dirs: impl IntoIterator<Item = PathBuf>) -> bool {
         self.pending_changes.extend(dirs);
         if self.pending_changes.is_empty() || self.busy() || self.op.is_some() {
@@ -435,7 +435,7 @@ impl App {
         true
     }
 
-    /// Há trabalho em andamento que não depende do usuário.
+    /// There is ongoing work that does not depend on the user.
     pub fn busy(&self) -> bool {
         self.job.is_some()
             || self.search_job.is_some()
@@ -443,13 +443,13 @@ impl App {
             || self.op.as_ref().is_some_and(|op| op.conflict.is_none())
     }
 
-    /// Menu a mostrar no rodapé.
+    /// Menu to show in the footer.
     pub fn menu_mode(&self) -> MenuMode {
         self.held.unwrap_or(self.sticky)
     }
 
     pub fn handle_key(&mut self, mut key: KeyEvent) {
-        // Ctrl/Alt sozinhos só trocam o menu enquanto estão pressionados.
+        // Ctrl/Alt alone only switch the menu while they are held down.
         if let KeyCode::Modifier(m) = key.code {
             let mode = match m {
                 ModifierKeyCode::LeftControl | ModifierKeyCode::RightControl => MenuMode::Ctrl,
@@ -468,8 +468,8 @@ impl App {
         if key.kind == KeyEventKind::Release {
             return;
         }
-        // Se a soltura do Ctrl/Alt se perdeu (ex.: troca de janela), a
-        // próxima tecla sem ele corrige o menu.
+        // If the Ctrl/Alt release was lost (e.g. window switch), the
+        // next key without it fixes the menu.
         let still_held = match self.held {
             Some(MenuMode::Ctrl) => key.modifiers.contains(KeyModifiers::CONTROL),
             Some(MenuMode::Alt) => key.modifiers.contains(KeyModifiers::ALT),
@@ -614,9 +614,9 @@ impl App {
             };
             return;
         }
-        // Com o menu Ctrl/Alt aberto pelo F9, a próxima letra vale como
-        // Ctrl+letra / Alt+letra. Útil onde o terminal não deixa passar a
-        // combinação (Ctrl+M no Terminator, por exemplo).
+        // With the Ctrl/Alt menu opened by F9, the next letter counts as
+        // Ctrl+letter / Alt+letter. Useful where the terminal does not let the
+        // combination through (Ctrl+M in Terminator, for example).
         match std::mem::take(&mut self.sticky) {
             MenuMode::Normal => {}
             _ if key.code == KeyCode::Esc => return,
@@ -628,8 +628,8 @@ impl App {
             }
             _ => {}
         }
-        // Shift+letra (e dígitos): pula para o próximo nome que começa com
-        // ela, como no ZTreeWin.
+        // Shift+letter (and digits): jumps to the next name starting with
+        // it, as in ZTreeWin.
         if let KeyCode::Char(c) = key.code
             && !key
                 .modifiers
@@ -645,8 +645,8 @@ impl App {
         self.sync_autoview();
     }
 
-    /// Teclas próprias do Autoview: F7, Esc e Enter saem; Shift+setas rolam
-    /// o conteúdo. Devolve se a tecla foi usada.
+    /// Autoview's own keys: F7, Esc and Enter exit; Shift+arrows scroll
+    /// the content. Returns whether the key was used.
     fn autoview_key(&mut self, key: KeyEvent) -> bool {
         match key.code {
             KeyCode::F(7) | KeyCode::Esc | KeyCode::Enter => {
@@ -670,7 +670,7 @@ impl App {
         }
     }
 
-    /// Mantém o Autoview mostrando o arquivo selecionado.
+    /// Keeps the Autoview showing the selected file.
     fn sync_autoview(&mut self) {
         let Some(current) = &self.autoview else {
             return;
@@ -717,7 +717,7 @@ impl App {
             Command::Quit if !self.options.confirm_quit => self.should_quit = true,
             Command::Quit => self.ask(ConfirmKind::Quit, "Quit xt?".into()),
             Command::QuitChangeDir => {
-                // Dentro de um ZIP/TAR, o diretório real é onde ele está.
+                // Inside a ZIP/TAR, the real directory is where it is located.
                 let base = self.outer.as_deref().unwrap_or(self);
                 let dir = base.current_path();
                 if self.options.confirm_quit {
@@ -732,8 +732,8 @@ impl App {
                 Focus::Tree => self.focus = Focus::Files,
                 Focus::Files => self.back_to_tree(),
             },
-            // Tab troca de janela com a tela dividida; sem ela, faz o mesmo
-            // que Enter.
+            // Tab switches window when the screen is split; otherwise it does the same
+            // as Enter.
             Command::SwitchPane if self.is_split() => self.active = 1 - self.active,
             Command::SwitchPane => self.apply(Command::SwitchWindow),
             Command::Split => self.toggle_split(),
@@ -743,7 +743,7 @@ impl App {
                 if id == ROOT {
                     self.message = Some("Cannot prune the root directory".into());
                 } else {
-                    // Loga o ramo inteiro antes, para saber tudo o que será apagado.
+                    // Log the whole branch first, to know everything that will be deleted.
                     self.start_job(LogJob::new(id, false), AfterLog::Prune(id));
                 }
             }
@@ -791,8 +791,8 @@ impl App {
                 }
             }
             Command::Autoview => {
-                // Abre na janela de arquivos, com um visualizador vazio que
-                // `sync_autoview` troca pelo arquivo selecionado.
+                // Opens on the files window, with an empty viewer that
+                // `sync_autoview` replaces with the selected file.
                 self.focus = Focus::Files;
                 self.autoview = Some(Viewer::from_bytes(PathBuf::new(), 0, Vec::new()));
             }
@@ -820,7 +820,7 @@ impl App {
                 if self.view == FileView::Dir
                     && let Some(parent) = self.tree.node(cur).parent
                 {
-                    // Na janela de arquivos, continua nela, mostrando o pai.
+                    // On the files window, stays there, showing the parent.
                     self.select_node(parent);
                 }
             }
@@ -929,7 +929,7 @@ impl App {
         }
     }
 
-    /// Avança o trabalho em andamento por no máximo `budget`.
+    /// Advances the ongoing work by at most `budget`.
     pub fn tick(&mut self, budget: Duration) {
         if let Some(job) = &mut self.archive_job {
             job.step(budget);
@@ -1004,7 +1004,7 @@ impl App {
             pane: self.active,
             then,
         });
-        // Ramos pequenos terminam na hora, sem piscar a mensagem de progresso.
+        // Small branches finish immediately, without flashing the progress message.
         self.tick(Duration::from_millis(30));
     }
 
@@ -1013,9 +1013,9 @@ impl App {
         self.tick(Duration::from_millis(30));
     }
 
-    /// Monta a lista do Prune e pede a confirmação digitada. Outros pontos
-    /// de montagem dentro do ramo ficam de fora (não se apaga um pendrive
-    /// montado ali dentro por engano).
+    /// Builds the Prune list and asks for the typed confirmation. Other mount
+    /// points inside the branch are left out (so a mounted USB drive
+    /// inside it is not deleted by mistake).
     fn prepare_prune(&mut self, id: NodeId) {
         let root = self.tree.path(id);
         let root_dev = match fs::symlink_metadata(&root) {
@@ -1079,11 +1079,11 @@ impl App {
         self.open_prompt(kind, label, "");
     }
 
-    /// Fim (ou cancelamento) de uma operação: relê os diretórios afetados.
+    /// End (or cancellation) of an operation: re-reads the affected directories.
     fn finish_op(&mut self, prefix: &str) {
         let Some(op) = self.op.take() else { return };
         self.rescan_everywhere(&op.touched_dirs());
-        // Depois de um Prune, o cursor vai para o diretório pai.
+        // After a Prune, the cursor goes to the parent directory.
         if let Some(root) = self.pruning.take()
             && let Some(parent) = root.parent()
         {
@@ -1092,7 +1092,7 @@ impl App {
         self.message = Some(format!("{prefix}{}", op.summary()));
     }
 
-    /// Relê `dirs` em todas as janelas (as duas podem mostrar o mesmo lugar).
+    /// Re-reads `dirs` in all windows (both may show the same place).
     fn rescan_everywhere<P: AsRef<Path>>(&mut self, dirs: &[P]) {
         for pane in &mut self.panes {
             pane.rescan_paths(dirs);
@@ -1135,10 +1135,10 @@ impl App {
         self.ask_options(ConfirmKind::Compare { branch }, q, COMPARE_OPTIONS);
     }
 
-    /// Marca, na lista da janela ativa, os arquivos que têm a relação
-    /// pedida com o correspondente no diretório da outra janela. No Branch
-    /// e no Showall, o correspondente segue o caminho relativo à raiz da
-    /// lista (`src/a.rs` → `<outro>/src/a.rs`).
+    /// Tags, in the active window's list, the files that have the requested
+    /// relation to their counterpart in the other window's directory. In Branch
+    /// and Showall, the counterpart follows the path relative to the list root
+    /// (`src/a.rs` → `<other>/src/a.rs`).
     fn compare(&mut self, mode: CompareMode) {
         let Some(other_base) = self.other().map(Pane::current_path) else {
             return;
@@ -1172,8 +1172,8 @@ impl App {
         ));
     }
 
-    /// F8: divide a tela em duas janelas, ou volta a uma só. A nova janela
-    /// começa na mesma raiz e no mesmo diretório da atual.
+    /// F8: splits the screen into two windows, or goes back to one. The new window
+    /// starts at the same root and directory as the current one.
     fn toggle_split(&mut self) {
         if self.is_split() {
             let keep = self.panes.swap_remove(self.active);
@@ -1181,7 +1181,7 @@ impl App {
             self.active = 0;
             return;
         }
-        // Dentro de um arquivo compactado, a nova janela mostra o disco.
+        // Inside an archive, the new window shows the disk.
         let base = self.outer.as_deref().unwrap_or(self);
         let mut pane = Pane::new(base.tree.path(ROOT));
         pane.sort = self.sort;
@@ -1190,7 +1190,7 @@ impl App {
         self.panes.push(pane);
     }
 
-    /// `O`: abre o ZIP/TAR sob o cursor como se fosse um diretório.
+    /// `O`: opens the ZIP/TAR under the cursor as if it were a directory.
     fn open_archive(&mut self) {
         let Some(f) = self.selected_file() else {
             return;
@@ -1211,8 +1211,8 @@ impl App {
         }
     }
 
-    /// `\`: abre o prompt do Treespec com o caminho atual. No Branch e no
-    /// Showall, vai direto para o diretório do arquivo selecionado.
+    /// `\`: opens the Treespec prompt with the current path. In Branch and
+    /// Showall, goes straight to the selected file's directory.
     fn start_treespec(&mut self) {
         if self.view != FileView::Dir {
             if let Some(f) = self.selected_file() {
@@ -1234,8 +1234,8 @@ impl App {
         self.open_prompt(PromptKind::Treespec { origin }, "TREESPEC: ".into(), &text);
     }
 
-    /// Teclas no prompt do Treespec: `/` ou `\` completam e descem um
-    /// nível, Tab/Shift+Tab completam e depois trocam de irmão, Esc volta.
+    /// Keys in the Treespec prompt: `/` or `\` complete and go down one
+    /// level, Tab/Shift+Tab complete and then switch siblings, Esc goes back.
     fn treespec_key(&mut self, key: KeyEvent, origin: NodeId) {
         let Some(prompt) = &mut self.prompt else {
             return;
@@ -1285,15 +1285,15 @@ impl App {
         }
     }
 
-    /// Mostra um texto no visualizador (Info, Avail, estatísticas).
+    /// Shows a text in the viewer (Info, Avail, statistics).
     fn show_text(&mut self, title: &str, text: String) {
         let data = text.into_bytes();
         self.tagged_view = None;
         self.viewer = Some(Viewer::from_bytes(title.into(), data.len() as u64, data));
     }
 
-    /// Alt+I: o arquivo sob o cursor ou, na árvore, o diretório (com o que
-    /// está logado nele e no ramo).
+    /// Alt+I: the file under the cursor or, in the tree, the directory (with what
+    /// is logged in it and in its branch).
     fn info_text(&self) -> String {
         let in_files = self.focus == Focus::Files;
         match self.selected_file().filter(|_| in_files) {
@@ -1335,7 +1335,7 @@ impl App {
         }
     }
 
-    /// ?: estatísticas da janela ativa.
+    /// ?: statistics of the active window.
     fn stats_text(&self) -> String {
         let g = info::group;
         let logged = self.tree.logged_totals();
@@ -1390,8 +1390,8 @@ impl App {
         text
     }
 
-    /// F5 / Ctrl+F5: pede o nome do compactado. Dentro dele, os caminhos
-    /// ficam relativos à raiz da lista (como no Alt+C).
+    /// F5 / Ctrl+F5: asks for the archive name. Inside an archive, paths
+    /// are relative to the list root (as in Alt+C).
     fn prompt_create_archive(&mut self, tagged: bool) {
         let Some(sources) = self.sources_or_warn(tagged) else {
             return;
@@ -1423,8 +1423,8 @@ impl App {
         );
     }
 
-    /// Escreve o arquivo do Batch: uma linha por marcado. Um `.sh` ganha o
-    /// `#!/bin/sh` e permissão de execução.
+    /// Writes the Batch file: one line per tagged file. A `.sh` gets
+    /// `#!/bin/sh` and execute permission.
     fn write_batch(&mut self, file: &Path, mask: &str) -> Result<(), String> {
         if mask.trim().is_empty() {
             return Err("Batch cancelled: empty line mask".into());
@@ -1459,7 +1459,7 @@ impl App {
         Ok(())
     }
 
-    /// N: pede a nova data, já com a atual (do arquivo ou do diretório).
+    /// N: asks for the new date, prefilled with the current one (of the file or directory).
     fn prompt_new_date(&mut self, tagged: bool) {
         let paths: Vec<PathBuf> = if self.focus == Focus::Tree && !tagged {
             vec![self.current_path()]
@@ -1486,7 +1486,7 @@ impl App {
         self.open_prompt(PromptKind::NewDate(paths), label, &current);
     }
 
-    /// Aplica a data digitada. Sem hora, cada arquivo mantém a sua.
+    /// Applies the typed date. Without a time, each file keeps its own.
     fn new_date(&mut self, paths: &[PathBuf], text: &str) -> Result<(), String> {
         let (date, time) = filespec::parse_date_time(text, self.date_order())
             .ok_or_else(|| format!("Invalid date: {text}"))?;
@@ -1524,9 +1524,9 @@ impl App {
         Ok(())
     }
 
-    /// `O`: abre o arquivo (ou os marcados) no programa padrão do sistema.
-    /// Dentro de um arquivo compactado, extrai antes para uma pasta
-    /// temporária (apagada ao sair do xt).
+    /// `O`: opens the file (or the tagged files) in the system's default program.
+    /// Inside an archive, extracts first to a temporary folder
+    /// (deleted when xt exits).
     fn open_with(&mut self, tagged: bool) {
         let Some(sources) = self.sources_or_warn(tagged) else {
             return;
@@ -1555,19 +1555,19 @@ impl App {
         });
     }
 
-    /// Esc na árvore de um arquivo compactado: volta para onde estava.
+    /// Esc in an archive's tree: goes back to where it was.
     fn close_archive(&mut self) {
         if let Some(outer) = self.outer.take() {
             *self.deref_mut() = *outer;
-            // O disco pode ter mudado enquanto o arquivo estava aberto.
+            // The disk may have changed while the archive was open.
             let current = self.current();
             self.tree.rescan(current);
             self.after_change();
         }
     }
 
-    /// Log: abre `path` na janela ativa. Se ele está dentro da árvore atual,
-    /// só leva o cursor até lá; senão, a janela passa a ter `path` como raiz.
+    /// Log: opens `path` in the active window. If it is inside the current tree,
+    /// just moves the cursor there; otherwise, the window gets `path` as its root.
     fn log(&mut self, text: &str) -> Result<(), String> {
         let path = ops::resolve_path(text, &self.current_path());
         let path = fs::canonicalize(&path).map_err(|e| format!("Cannot log {text}: {e}"))?;
@@ -1602,7 +1602,7 @@ impl App {
         if text.trim().is_empty() {
             return;
         }
-        // "@" na frente: não guardar (ex.: comando com senha).
+        // Leading "@": do not save (e.g. command with a password).
         if self.options.history_skip_at && text.trim_start().starts_with('@') {
             return;
         }
@@ -1619,7 +1619,7 @@ impl App {
         }
     }
 
-    /// Volta de um programa externo: o disco pode ter mudado.
+    /// Back from an external program: the disk may have changed.
     pub fn after_external(&mut self, result: std::io::Result<std::process::ExitStatus>) {
         let dirs: Vec<PathBuf> = self.watched_dirs().into_iter().collect();
         self.rescan_everywhere(&dirs);
@@ -1676,7 +1676,7 @@ impl App {
                 if fs::symlink_metadata(&dest).is_ok() {
                     Err(format!("{} already exists", dest.display()))
                 } else {
-                    // O próprio arquivo compactado não entra nele.
+                    // The archive itself is not included in it.
                     let items = items.into_iter().filter(|i| i.path != dest).collect();
                     ArchiveJob::new(&dest, items)
                         .map(|job| {
@@ -1686,8 +1686,8 @@ impl App {
                         .map_err(|e| format!("Cannot create archive: {e}"))
                 }
             }
-            // A navegação já aconteceu enquanto digitava; fora da árvore,
-            // vira um Log.
+            // Navigation already happened while typing; outside the tree,
+            // it becomes a Log.
             PromptKind::Treespec { .. } => match self.treespec_target(&text) {
                 Some(_) => Ok(()),
                 None => self.log(&text),
@@ -1720,7 +1720,7 @@ impl App {
                 }
             }
             PromptKind::Execute => {
-                // O "@" (não guardar no histórico) não vai para o shell.
+                // The "@" (do not save in history) is not passed to the shell.
                 let text = text.trim_start().strip_prefix('@').unwrap_or(&text);
                 if !text.trim().is_empty() {
                     let file = self.selected_file().filter(|_| self.focus == Focus::Files);
@@ -1741,8 +1741,8 @@ impl App {
                 ..
             } => {
                 let dest = ops::resolve_path(&text, &self.tree.path(self.current()));
-                // Guarda o caminho absoluto: um relativo mudaria de sentido
-                // na próxima vez, a partir de outro diretório.
+                // Saves the absolute path: a relative one would change meaning
+                // next time, from another directory.
                 self.last_dest = Some(dest.to_string_lossy().into_owned());
                 let paths_from = paths.then_some(base.as_path());
                 let archive = self.archive.clone();
@@ -1767,7 +1767,7 @@ impl App {
         let yes = choice == 'y';
         match kind {
             ConfirmKind::Compare { branch } => match CompareMode::from_key(choice) {
-                // Sem modo: é o "Branch on/off"; pergunta de novo.
+                // Not a compare mode: it was "Branch on/off", so ask again.
                 None => self.ask_compare(!branch),
                 Some(mode) if branch => {
                     let id = self.current();
@@ -1833,7 +1833,7 @@ impl App {
         }
     }
 
-    /// `sources`, avisando quando não há nada para operar.
+    /// `sources`, warning when there is nothing to operate on.
     fn sources_or_warn(&mut self, tagged: bool) -> Option<Vec<Source>> {
         let sources = self.sources(tagged);
         if sources.is_empty() {
@@ -1850,7 +1850,7 @@ impl App {
             return;
         };
         let label = transfer_label(kind, &sources, tagged, paths);
-        // Com a tela dividida, o destino natural é a outra janela.
+        // With the screen split, the natural destination is the other window.
         let default = match self.other() {
             Some(other) => other.current_path().to_string_lossy().into_owned(),
             None => self
@@ -1911,7 +1911,7 @@ impl App {
         if let Some(dir) = path.parent() {
             self.rescan_everywhere(&[dir]);
         }
-        // Mantém o cursor no arquivo renomeado.
+        // Keep the cursor on the renamed file.
         if let Some(i) = self.files.iter().position(|&f| self.file_path(f) == new) {
             self.file_state.select(Some(i));
         }
@@ -1958,7 +1958,7 @@ impl App {
         let mut errors = Vec::new();
         let mut changed = 0;
         for path in paths {
-            // Links simbólicos não têm permissões próprias no Linux.
+            // Symbolic links have no permissions of their own on Linux.
             if fs::symlink_metadata(path).is_ok_and(|m| m.is_symlink()) {
                 continue;
             }
@@ -1989,7 +1989,7 @@ impl App {
         }
     }
 
-    /// Abre `path` no visualizador (de dentro do ZIP/TAR, se for o caso).
+    /// Opens `path` in the viewer (from inside the ZIP/TAR, if applicable).
     fn load_viewer(&self, path: PathBuf, size: u64) -> std::io::Result<Viewer> {
         self.load_viewer_limited(path, size, viewer::MAX_BYTES)
     }
@@ -2006,8 +2006,8 @@ impl App {
         }
     }
 
-    /// Lê o conteúdo de um arquivo para a busca: do disco, ou de dentro do
-    /// ZIP/TAR aberto.
+    /// Reads a file's contents for the search: from disk, or from inside the
+    /// open ZIP/TAR.
     fn content_opener(&self) -> search::Opener {
         match self.archive.clone() {
             Some(root) => Box::new(move |path: &Path| {
@@ -2020,7 +2020,7 @@ impl App {
         }
     }
 
-    /// Os marcados da lista, com os caminhos.
+    /// The list's tagged files, with their paths.
     fn tagged_items(&self) -> Vec<(FileRef, PathBuf)> {
         self.files
             .iter()
@@ -2030,8 +2030,8 @@ impl App {
             .collect()
     }
 
-    /// Ctrl+S: procura nos marcados, aos poucos, desmarcando os que não têm
-    /// o termo.
+    /// Ctrl+S: searches the tagged files, bit by bit, untagging those without
+    /// the term.
     fn start_search(&mut self, spec: SearchSpec) -> Result<(), String> {
         let job = SearchJob::new(spec.clone(), self.tagged_items(), self.content_opener())?;
         self.search = Some(spec);
@@ -2040,7 +2040,7 @@ impl App {
         Ok(())
     }
 
-    /// Ctrl+V: abre o primeiro marcado; N/P passam pelos outros.
+    /// Ctrl+V: opens the first tagged file; N/P go through the others.
     fn view_tagged(&mut self) {
         let items = self.tagged_items();
         if items.is_empty() {
@@ -2053,7 +2053,7 @@ impl App {
         }
     }
 
-    /// Mostra o marcado `index` no visualizador, mantendo o tamanho da tela.
+    /// Shows tagged file `index` in the viewer, keeping the screen size.
     fn show_tagged(&mut self, index: usize) -> bool {
         let Some((f, path)) = self
             .tagged_view
@@ -2151,8 +2151,8 @@ impl App {
         }
     }
 
-    /// Procura no arquivo aberto; no Ctrl+V, se não houver mais nele,
-    /// segue para os próximos marcados (ou os anteriores, para trás).
+    /// Searches the open file; in Ctrl+V, if there is no more in it,
+    /// moves on to the next tagged files (or the previous ones, going backwards).
     fn viewer_search(&mut self, spec: SearchSpec, forward: bool, from: Option<SearchFrom>) {
         let pattern = match Pattern::new(&spec) {
             Ok(p) => p,
@@ -2205,13 +2205,13 @@ impl App {
     }
 }
 
-/// Pasta temporária do xt para abrir arquivos de dentro de ZIP/TAR.
+/// xt's temporary folder for opening files from inside ZIP/TAR.
 pub fn temp_dir() -> PathBuf {
     std::env::temp_dir().join(format!("xt-{}", std::process::id()))
 }
 
-/// Extrai uma entrada de `archive` (caminho virtual `entry`) para a pasta
-/// temporária, para um programa externo poder abri-la.
+/// Extracts an entry of `archive` (virtual path `entry`) to the
+/// temporary folder, so an external program can open it.
 fn extract_for_opening(archive: &Path, entry: &Path) -> std::io::Result<PathBuf> {
     let rel = entry.strip_prefix(archive).unwrap_or(entry);
     let dir = temp_dir();
@@ -2222,7 +2222,7 @@ fn extract_for_opening(archive: &Path, entry: &Path) -> std::io::Result<PathBuf>
     Ok(out)
 }
 
-/// Último componente de um caminho, para mensagens curtas.
+/// Last component of a path, for short messages.
 fn fit_name(path: &Path) -> String {
     path.file_name()
         .unwrap_or(path.as_os_str())
@@ -2230,7 +2230,7 @@ fn fit_name(path: &Path) -> String {
         .into_owned()
 }
 
-/// "arquivo.txt" ou "3 tagged files".
+/// "file.txt" or "3 tagged files".
 fn describe(sources: &[Source]) -> String {
     match sources {
         [one] => one
@@ -2249,7 +2249,7 @@ mod tests {
     use ratatui::crossterm::event::KeyModifiers;
     use std::fs::{create_dir_all, write};
 
-    /// raiz/{a.rs, b.txt}, raiz/sub/{c.rs}, raiz/sub/deep/{a.rs}
+    /// root/{a.rs, b.txt}, root/sub/{c.rs}, root/sub/deep/{a.rs}
     fn sample() -> (tempfile::TempDir, App) {
         let tmp = tempfile::tempdir().unwrap();
         let p = tmp.path();
@@ -2301,7 +2301,7 @@ mod tests {
         assert_eq!(app.filespec.text(), "*.rs");
         assert_eq!(names(&app), ["a.rs"]);
 
-        // Padrão inválido: mantém o anterior e mostra o erro.
+        // Invalid pattern: keeps the previous one and shows the error.
         press(&mut app, KeyCode::Char('f'));
         type_text(&mut app, " [");
         press(&mut app, KeyCode::Enter);
@@ -2314,7 +2314,7 @@ mod tests {
         let (_tmp, mut app) = sample();
         app.apply(Command::Showall);
         assert_eq!(app.focus, Focus::Files);
-        // "deep" ainda não foi logado.
+        // "deep" has not been logged yet.
         assert_eq!(names(&app), ["a.rs", "b.txt", "c.rs"]);
     }
 
@@ -2331,7 +2331,7 @@ mod tests {
     fn leaving_showall_selects_file_dir() {
         let (_tmp, mut app) = sample();
         app.apply(Command::Branch);
-        app.apply(Command::Down); // segundo a.rs, em sub/deep
+        app.apply(Command::Down); // second a.rs, in sub/deep
         let dir = app.selected_file().unwrap().dir;
         assert_ne!(dir, ROOT);
         assert_eq!(app.header_dir(), dir);
@@ -2367,13 +2367,13 @@ mod tests {
         app.handle_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL));
     }
 
-    /// Responde a um prompt aberto, trocando o texto sugerido.
+    /// Answers an open prompt, replacing the suggested text.
     fn answer_prompt(app: &mut App, text: &str) {
         assert!(app.prompt.is_some(), "prompt should be open");
         ctrl(app, 'u');
         type_text(app, text);
         press(app, KeyCode::Enter);
-        // Termina a operação, se houver.
+        // Finishes the operation, if any.
         while app.busy() {
             app.tick(Duration::from_millis(50));
         }
@@ -2401,7 +2401,7 @@ mod tests {
         ctrl(&mut app, 'u');
         assert!(tagged(&app).is_empty());
 
-        // Na árvore, T marca o diretório atual inteiro.
+        // In the tree, T tags the whole current directory.
         press(&mut app, KeyCode::Esc);
         press(&mut app, KeyCode::Char('t'));
         assert_eq!(tagged(&app).len(), 2);
@@ -2429,10 +2429,10 @@ mod tests {
 
         assert!(dest.join("a.rs").exists() && dest.join("b.txt").exists());
         assert!(app.message.as_deref().unwrap().starts_with("Copied 2 of 2"));
-        // A árvore já mostra os arquivos novos em sub/.
+        // The tree already shows the new files in sub/.
         let sub = app.tree.find(&dest).unwrap();
         assert_eq!(app.tree.node(sub).files.len(), 3);
-        // Tags continuam na origem.
+        // Tags remain at the source.
         assert_eq!(tagged(&app).len(), 2);
     }
 
@@ -2443,7 +2443,7 @@ mod tests {
         press(&mut app, KeyCode::Enter);
         press(&mut app, KeyCode::Down);
         press(&mut app, KeyCode::Char('m'));
-        answer_prompt(&mut app, "sub"); // relativo ao diretório atual
+        answer_prompt(&mut app, "sub"); // relative to the current directory
         assert!(app.op.as_ref().unwrap().conflict.is_some());
 
         press(&mut app, KeyCode::Char('y'));
@@ -2504,7 +2504,7 @@ mod tests {
         assert!(tmp.path().join("new").is_dir());
         assert!(app.rows.iter().any(|r| app.tree.node(r.id).name == "new"));
 
-        // Cursor no "new" (ordem: new, sub).
+        // Cursor on "new" (order: new, sub).
         press(&mut app, KeyCode::Down);
         assert_eq!(app.tree.node(app.current()).name, "new");
         press(&mut app, KeyCode::Char('r'));
@@ -2517,7 +2517,7 @@ mod tests {
         assert!(!tmp.path().join("renamed").exists());
         assert_eq!(app.current(), ROOT);
 
-        // Diretório com conteúdo não é apagado.
+        // A directory with contents is not deleted.
         press(&mut app, KeyCode::Down);
         press(&mut app, KeyCode::Char('d'));
         assert!(app.confirm.is_none());
@@ -2558,7 +2558,7 @@ mod tests {
         app.handle_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::ALT));
     }
 
-    /// Marca os dois a.rs do Branch da raiz (raiz e sub/deep).
+    /// Tags the two a.rs of the root's Branch (root and sub/deep).
     fn tag_both_a_rs(tmp: &tempfile::TempDir, app: &mut App) -> PathBuf {
         app.apply(Command::Branch);
         app.filespec = Filespec::parse("a.rs").unwrap();
@@ -2582,7 +2582,7 @@ mod tests {
             std::fs::read_to_string(dest.join("sub/deep/a.rs")).unwrap(),
             "deep"
         );
-        // O destino aparece na árvore e, ao expandi-lo, as pastas criadas.
+        // The destination shows up in the tree and, when expanded, the created folders.
         let out = app.tree.find(&dest).expect("dest in tree");
         app.tree.expand(out);
         assert!(app.tree.find(&dest.join("sub")).is_some());
@@ -2599,7 +2599,7 @@ mod tests {
         press(&mut app, KeyCode::F(6));
         answer_prompt(&mut app, dest.to_str().unwrap());
 
-        // Dois a.rs indo para o mesmo lugar: o segundo é um conflito.
+        // Two a.rs going to the same place: the second is a conflict.
         assert!(app.op.as_ref().unwrap().conflict.is_some());
         press(&mut app, KeyCode::Char('n'));
         assert!(dest.join("a.rs").exists());
@@ -2609,16 +2609,16 @@ mod tests {
     #[test]
     fn alt_move_with_paths_from_branch_root() {
         let (tmp, mut app) = sample();
-        // Branch a partir de sub/: caminhos relativos a sub.
+        // Branch from sub/: paths relative to sub.
         press(&mut app, KeyCode::Down);
         app.apply(Command::Branch);
         ctrl(&mut app, 't');
         let dest = tmp.path().join("out");
         std::fs::create_dir(&dest).unwrap();
         alt(&mut app, 'm');
-        // Relativo ao diretório do cursor da árvore (sub), não ao do arquivo.
+        // Relative to the tree cursor's directory (sub), not the file's.
         answer_prompt(&mut app, "../out");
-        // O próximo prompt, de outro diretório, sugere o destino já resolvido.
+        // The next prompt, from another directory, suggests the already-resolved destination.
         app.apply(Command::Back);
         app.select_node(ROOT);
         press(&mut app, KeyCode::Enter);
@@ -2656,7 +2656,7 @@ mod tests {
 
         modifier(&mut app, ModifierKeyCode::RightAlt, KeyEventKind::Press);
         assert_eq!(app.menu_mode(), MenuMode::Alt);
-        // Soltura perdida: a próxima tecla sem Alt volta ao normal.
+        // Lost release: the next key without Alt goes back to normal.
         press(&mut app, KeyCode::Down);
         assert_eq!(app.menu_mode(), MenuMode::Normal);
     }
@@ -2684,13 +2684,13 @@ mod tests {
         press(&mut app, KeyCode::F(9));
         assert_eq!(app.menu_mode(), MenuMode::Normal);
 
-        // F9 + T = Ctrl+T (marca a lista toda); depois volta ao normal.
+        // F9 + T = Ctrl+T (tags the whole list); then back to normal.
         press(&mut app, KeyCode::F(9));
         press(&mut app, KeyCode::Char('t'));
         assert_eq!(tagged(&app).len(), 2);
         assert_eq!(app.menu_mode(), MenuMode::Normal);
 
-        // F9 + M = Ctrl+M: mover marcados sem caminhos.
+        // F9 + M = Ctrl+M: move tagged files without paths.
         press(&mut app, KeyCode::F(9));
         press(&mut app, KeyCode::Char('m'));
         let label = &app.prompt.as_ref().unwrap().label;
@@ -2700,14 +2700,14 @@ mod tests {
         );
         press(&mut app, KeyCode::Esc);
 
-        // F9 F9 + C = Alt+C: copiar com caminhos.
+        // F9 F9 + C = Alt+C: copy with paths.
         press(&mut app, KeyCode::F(9));
         press(&mut app, KeyCode::F(9));
         press(&mut app, KeyCode::Char('c'));
         assert!(app.prompt.as_ref().unwrap().label.contains("with paths"));
         press(&mut app, KeyCode::Esc);
 
-        // Esc desiste do menu sem fazer nada.
+        // Esc gives up on the menu without doing anything.
         press(&mut app, KeyCode::F(9));
         press(&mut app, KeyCode::Esc);
         assert_eq!(app.menu_mode(), MenuMode::Normal);
@@ -2721,7 +2721,7 @@ mod tests {
         press(&mut app, KeyCode::F(8));
         assert!(app.is_split());
         assert_eq!(app.active, 0);
-        // A nova janela começa no mesmo diretório.
+        // The new window starts in the same directory.
         assert_eq!(app.panes[1].current_path(), tmp.path().join("sub"));
 
         press(&mut app, KeyCode::Tab);
@@ -2730,11 +2730,11 @@ mod tests {
         assert_eq!(app.current_path(), tmp.path());
         assert_eq!(app.panes[0].current_path(), tmp.path().join("sub"));
 
-        // F8 de novo fica só com a janela ativa.
+        // F8 again leaves only the active window.
         press(&mut app, KeyCode::F(8));
         assert!(!app.is_split());
         assert_eq!(app.current_path(), tmp.path());
-        // Sem divisão, Tab volta a alternar árvore/arquivos.
+        // Without a split, Tab goes back to toggling tree/files.
         press(&mut app, KeyCode::Tab);
         assert_eq!(app.focus, Focus::Files);
     }
@@ -2744,7 +2744,7 @@ mod tests {
         let (tmp, mut app) = sample();
         press(&mut app, KeyCode::F(8));
         press(&mut app, KeyCode::Tab);
-        press(&mut app, KeyCode::Down); // janela 2 em sub/
+        press(&mut app, KeyCode::Down); // window 2 in sub/
         press(&mut app, KeyCode::Tab);
 
         press(&mut app, KeyCode::Enter);
@@ -2757,7 +2757,7 @@ mod tests {
             app.tick(Duration::from_millis(50));
         }
         assert!(tmp.path().join("sub/b.txt").exists());
-        // A outra janela já mostra o arquivo novo.
+        // The other window already shows the new file.
         let other = &app.panes[1];
         let names: Vec<_> = other
             .files
@@ -2770,13 +2770,13 @@ mod tests {
     #[test]
     fn log_moves_cursor_or_opens_new_root() {
         let (tmp, mut app) = sample();
-        // Dentro da árvore atual: só leva o cursor.
+        // Inside the current tree: just moves the cursor.
         press(&mut app, KeyCode::Char('l'));
         answer_prompt(&mut app, "sub/deep");
         assert_eq!(app.current_path(), tmp.path().join("sub/deep"));
         assert_eq!(app.tree.path(ROOT), tmp.path());
 
-        // Fora dela: a janela ganha uma nova raiz.
+        // Outside it: the window gets a new root.
         let other = tempfile::tempdir().unwrap();
         press(&mut app, KeyCode::Char('l'));
         answer_prompt(&mut app, other.path().to_str().unwrap());
@@ -2788,7 +2788,7 @@ mod tests {
         assert!(app.message.as_deref().unwrap().starts_with("Cannot log"));
     }
 
-    /// Duas janelas: a ativa em `left/`, a outra em `right/`.
+    /// Two windows: the active one in `left/`, the other in `right/`.
     fn compare_setup() -> (tempfile::TempDir, App) {
         use std::time::{Duration, SystemTime};
         let tmp = tempfile::tempdir().unwrap();
@@ -2857,7 +2857,7 @@ mod tests {
         while app.busy() {
             app.tick(Duration::from_millis(50));
         }
-        // Abre o Branch; sub/deep.txt não existe em right/sub/: é único.
+        // Opens the Branch; sub/deep.txt does not exist in right/sub/: it is unique.
         assert_eq!(app.view, FileView::Branch(ROOT));
         assert_eq!(tagged(&app), ["deep.txt", "only-left.txt"]);
     }
@@ -2879,7 +2879,7 @@ mod tests {
         assert!(tagged(&app).is_empty());
     }
 
-    /// Raiz com um p.zip (src/a.rs, README) ao lado de a.rs e b.txt.
+    /// Root with a p.zip (src/a.rs, README) next to a.rs and b.txt.
     fn archive_setup() -> (tempfile::TempDir, App) {
         let (tmp, _) = sample();
         crate::archive::tests::make_zip(&tmp.path().join("p.zip"));
@@ -2905,18 +2905,18 @@ mod tests {
         assert_eq!(app.focus, Focus::Tree);
         assert_eq!(names(&app), ["README"]);
 
-        // Ver uma entrada sem extrair nada para o disco.
+        // View an entry without extracting anything to disk.
         press(&mut app, KeyCode::Enter);
         press(&mut app, KeyCode::Char('v'));
         assert_eq!(app.viewer.as_ref().unwrap().visible_lines(1)[0], "leia-me");
         press(&mut app, KeyCode::Esc);
 
-        // Escrever é proibido dentro do arquivo.
+        // Writing is forbidden inside the archive.
         press(&mut app, KeyCode::Char('d'));
         assert!(app.confirm.is_none());
         assert!(app.message.as_deref().unwrap().contains("read-only"));
 
-        // Esc na árvore volta exatamente para onde estava.
+        // Esc in the tree goes back exactly to where it was.
         press(&mut app, KeyCode::Esc);
         press(&mut app, KeyCode::Esc);
         assert!(app.archive.is_none());
@@ -2966,7 +2966,7 @@ mod tests {
         assert!(app.fs_changed([tmp.path().to_path_buf()]));
         assert_eq!(names(&app), ["a.rs", "b.txt", "new.txt"]);
 
-        // Com uma operação parada num conflito, espera.
+        // With an operation stopped on a conflict, waits.
         write(tmp.path().join("sub/b.txt"), "old").unwrap();
         press(&mut app, KeyCode::Enter);
         press(&mut app, KeyCode::Down);
@@ -3007,7 +3007,7 @@ mod tests {
         assert_eq!(ext.cwd, tmp.path());
         assert!(ext.wait);
 
-        // A volta relê o disco e mostra falhas.
+        // Going back re-reads the disk and shows failures.
         write(tmp.path().join("made-by-command"), "").unwrap();
         let status = std::process::Command::new("false").status();
         app.after_external(status);
@@ -3035,7 +3035,7 @@ mod tests {
         assert_eq!(app.prompt.as_ref().unwrap().input.text, "*.rs");
         press(&mut app, KeyCode::Esc);
 
-        // Outro tipo de prompt tem histórico próprio.
+        // Another kind of prompt has its own history.
         press(&mut app, KeyCode::Char('x'));
         press(&mut app, KeyCode::Up);
         assert_eq!(app.prompt.as_ref().unwrap().input.text, "");
@@ -3069,7 +3069,7 @@ mod tests {
         answer_prompt(&mut app, "*.rs");
         assert_eq!(state::load_history(&file)["filespec"], ["*.rs"]);
 
-        // Uma nova execução começa com o histórico salvo.
+        // A new run starts with the saved history.
         let mut again = App::new(tmp.path().to_path_buf());
         again.history = state::load_history(&file);
         press(&mut again, KeyCode::Char('f'));
@@ -3089,7 +3089,7 @@ mod tests {
         let before = selected(&app);
 
         alt(&mut app, 's');
-        press(&mut app, KeyCode::Char('o')); // decrescente: pergunta de novo
+        press(&mut app, KeyCode::Char('o')); // descending: asks again
         assert!(
             app.confirm
                 .as_ref()
@@ -3102,7 +3102,7 @@ mod tests {
         assert_eq!(names(&app), ["big.bin", "a.rs", "b.txt"]);
         assert_eq!(selected(&app), before, "cursor stays on the same file");
 
-        // A nova janela do F8 herda a ordenação.
+        // The F8 new window inherits the sort order.
         press(&mut app, KeyCode::F(8));
         assert_eq!(app.panes[1].sort, app.panes[0].sort);
     }
@@ -3110,12 +3110,12 @@ mod tests {
     #[test]
     fn prune_needs_typed_confirmation() {
         let (tmp, mut app) = sample();
-        press(&mut app, KeyCode::Down); // sub (com sub/deep/a.rs)
+        press(&mut app, KeyCode::Down); // sub (with sub/deep/a.rs)
         alt(&mut app, 'p');
         let label = app.prompt.as_ref().expect("asks to type").label.clone();
         assert!(label.starts_with("PRUNE sub: 2 files, 2 dirs"), "{label}");
 
-        // Texto errado: nada é apagado.
+        // Wrong text: nothing is deleted.
         answer_prompt(&mut app, "yes");
         assert!(tmp.path().join("sub/deep/a.rs").exists());
         assert!(
@@ -3203,7 +3203,7 @@ mod tests {
         press(&mut app, KeyCode::F(12));
         assert!(app.settings.is_some());
         press(&mut app, KeyCode::PageDown);
-        press(&mut app, KeyCode::Char('a')); // esconder ocultos
+        press(&mut app, KeyCode::Char('a')); // hide hidden files
         press(&mut app, KeyCode::F(3));
         assert!(app.settings.is_none());
         assert!(!app.options.show_hidden);
@@ -3227,7 +3227,7 @@ mod tests {
         assert_eq!(app.options, Options::default());
     }
 
-    /// Um "programa padrão" falso que copia o arquivo recebido para `out/`.
+    /// A fake "default program" that copies the received file to `out/`.
     fn fake_opener(tmp: &Path) -> (String, PathBuf) {
         let out = tmp.join("opened");
         fs::create_dir_all(&out).unwrap();
@@ -3293,7 +3293,7 @@ mod tests {
         assert_eq!(names(&app), ["a.rs", "b.txt"]);
     }
 
-    /// Três arquivos; "senha" aparece em dois deles, duas vezes no primeiro.
+    /// Three files; "senha" appears in two of them, twice in the first.
     fn search_setup() -> (tempfile::TempDir, App) {
         let tmp = tempfile::tempdir().unwrap();
         write(
@@ -3335,7 +3335,7 @@ mod tests {
                 .starts_with("2 of 3 tagged files contain")
         );
 
-        // Ctrl+V e Espaço: usa o termo do Ctrl+S e atravessa os arquivos.
+        // Ctrl+V and Space: uses the Ctrl+S term and goes across the files.
         ctrl(&mut app, 'v');
         assert_eq!(app.tagged_view.as_ref().unwrap().items.len(), 2);
         assert_eq!(viewer_space(&mut app), ("1.txt".into(), Some(1)));
@@ -3353,7 +3353,7 @@ mod tests {
                 .contains("not found")
         );
 
-        // Para trás volta para o arquivo anterior.
+        // Backwards goes back to the previous file.
         press(&mut app, KeyCode::Char('-'));
         let v = app.viewer.as_ref().unwrap();
         assert_eq!(v.path.file_name().unwrap(), "1.txt");
@@ -3387,7 +3387,7 @@ mod tests {
     #[test]
     fn viewer_find_prompt_and_options() {
         let (_tmp, mut app) = search_setup();
-        press(&mut app, KeyCode::Char('v')); // só o 1.txt
+        press(&mut app, KeyCode::Char('v')); // only 1.txt
         press(&mut app, KeyCode::Char('f'));
         assert!(
             app.prompt
@@ -3401,11 +3401,11 @@ mod tests {
         type_text(&mut app, "SENHA");
         press(&mut app, KeyCode::Enter);
         assert_eq!(app.viewer.as_ref().unwrap().hit.map(|h| h.line), Some(1));
-        // Diferenciando maiúsculas, o "senha" da linha 3 não conta.
+        // Case-sensitive, the "senha" on line 3 does not count.
         press(&mut app, KeyCode::Char(' '));
         assert_eq!(app.viewer.as_ref().unwrap().hit.map(|h| h.line), Some(1));
 
-        // O termo e as opções voltam no próximo Ctrl+S.
+        // The term and options come back on the next Ctrl+S.
         press(&mut app, KeyCode::Esc);
         ctrl(&mut app, 's');
         let prompt = app.prompt.as_ref().unwrap();
@@ -3531,7 +3531,7 @@ mod tests {
         assert_eq!(current_name(&app), "Docs");
         app.handle_key(KeyEvent::new(KeyCode::Char('D'), KeyModifiers::SHIFT));
         assert_eq!(current_name(&app), "downloads");
-        // Minúscula continua sendo comando (d = Delete).
+        // Lowercase is still a command (d = Delete).
         press(&mut app, KeyCode::Char('d'));
         assert!(app.confirm.is_some());
     }
@@ -3578,7 +3578,7 @@ mod tests {
             Some(tmp.path().join("sub").as_path())
         );
 
-        // Q normal não muda o diretório.
+        // Normal Q does not change the directory.
         let (_tmp, mut app) = sample();
         press(&mut app, KeyCode::Char('q'));
         press(&mut app, KeyCode::Char('y'));
@@ -3640,7 +3640,7 @@ mod tests {
         assert_eq!(shown(&app), "fn main() {}");
         press(&mut app, KeyCode::Down);
         assert_eq!(shown(&app), "b");
-        // Os comandos da janela de arquivos continuam valendo.
+        // The files window commands remain valid.
         press(&mut app, KeyCode::Char('t'));
         assert_eq!(tagged(&app), ["b.txt"]);
         app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT));
@@ -3678,7 +3678,7 @@ mod tests {
         assert_eq!((after.year(), after.month(), after.day()), (2020, 2, 1));
         assert_eq!((after.hour(), after.minute()), (13, 45));
 
-        // Marcados, só a data: cada um mantém a hora.
+        // Tagged files, date only: each keeps its time.
         ctrl(&mut app, 't');
         let b_time = mtime("b.txt").time();
         ctrl(&mut app, 'n');
@@ -3696,7 +3696,7 @@ mod tests {
         answer_prompt(&mut app, "ontem");
         assert!(app.message.as_deref().unwrap().starts_with("Invalid date"));
 
-        // Na árvore, a data do diretório.
+        // In the tree, the directory's date.
         press(&mut app, KeyCode::Esc);
         press(&mut app, KeyCode::Down);
         press(&mut app, KeyCode::Char('n'));
@@ -3731,7 +3731,7 @@ mod tests {
             "list refreshed"
         );
 
-        // Lista de dados, e não sobrescreve.
+        // Data list, and does not overwrite.
         ctrl(&mut app, 'b');
         answer_prompt(&mut app, "lista.csv");
         type_text(&mut app, "%N;%S");
@@ -3779,7 +3779,7 @@ mod tests {
         names.sort();
         assert_eq!(names, ["a.rs", "b.txt", "sub/c.rs", "sub/deep/a.rs"]);
 
-        // Não sobrescreve.
+        // Does not overwrite.
         app.handle_key(KeyEvent::new(KeyCode::F(5), KeyModifiers::CONTROL));
         answer_prompt(&mut app, "pack.zip");
         assert!(app.message.as_deref().unwrap().ends_with("already exists"));

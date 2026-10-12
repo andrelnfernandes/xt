@@ -1,5 +1,5 @@
-//! Estado que sobrevive entre execuções: o histórico dos prompts, em
-//! `~/.local/state/xt/history.toml` (ou `$XDG_STATE_HOME/xt/...`).
+//! State that survives between runs: the prompt history, in
+//! `~/.local/state/xt/history.toml` (or `$XDG_STATE_HOME/xt/...`).
 
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
@@ -27,7 +27,7 @@ pub fn history_path() -> Option<PathBuf> {
     Some(base.join("xt").join("history.toml"))
 }
 
-/// Histórico salvo; vazio se o arquivo não existe ou não dá para ler.
+/// Saved history; empty if the file doesn't exist or can't be read.
 pub fn load_history(path: &Path) -> History {
     fs::read_to_string(path)
         .ok()
@@ -36,8 +36,8 @@ pub fn load_history(path: &Path) -> History {
         .unwrap_or_default()
 }
 
-/// Grava o histórico: só o dono lê (pode ter comandos digitados) e a troca
-/// é atômica (um temporário renomeado por cima).
+/// Saves the history: only the owner can read it (it may contain typed commands)
+/// and the replacement is atomic (a temporary file renamed over the old one).
 pub fn save_history(path: &Path, history: &History) -> io::Result<()> {
     let text = toml::to_string(&StateFile {
         history: history.clone(),
