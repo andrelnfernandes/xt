@@ -15,26 +15,21 @@ use std::time::SystemTime;
 use chrono::{DateTime, Local};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, List, ListItem, ListState, Paragraph};
 
 use crate::app::{App, FileView, Focus, MenuMode, Pane};
+use crate::config::theme;
 use crate::model::tree::{FileEntry, FileKind};
 use crate::ops::Operation;
 use crate::viewer::{self, ViewMode};
-
-const BG: Color = Color::Blue;
-const FG: Color = Color::White;
-const BORDER: Color = Color::Cyan;
-const KEY: Color = Color::Yellow;
-const DIM: Color = Color::LightBlue;
 
 const STATS_WIDTH: u16 = 28;
 const SMALL_FILE_WINDOW: u16 = 8;
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
-    let base = Style::new().fg(FG).bg(BG);
+    let base = Style::new().fg(theme().text).bg(theme().background);
     frame.render_widget(Block::new().style(base), frame.area());
 
     if app.viewer.is_some() {
@@ -97,7 +92,11 @@ fn draw_pane(frame: &mut Frame, pane: &mut Pane, active: bool, split: bool, area
 }
 
 fn panel(title: impl Into<Line<'static>>, active: bool) -> Block<'static> {
-    let border = if active { KEY } else { BORDER };
+    let border = if active {
+        theme().active_border
+    } else {
+        theme().border
+    };
     Block::bordered()
         .border_type(BorderType::Plain)
         .border_style(Style::new().fg(border))
@@ -106,9 +105,13 @@ fn panel(title: impl Into<Line<'static>>, active: bool) -> Block<'static> {
 
 fn highlight(active: bool) -> Style {
     if active {
-        Style::new().fg(Color::Black).bg(Color::Cyan)
+        Style::new()
+            .fg(theme().highlight_text)
+            .bg(theme().highlight)
     } else {
-        Style::new().fg(Color::Black).bg(Color::Gray)
+        Style::new()
+            .fg(theme().highlight_text)
+            .bg(theme().inactive_highlight)
     }
 }
 
@@ -120,7 +123,7 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
             .areas(area);
     frame.render_widget(
         Line::from(vec![
-            Span::styled("Path: ", Style::new().fg(KEY)),
+            Span::styled("Path: ", Style::new().fg(theme().key)),
             Span::raw(path.to_string_lossy().into_owned()),
         ]),
         left,
@@ -138,12 +141,12 @@ fn draw_tree(frame: &mut Frame, pane: &mut Pane, active: bool, title: String, ar
             let node = pane.tree.node(row.id);
             let name = node.name.to_string_lossy().into_owned();
             let name_style = if node.error.is_some() {
-                Style::new().fg(Color::LightRed)
+                Style::new().fg(theme().error)
             } else {
                 Style::new()
             };
             ListItem::new(Line::from(vec![
-                Span::styled(row.prefix.clone(), Style::new().fg(DIM)),
+                Span::styled(row.prefix.clone(), Style::new().fg(theme().dim)),
                 Span::styled(name, name_style),
             ]))
         })
@@ -167,12 +170,12 @@ fn draw_files(frame: &mut Frame, pane: &mut Pane, active: bool, area: Rect) {
     let items: Vec<ListItem> = if let Some(err) = error {
         vec![ListItem::new(Span::styled(
             format!("Cannot read directory: {err}"),
-            Style::new().fg(Color::LightRed),
+            Style::new().fg(theme().error),
         ))]
     } else if pane.files.is_empty() {
         vec![ListItem::new(Span::styled(
             "No matching files",
-            Style::new().fg(DIM),
+            Style::new().fg(theme().dim),
         ))]
     } else {
         pane.files[range]
@@ -240,17 +243,17 @@ fn file_line(f: &FileEntry, width: usize) -> ListItem<'static> {
     let name = fit(&name, name_width);
 
     let style = match f.kind {
-        _ if f.tagged => Style::new().fg(KEY).add_modifier(Modifier::BOLD),
-        FileKind::Symlink => Style::new().fg(Color::LightCyan),
-        FileKind::Other => Style::new().fg(Color::LightMagenta),
-        FileKind::File if f.mode & 0o111 != 0 => Style::new().fg(Color::LightGreen),
+        _ if f.tagged => Style::new().fg(theme().tagged).add_modifier(Modifier::BOLD),
+        FileKind::Symlink => Style::new().fg(theme().symlink),
+        FileKind::Other => Style::new().fg(theme().special),
+        FileKind::File if f.mode & 0o111 != 0 => Style::new().fg(theme().executable),
         FileKind::File => Style::new(),
     };
     let mark = if f.tagged { "■ " } else { "  " };
     ListItem::new(Line::from(vec![
-        Span::styled(mark, Style::new().fg(KEY)),
+        Span::styled(mark, Style::new().fg(theme().tagged)),
         Span::styled(name, style),
-        Span::styled(details, Style::new().fg(DIM)),
+        Span::styled(details, Style::new().fg(theme().dim)),
     ]))
 }
 
@@ -270,7 +273,7 @@ fn draw_stats(frame: &mut Frame, app: &App, area: Rect) {
         FileView::Showall => "SHOWALL",
     };
 
-    let label = |s: &'static str| Line::from(Span::styled(s, Style::new().fg(KEY)));
+    let label = |s: &'static str| Line::from(Span::styled(s, Style::new().fg(theme().key)));
     let value = |k: &str, v: String| {
         Line::from(vec![
             Span::raw(format!(" {k:<7}")),
@@ -357,7 +360,7 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
             Some(msg) => Line::from(Span::styled(
                 msg.clone(),
                 Style::new()
-                    .fg(Color::LightYellow)
+                    .fg(theme().message)
                     .add_modifier(Modifier::BOLD),
             )),
             None => first,
@@ -528,8 +531,8 @@ fn op_lines(op: &Operation) -> Vec<Line<'static>> {
     let filled = ((fraction * BAR as f64) as usize).min(BAR);
     let second = Line::from(vec![
         Span::raw(format!("{:9}", "")),
-        Span::styled("█".repeat(filled), Style::new().fg(KEY)),
-        Span::styled("░".repeat(BAR - filled), Style::new().fg(DIM)),
+        Span::styled("█".repeat(filled), Style::new().fg(theme().key)),
+        Span::styled("░".repeat(BAR - filled), Style::new().fg(theme().dim)),
         Span::raw(format!(
             " {:>3}%  {} of {} bytes   ",
             (fraction * 100.0) as u32,
@@ -572,14 +575,17 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
     .areas(frame.area());
 
     let mut title = vec![
-        Span::styled("View: ", Style::new().fg(KEY)),
+        Span::styled("View: ", Style::new().fg(theme().key)),
         Span::raw(v.path.to_string_lossy().into_owned()),
-        Span::styled(format!("  {} bytes", fmt_num(v.size)), Style::new().fg(DIM)),
+        Span::styled(
+            format!("  {} bytes", fmt_num(v.size)),
+            Style::new().fg(theme().dim),
+        ),
     ];
     if v.truncated() {
         title.push(Span::styled(
             format!("  (showing first {})", fmt_num(viewer::MAX_BYTES)),
-            Style::new().fg(Color::LightRed),
+            Style::new().fg(theme().error),
         ));
     }
     frame.render_widget(Line::from(title), header);
@@ -627,7 +633,7 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
 fn key(k: &str) -> Span<'static> {
     Span::styled(
         k.to_string(),
-        Style::new().fg(KEY).add_modifier(Modifier::BOLD),
+        Style::new().fg(theme().key).add_modifier(Modifier::BOLD),
     )
 }
 
@@ -763,7 +769,7 @@ mod tests {
         let keys: Vec<&str> = line
             .spans
             .iter()
-            .filter(|s| s.style.fg == Some(KEY))
+            .filter(|s| s.style.fg == Some(theme().key))
             .map(|s| s.content.as_ref())
             .collect();
         assert_eq!(keys, ["C", "X"]);

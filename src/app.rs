@@ -15,6 +15,7 @@ use std::time::Duration;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, ModifierKeyCode};
 
 use crate::archive;
+use crate::config::Options;
 use crate::input::{self, Command, LineEvent, LineInput};
 use crate::model::compare::{self, CompareMode};
 use crate::model::filespec::Filespec;
@@ -158,6 +159,8 @@ pub struct App {
     /// Programa externo (editor, comando) a rodar pelo laço principal,
     /// que entrega o terminal a ele.
     pub external: Option<External>,
+    /// Opções do arquivo de configuração.
+    pub options: Options,
     pub should_quit: bool,
     /// Ctrl/Alt pressionado agora (só em terminais que avisam isso).
     pub held: Option<MenuMode>,
@@ -195,6 +198,7 @@ impl App {
             pending_changes: HashSet::new(),
             history: HashMap::new(),
             external: None,
+            options: Options::default(),
             should_quit: false,
             held: None,
             sticky: MenuMode::Normal,
@@ -395,6 +399,7 @@ impl App {
             return;
         }
         match cmd {
+            Command::Quit if !self.options.confirm_quit => self.should_quit = true,
             Command::Quit => self.ask(ConfirmKind::Quit, "Quit xt?".into()),
             Command::SwitchWindow => match self.focus {
                 Focus::Tree => self.focus = Focus::Files,
@@ -1790,5 +1795,14 @@ mod tests {
         press(&mut app, KeyCode::Char('x'));
         press(&mut app, KeyCode::Up);
         assert_eq!(app.prompt.as_ref().unwrap().input.text, "");
+    }
+
+    #[test]
+    fn quit_without_confirmation_when_configured() {
+        let (_tmp, mut app) = sample();
+        app.options.confirm_quit = false;
+        press(&mut app, KeyCode::Char('q'));
+        assert!(app.should_quit);
+        assert!(app.confirm.is_none());
     }
 }

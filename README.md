@@ -8,7 +8,25 @@ Gerenciador de arquivos em modo texto para Linux, inspirado no XTree e no ZTreeW
 cargo run --release -- [diretório]
 ```
 
-Sem argumento, abre o diretório atual.
+Sem argumento, abre o diretório atual. `xt --help` mostra as opções.
+
+## Configuração
+
+O xt lê `~/.config/xt/config.toml` (ou `$XDG_CONFIG_HOME/xt/config.toml`), se
+existir. Para começar de um arquivo comentado com todos os padrões:
+
+```bash
+mkdir -p ~/.config/xt && xt --default-config > ~/.config/xt/config.toml
+```
+
+- `theme`: `classic` (azul do XTree), `dark`, `light` ou `mono` (cores do
+  próprio terminal).
+- `[colors]`: troca cores individuais por cima do tema, com nomes
+  (`"yellow"`), `"#rrggbb"` ou índices de 0 a 255.
+- `[options]`: `confirm_quit = false` sai sem perguntar.
+
+Um erro no arquivo não impede o xt de abrir: ele usa os padrões e mostra o
+erro no rodapé.
 
 ## Teclas
 
@@ -148,6 +166,7 @@ Na árvore, `+` no conector (`├─+`) indica um diretório recolhido que tem s
 - `src/archive.rs` — leitura de ZIP/TAR
 - `src/watch.rs` — avisos de mudanças no disco (inotify)
 - `src/shell.rs` — editor e comandos do shell (com aspas seguras)
+- `src/config.rs` — arquivo de configuração e temas
 - `src/model/compare.rs` — regras do Compare
 - `src/model/filespec.rs` — filtro de arquivos
 - `src/ops/` — copiar, mover e apagar, em passos (progresso, conflitos, cancelamento)

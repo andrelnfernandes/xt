@@ -1,9 +1,10 @@
 //! xt — gerenciador de arquivos em modo texto inspirado no XTree/ZTreeWin.
 //!
-//! Uso: `xt [diretório]` (padrão: diretório atual)
+//! Uso: `xt [diretório]` (padrão: diretório atual); `xt --help` para mais.
 
 mod app;
 mod archive;
+mod config;
 mod input;
 mod model;
 mod ops;
@@ -28,9 +29,42 @@ use ratatui::crossterm::{cursor, execute, terminal};
 
 use app::App;
 
+const USAGE: &str = "\
+xt - text-mode file manager inspired by XTree/ZTreeWin
+
+Usage: xt [DIRECTORY]
+
+Options:
+  --default-config   print a commented configuration file
+  -h, --help         show this help
+  -V, --version      show the version
+
+Configuration: ~/.config/xt/config.toml (or $XDG_CONFIG_HOME/xt/config.toml).
+Inside xt, press F1 for the list of keys.";
+
 fn main() -> anyhow::Result<()> {
-    let root = match std::env::args_os().nth(1) {
-        Some(arg) => PathBuf::from(arg),
+    let mut root = None;
+    for arg in std::env::args_os().skip(1) {
+        match arg.to_str() {
+            Some("-h" | "--help") => {
+                println!("{USAGE}");
+                return Ok(());
+            }
+            Some("-V" | "--version") => {
+                println!("xt {}", env!("CARGO_PKG_VERSION"));
+                return Ok(());
+            }
+            Some("--default-config") => {
+                print!("{}", config::DEFAULT_CONFIG);
+                return Ok(());
+            }
+            Some(s) if s.starts_with('-') => bail!("unknown option {s}\n\n{USAGE}"),
+            _ if root.is_some() => bail!("only one directory can be given\n\n{USAGE}"),
+            _ => root = Some(PathBuf::from(arg)),
+        }
+    }
+    let root = match root {
+        Some(path) => path,
         None => std::env::current_dir().context("cannot read current directory")?,
     };
     let root =
@@ -39,7 +73,13 @@ fn main() -> anyhow::Result<()> {
         bail!("{} is not a directory", root.display());
     }
 
+    let (config, config_error) = config::Config::load();
+    if let Ok(theme) = config::Theme::from_config(&config) {
+        config::set_theme(theme);
+    }
     let mut app = App::new(root);
+    app.options = config.options;
+    app.message = config_error;
     // `init` também instala um panic hook que restaura o terminal.
     let mut terminal = ratatui::init();
     let mut keyboard = Keyboard::detect();
