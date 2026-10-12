@@ -27,7 +27,14 @@ are trademarks of their respective owners.
 
 ## Installation
 
-Requires Rust (via [rustup](https://rustup.rs)). In the project folder:
+Requires Rust (via [rustup](https://rustup.rs)). To install straight from
+GitHub:
+
+```bash
+cargo install --git https://github.com/andrelnfernandes/xt
+```
+
+Or, from a clone of the repository, in the project folder:
 
 ```bash
 cargo install --path .

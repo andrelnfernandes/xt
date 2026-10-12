@@ -27,7 +27,14 @@ de seus respectivos donos.
 
 ## Instalação
 
-Requer Rust (via [rustup](https://rustup.rs)). Na pasta do projeto:
+Requer Rust (via [rustup](https://rustup.rs)). Para instalar direto do
+GitHub:
+
+```bash
+cargo install --git https://github.com/andrelnfernandes/xt
+```
+
+Ou, a partir de um clone do repositório, na pasta do projeto:
 
 ```bash
 cargo install --path .
