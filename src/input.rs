@@ -24,6 +24,8 @@ pub enum Command {
     Split,
     /// Abre outro diretório na janela.
     Log,
+    /// Compara com o diretório da outra janela e marca arquivos.
+    Compare,
     Back,
     Filespec,
     Showall,
@@ -126,6 +128,7 @@ pub fn map_key(key: KeyEvent, focus: Focus) -> Option<Command> {
             KeyCode::Char('*') => Some(ExpandAll),
             KeyCode::Char('m') => Some(MakeDir),
             KeyCode::Char('l') => Some(Log),
+            KeyCode::Char('c') => Some(Compare),
             _ => None,
         },
         Focus::Files => match key {
@@ -233,7 +236,10 @@ mod tests {
                 paths: false
             })
         );
-        assert_eq!(map(KeyCode::Char('c'), none, Focus::Tree), None);
+        assert_eq!(
+            map(KeyCode::Char('c'), none, Focus::Tree),
+            Some(Command::Compare)
+        );
     }
 
     #[test]

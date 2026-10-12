@@ -14,6 +14,7 @@ use std::time::Duration;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, ModifierKeyCode};
 
 use crate::input::{self, Command, LineEvent, LineInput};
+use crate::model::compare::{self, CompareMode};
 use crate::model::filespec::Filespec;
 use crate::model::tree::{LogJob, NodeId, ROOT};
 use crate::ops::{self, Answer, OpKind, Operation, Source};
@@ -31,6 +32,8 @@ pub struct Job {
 enum AfterLog {
     Refresh,
     OpenBranch(NodeId),
+    /// Abre o Branch e compara com a outra janela.
+    CompareBranch(NodeId, CompareMode),
 }
 
 /// Qual menu o rodapé mostra: o normal ou o dos comandos com Ctrl/Alt.
@@ -83,16 +86,33 @@ fn transfer_label(kind: OpKind, sources: &[Source], tagged: bool, paths: bool) -
     format!("{verb} {}{mode} to: ", describe(sources))
 }
 
-/// Pergunta Sim/Não no rodapé.
+/// Pergunta no rodapé, respondida com uma tecla: a primeira letra de uma
+/// das opções. Qualquer outra tecla desiste.
 pub struct Confirm {
     pub question: String,
+    pub options: &'static [&'static str],
     kind: ConfirmKind,
 }
+
+const YES_NO: &[&str] = &["Yes", "No"];
+const COMPARE_OPTIONS: &[&str] = &[
+    "Unique",
+    "Newer",
+    "Older",
+    "Identical",
+    "Different",
+    "All new (unique + newer)",
+    "Branch on/off",
+];
 
 enum ConfirmKind {
     Quit,
     DeleteFiles(Vec<Source>),
     DeleteDir(NodeId),
+    /// `branch`: compara o ramo inteiro, não só o diretório.
+    Compare {
+        branch: bool,
+    },
 }
 
 pub struct App {
@@ -202,8 +222,16 @@ impl App {
         self.message = None;
 
         if let Some(confirm) = self.confirm.take() {
-            if matches!(key.code, KeyCode::Char('y' | 'Y')) {
-                self.confirmed(confirm.kind);
+            if let KeyCode::Char(c) = key.code {
+                let c = c.to_ascii_lowercase();
+                let chosen = confirm.options.iter().any(|o| {
+                    o.chars()
+                        .next()
+                        .is_some_and(|k| k.to_ascii_lowercase() == c)
+                });
+                if chosen {
+                    self.confirmed(confirm.kind, c);
+                }
             }
             return;
         }
@@ -307,6 +335,7 @@ impl App {
             Command::SwitchPane if self.is_split() => self.active = 1 - self.active,
             Command::SwitchPane => self.apply(Command::SwitchWindow),
             Command::Split => self.toggle_split(),
+            Command::Compare => self.ask_compare(false),
             Command::Log => {
                 let current = self.current_path().to_string_lossy().into_owned();
                 self.open_prompt(PromptKind::Log, "LOG directory: ".into(), &current);
@@ -413,6 +442,12 @@ impl App {
         pane.refresh_rows(pane.current());
         match job.then {
             AfterLog::OpenBranch(id) => pane.set_view(FileView::Branch(id)),
+            AfterLog::CompareBranch(id, mode) => {
+                pane.set_view(FileView::Branch(id));
+                self.job = None;
+                self.compare(mode);
+                return;
+            }
             AfterLog::Refresh => pane.refresh_files(),
         }
         self.job = None;
@@ -448,6 +483,52 @@ impl App {
             }
             pane.after_change();
         }
+    }
+
+    fn ask_compare(&mut self, branch: bool) {
+        let Some(other) = self.other() else {
+            self.message = Some("Compare needs the split window (F8)".into());
+            return;
+        };
+        let scope = if branch { "branch" } else { "directory" };
+        let q = format!(
+            "COMPARE {scope} {} with {} and tag:",
+            fit_name(&self.current_path()),
+            fit_name(&other.current_path())
+        );
+        self.ask_options(ConfirmKind::Compare { branch }, q, COMPARE_OPTIONS);
+    }
+
+    /// Marca, na lista da janela ativa, os arquivos que têm a relação
+    /// pedida com o correspondente no diretório da outra janela. No Branch
+    /// e no Showall, o correspondente segue o caminho relativo à raiz da
+    /// lista (`src/a.rs` → `<outro>/src/a.rs`).
+    fn compare(&mut self, mode: CompareMode) {
+        let Some(other_base) = self.other().map(Pane::current_path) else {
+            return;
+        };
+        let base = self.tree.path(self.view_root());
+        let files = self.files.clone();
+        let mut count = 0;
+        for &f in &files {
+            let path = self.file_path(f);
+            let rel = path.strip_prefix(&base).unwrap_or(&path);
+            let target = fs::symlink_metadata(other_base.join(rel)).ok();
+            let entry = self.file(f);
+            let tag = mode.matches(compare::relation(
+                entry.size,
+                entry.modified,
+                target.as_ref(),
+            ));
+            count += usize::from(tag);
+            self.set_tags(&[f], |_| tag);
+        }
+        self.message = Some(format!(
+            "Tagged {count} of {} files: {} (compared with {})",
+            files.len(),
+            mode.describe(),
+            other_base.display()
+        ));
     }
 
     /// F8: divide a tela em duas janelas, ou volta a uma só. A nova janela
@@ -487,7 +568,20 @@ impl App {
     }
 
     fn ask(&mut self, kind: ConfirmKind, question: String) {
-        self.confirm = Some(Confirm { question, kind });
+        self.ask_options(kind, question, YES_NO);
+    }
+
+    fn ask_options(
+        &mut self,
+        kind: ConfirmKind,
+        question: String,
+        options: &'static [&'static str],
+    ) {
+        self.confirm = Some(Confirm {
+            question,
+            options,
+            kind,
+        });
     }
 
     fn submit(&mut self, kind: PromptKind, text: String) {
@@ -521,8 +615,19 @@ impl App {
         }
     }
 
-    fn confirmed(&mut self, kind: ConfirmKind) {
+    fn confirmed(&mut self, kind: ConfirmKind, choice: char) {
+        let yes = choice == 'y';
         match kind {
+            ConfirmKind::Compare { branch } => match CompareMode::from_key(choice) {
+                // Sem modo: é o "Branch on/off"; pergunta de novo.
+                None => self.ask_compare(!branch),
+                Some(mode) if branch => {
+                    let id = self.current();
+                    self.start_job(LogJob::new(id, false), AfterLog::CompareBranch(id, mode));
+                }
+                Some(mode) => self.compare(mode),
+            },
+            _ if !yes => {}
             ConfirmKind::Quit => self.should_quit = true,
             ConfirmKind::DeleteFiles(sources) => self.start_op(Operation::delete(sources)),
             ConfirmKind::DeleteDir(id) => {
@@ -696,6 +801,14 @@ impl App {
             Err(e) => self.message = Some(format!("Cannot view file: {e}")),
         }
     }
+}
+
+/// Último componente de um caminho, para mensagens curtas.
+fn fit_name(path: &Path) -> String {
+    path.file_name()
+        .unwrap_or(path.as_os_str())
+        .to_string_lossy()
+        .into_owned()
 }
 
 /// "arquivo.txt" ou "3 tagged files".
@@ -1254,5 +1367,96 @@ mod tests {
         press(&mut app, KeyCode::Char('l'));
         answer_prompt(&mut app, "/caminho/que/nao/existe");
         assert!(app.message.as_deref().unwrap().starts_with("Cannot log"));
+    }
+
+    /// Duas janelas: a ativa em `left/`, a outra em `right/`.
+    fn compare_setup() -> (tempfile::TempDir, App) {
+        use std::time::{Duration, SystemTime};
+        let tmp = tempfile::tempdir().unwrap();
+        let (l, r) = (tmp.path().join("left"), tmp.path().join("right"));
+        create_dir_all(l.join("sub")).unwrap();
+        create_dir_all(&r).unwrap();
+        let at = |path: PathBuf, content: &str, secs: u64| {
+            write(&path, content).unwrap();
+            let t = SystemTime::UNIX_EPOCH + Duration::from_secs(secs);
+            fs::File::options()
+                .write(true)
+                .open(path)
+                .unwrap()
+                .set_modified(t)
+                .unwrap();
+        };
+        at(l.join("same.txt"), "x", 5_000);
+        at(r.join("same.txt"), "x", 5_000);
+        at(l.join("newer.txt"), "new", 9_000);
+        at(r.join("newer.txt"), "old", 1_000);
+        at(l.join("older.txt"), "old", 1_000);
+        at(r.join("older.txt"), "new", 9_000);
+        at(l.join("only-left.txt"), "", 5_000);
+        at(l.join("sub/deep.txt"), "", 5_000);
+
+        let mut app = App::new(l);
+        app.apply(Command::Split);
+        app.active = 1;
+        app.log(r.to_str().unwrap()).unwrap();
+        app.active = 0;
+        (tmp, app)
+    }
+
+    fn compare_with(app: &mut App, key: char) -> Vec<String> {
+        press(app, KeyCode::Char('c'));
+        assert!(app.confirm.is_some(), "compare question");
+        press(app, KeyCode::Char(key));
+        tagged(app)
+    }
+
+    #[test]
+    fn compare_tags_by_relation() {
+        let (_tmp, mut app) = compare_setup();
+        assert_eq!(compare_with(&mut app, 'u'), ["only-left.txt"]);
+        assert_eq!(compare_with(&mut app, 'n'), ["newer.txt"]);
+        assert_eq!(compare_with(&mut app, 'o'), ["older.txt"]);
+        assert_eq!(compare_with(&mut app, 'i'), ["same.txt"]);
+        assert_eq!(compare_with(&mut app, 'd'), ["newer.txt", "older.txt"]);
+        assert_eq!(compare_with(&mut app, 'a'), ["newer.txt", "only-left.txt"]);
+        assert!(
+            app.message
+                .as_deref()
+                .unwrap()
+                .starts_with("Tagged 2 of 4 files")
+        );
+    }
+
+    #[test]
+    fn compare_branch_follows_relative_paths() {
+        let (_tmp, mut app) = compare_setup();
+        press(&mut app, KeyCode::Char('c'));
+        press(&mut app, KeyCode::Char('b'));
+        let q = &app.confirm.as_ref().expect("asks again").question;
+        assert!(q.starts_with("COMPARE branch left"), "{q}");
+        press(&mut app, KeyCode::Char('u'));
+        while app.busy() {
+            app.tick(Duration::from_millis(50));
+        }
+        // Abre o Branch; sub/deep.txt não existe em right/sub/: é único.
+        assert_eq!(app.view, FileView::Branch(ROOT));
+        assert_eq!(tagged(&app), ["deep.txt", "only-left.txt"]);
+    }
+
+    #[test]
+    fn compare_needs_split_and_esc_cancels() {
+        let (_tmp, mut app) = sample();
+        press(&mut app, KeyCode::Char('c'));
+        assert!(app.confirm.is_none());
+        assert_eq!(
+            app.message.as_deref(),
+            Some("Compare needs the split window (F8)")
+        );
+
+        let (_tmp, mut app) = compare_setup();
+        press(&mut app, KeyCode::Char('c'));
+        press(&mut app, KeyCode::Esc);
+        assert!(app.confirm.is_none());
+        assert!(tagged(&app).is_empty());
     }
 }

@@ -328,16 +328,16 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
             menu_line("", &help),
         ]
     } else if let Some(confirm) = &app.confirm {
-        vec![
-            Line::from(vec![
-                Span::styled(format!("{} ", confirm.question), bold),
-                key("Y"),
-                Span::raw("es / "),
-                key("N"),
-                Span::raw("o"),
-            ]),
-            Line::default(),
-        ]
+        // Pergunta numa linha e opções na outra, para caminhos longos não
+        // empurrarem as opções para fora da tela.
+        let mut options = menu_words("", confirm.options);
+        options.spans.extend(
+            menu_line("", &[("Esc", "cancel")])
+                .spans
+                .into_iter()
+                .skip(1),
+        );
+        vec![Line::styled(confirm.question.clone(), bold), options]
     } else if let Some(op) = &app.op {
         op_lines(op)
     } else if let Some(job) = &app.job {
@@ -381,8 +381,8 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
             menu_words(
                 "DIR",
                 &[
-                    "Branch", "Delete", "Filespec", "Invert", "Log", "Makedir", "Rename",
-                    "Showall", "Tag", "Untag", "Quit",
+                    "Branch", "Compare", "Delete", "Filespec", "Invert", "Log", "Makedir",
+                    "Rename", "Showall", "Tag", "Untag", "Quit",
                 ],
             ),
             menu_line(

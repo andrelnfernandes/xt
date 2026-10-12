@@ -26,6 +26,7 @@ Sem argumento, abre o diretório atual.
 | `F2` | relê o diretório do disco | idem |
 | `V` | | visualiza o arquivo (texto/hex) |
 | `L` | Log: abre outro diretório na janela | |
+| `C` | Compare: compara com a outra janela e marca | |
 | F8 | divide a tela em duas janelas (ou volta a uma) | idem |
 | Tab | troca de janela (tela dividida) | idem |
 | Enter | abre a janela de arquivos | volta para a árvore |
@@ -62,6 +63,18 @@ Tab alterna entre elas (sem a divisão, Tab faz o mesmo que Enter). Cada janela
 tem a sua árvore, cursor e filespec; use `L` para abrir outro diretório nela.
 Com a tela dividida, o Copy/Move sugere como destino o diretório da outra
 janela, e as duas são atualizadas depois de qualquer operação.
+
+**Compare (`C` na árvore, com a tela dividida):** compara os arquivos do
+diretório atual com os do diretório da outra janela e marca, à escolha:
+**U**nique (não existem do outro lado), **N**ewer, **O**lder, **I**dentical
+(mesmo tamanho e data), **D**ifferent, ou **A**ll new (únicos + mais novos:
+o que falta copiar para atualizar o outro lado). **B** troca o escopo para o
+ramo inteiro: o xt loga o ramo, compara seguindo os caminhos relativos
+(`src/a.rs` ↔ `<outro>/src/a.rs`) e abre o Branch com os arquivos marcados.
+Datas com até 2 segundos de diferença contam como iguais (FAT/exFAT).
+
+Para sincronizar: `C` `B` `A` e depois Alt+C (copiar com caminhos), que já
+sugere a outra janela como destino.
 
 **Menus Ctrl/Alt:** como no ZTree, o rodapé mostra só os comandos de uma
 tecla. **F9** alterna para o menu de Ctrl, depois o de Alt, e volta. Com um
