@@ -53,6 +53,8 @@ pub enum Command {
     ViewTagged,
     /// `\`: navega digitando o caminho.
     Treespec,
+    /// Alt+K: tamanho ou nº de arquivos por diretório na árvore.
+    Kbyte,
     Back,
     Filespec,
     Showall,

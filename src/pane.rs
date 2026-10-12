@@ -38,6 +38,38 @@ pub struct FileRef {
     pub idx: usize,
 }
 
+/// O que o Alt+K mostra ao lado dos diretórios.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Kbyte {
+    pub show: KbyteShow,
+    /// Só os arquivos marcados.
+    pub tagged_only: bool,
+    /// Soma o ramo inteiro, não só o diretório.
+    pub branch: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum KbyteShow {
+    #[default]
+    None,
+    Size,
+    Count,
+}
+
+impl Kbyte {
+    /// Ex.: "size of branch, tagged".
+    pub fn describe(&self) -> String {
+        let what = match self.show {
+            KbyteShow::None => return String::new(),
+            KbyteShow::Size => "K",
+            KbyteShow::Count => "files",
+        };
+        let scope = if self.branch { "branch" } else { "dir" };
+        let tagged = if self.tagged_only { ", tagged" } else { "" };
+        format!("{what} per {scope}{tagged}")
+    }
+}
+
 pub struct Pane {
     pub tree: Tree,
     /// Cache das linhas visíveis; recalculado quando a árvore muda.
@@ -50,6 +82,8 @@ pub struct Pane {
     pub file_state: ListState,
     pub filespec: Filespec,
     pub sort: Sort,
+    /// Alt+K: tamanho ou nº de arquivos ao lado de cada diretório.
+    pub kbyte: Kbyte,
     /// Altura útil das listas no último desenho (para PgUp/PgDn).
     pub tree_page: usize,
     pub file_page: usize,
@@ -103,6 +137,7 @@ impl Pane {
             file_state: ListState::default().with_selected(Some(0)),
             filespec: Filespec::default(),
             sort: Sort::default(),
+            kbyte: Kbyte::default(),
             tree_page: 1,
             file_page: 1,
             archive: None,

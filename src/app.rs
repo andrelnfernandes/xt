@@ -24,7 +24,7 @@ use crate::model::filespec::Filespec;
 use crate::model::sort::{Sort, SortKey};
 use crate::model::tree::{LogJob, NodeId, ROOT};
 use crate::ops::{self, Answer, OpKind, Operation, Source};
-pub use crate::pane::{FileRef, FileView, Focus, Pane};
+pub use crate::pane::{FileRef, FileView, Focus, Kbyte, KbyteShow, Pane};
 use crate::search::{self, Pattern, SearchJob, SearchSpec};
 use crate::settings::{Outcome, Settings};
 use crate::shell::{self, External};
@@ -208,7 +208,19 @@ enum ConfirmKind {
     },
     /// Ordenação sendo escolhida (Order e Path first mudam esta cópia).
     Sort(Sort),
+    /// Alt+K sendo escolhido (All/Tagged e Branch/Directory mudam a cópia).
+    Kbyte(Kbyte),
 }
+
+const KBYTE_OPTIONS: &[&str] = &[
+    "Size",
+    "Count",
+    "None",
+    "All",
+    "Tagged",
+    "Branch",
+    "Directory",
+];
 
 const SORT_OPTIONS: &[&str] = &["Name", "Ext", "Date", "Size", "Order", "Path first"];
 
@@ -643,6 +655,10 @@ impl App {
             }
             Command::ViewTagged => self.view_tagged(),
             Command::Treespec => self.start_treespec(),
+            Command::Kbyte => {
+                let k = self.kbyte;
+                self.ask_kbyte(k);
+            }
             Command::OpenWith { tagged } => self.open_with(tagged),
             Command::CompareBranch => self.ask_compare(true),
             Command::Parent => {
@@ -906,6 +922,17 @@ impl App {
         for pane in &mut self.panes {
             pane.rescan_paths(dirs);
         }
+    }
+
+    fn ask_kbyte(&mut self, k: Kbyte) {
+        let files = if k.tagged_only {
+            "tagged files"
+        } else {
+            "all files"
+        };
+        let scope = if k.branch { "branch" } else { "directory" };
+        let q = format!("KBYTE: show in the tree ({files}, per {scope}):");
+        self.ask_options(ConfirmKind::Kbyte(k), q, KBYTE_OPTIONS);
     }
 
     fn ask_sort(&mut self, sort: Sort) {
@@ -1301,6 +1328,23 @@ impl App {
                 }
                 Some(mode) => self.compare(mode),
             },
+            ConfirmKind::Kbyte(mut k) => {
+                match choice {
+                    's' => k.show = KbyteShow::Size,
+                    'c' => k.show = KbyteShow::Count,
+                    'n' => k.show = KbyteShow::None,
+                    other => {
+                        match other {
+                            'a' => k.tagged_only = false,
+                            't' => k.tagged_only = true,
+                            'b' => k.branch = true,
+                            _ => k.branch = false,
+                        }
+                        return self.ask_kbyte(k);
+                    }
+                }
+                self.kbyte = k;
+            }
             ConfirmKind::Sort(mut sort) => {
                 sort.key = match choice {
                     'o' => {
@@ -3035,5 +3079,28 @@ mod tests {
         // Minúscula continua sendo comando (d = Delete).
         press(&mut app, KeyCode::Char('d'));
         assert!(app.confirm.is_some());
+    }
+
+    #[test]
+    fn alt_k_chooses_what_to_show() {
+        let (_tmp, mut app) = sample();
+        alt(&mut app, 'k');
+        press(&mut app, KeyCode::Char('b'));
+        let q = &app.confirm.as_ref().expect("asks again").question;
+        assert!(q.contains("per branch"), "{q}");
+        press(&mut app, KeyCode::Char('t'));
+        press(&mut app, KeyCode::Char('c'));
+        assert!(app.confirm.is_none());
+        assert_eq!(
+            app.kbyte,
+            Kbyte {
+                show: KbyteShow::Count,
+                tagged_only: true,
+                branch: true
+            }
+        );
+        alt(&mut app, 'k');
+        press(&mut app, KeyCode::Char('n'));
+        assert_eq!(app.kbyte.show, KbyteShow::None);
     }
 }

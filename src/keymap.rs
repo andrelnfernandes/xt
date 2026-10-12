@@ -201,6 +201,11 @@ const COMMANDS: &[(&str, Command, &str)] = &[
         Command::Treespec,
         "go to a directory by typing its path (Tab, / complete)",
     ),
+    (
+        "kbyte",
+        Command::Kbyte,
+        "show size or file count of each directory in the tree",
+    ),
     ("help", Command::Help, "this help"),
     ("quit", Command::Quit, "quit"),
 ];
@@ -265,6 +270,7 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("l", Tree, "log"),
     ("m", Tree, "make_dir"),
     ("alt+p", Tree, "prune"),
+    ("alt+k", Any, "kbyte"),
     ("esc", Files, "back"),
     ("left", Files, "page_up"),
     ("right", Files, "page_down"),

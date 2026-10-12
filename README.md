@@ -76,6 +76,7 @@ corrigido, para não apagar o que você escreveu).
 | `*` | loga e expande o ramo inteiro | |
 | `\` | Treespec: vai a um diretório digitando o caminho | idem (no Branch/Showall: vai ao diretório do arquivo) |
 | Shift+letra, 0–9 | próximo diretório que começa com ela | próximo arquivo que começa com ela |
+| Alt+K | mostra o tamanho ou o nº de arquivos de cada diretório na árvore | idem |
 | `B` | Branch: arquivos do ramo inteiro (loga antes) | idem |
 | `S` | Showall: arquivos de tudo o que foi logado | idem |
 | `F` | Filespec: filtro de arquivos | idem |
@@ -159,6 +160,12 @@ diretório do mesmo nível; Backspace volta níveis; Enter confirma; Esc volta
 para onde estava. ↑ traz o histórico (salvo entre execuções). Um caminho fora
 da árvore vira um Log ao confirmar. No Branch/Showall, `\` vai direto ao
 diretório do arquivo selecionado, com ele em destaque.
+
+**KByte (Alt+K):** mostra à direita de cada diretório da árvore o
+**S**ize (total em K) ou o **C**ount (nº de arquivos); **N**one desliga.
+Antes de escolher, **A**ll/**T**agged contam todos ou só os marcados, e
+**B**ranch/**D**irectory somam o ramo inteiro ou só o diretório. Diretórios
+ainda não logados mostram `?`. Cada janela tem a sua escolha.
 
 **Edit e eXecute:** `E` abre o arquivo no editor (`$VISUAL`, `$EDITOR`, o
 `editor` do Debian/Ubuntu ou `vi`). `X` pede uma linha de comando e a roda com
@@ -349,7 +356,7 @@ Todas as teclas podem ser trocadas em `[keys]` no `config.toml`.
 - **Árvore:** Avail (A), Global (G), Graft (Alt+G), Mirror (Alt+M), Oops
   (O, recuperar apagados), Release/descarregar da memória (Alt+R, `-`,
   Ctrl+Backspace), Hide (Alt+H), Info (Alt+I), Wash (Alt+W), Volume
-  (Ctrl+V), KByte (Alt+K), F5/F6 (esconder níveis de subdiretórios),
+  (Ctrl+V), F5/F6 (esconder níveis de subdiretórios),
   marcar/desmarcar o ramo (Ctrl+F7/F8), marcar por atributo (Alt+T/U),
   Treespec em modo de edição (F5, curingas) e pastas especiais (F6), busca
   ao digitar com prompt (`|`) e modo ativo, janela de

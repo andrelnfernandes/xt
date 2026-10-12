@@ -410,6 +410,33 @@ impl Tree {
         }
     }
 
+    /// Para cada diretório (por `NodeId`), quantos arquivos e quantos bytes
+    /// ele tem: só nele, ou no ramo inteiro (`branch`). Conta só os
+    /// marcados com `tagged_only`, e respeita `show_hidden`. Feito numa
+    /// passada só, de baixo para cima, para valer até em árvores enormes.
+    pub fn dir_totals(&self, branch: bool, tagged_only: bool) -> Vec<(u64, u64)> {
+        let mut totals = vec![(0u64, 0u64); self.nodes.len()];
+        let order = self.visible_subtree(ROOT);
+        for &id in order.iter().rev() {
+            let node = &self.nodes[id];
+            for f in &node.files {
+                if (tagged_only && !f.tagged) || (!self.show_hidden && is_hidden(&f.name)) {
+                    continue;
+                }
+                totals[id].0 += 1;
+                totals[id].1 += f.size;
+            }
+            if branch {
+                let children: Vec<NodeId> = self.visible_children(id).collect();
+                for c in children {
+                    totals[id].0 += totals[c].0;
+                    totals[id].1 += totals[c].1;
+                }
+            }
+        }
+        totals
+    }
+
     /// Totais de tudo o que já foi logado.
     pub fn logged_totals(&self) -> Totals {
         let mut t = Totals::default();
@@ -700,6 +727,22 @@ mod tests {
             ["b", ".cache", "deep", "deeper"]
         );
         assert!(is_hidden(std::ffi::OsStr::new(".x")) && !is_hidden(std::ffi::OsStr::new("x")));
+    }
+
+    #[test]
+    fn directory_and_branch_totals() {
+        let (_tmp, mut tree) = sample();
+        tree.expand_all(ROOT);
+        let b = tree.node(ROOT).children[1];
+        tree.file_mut(ROOT, 1).tagged = true; // z.txt, 5 bytes
+        let dir = tree.dir_totals(false, false);
+        assert_eq!(dir[ROOT], (2, 6));
+        assert_eq!(dir[b], (1, 3));
+        let branch = tree.dir_totals(true, false);
+        assert_eq!(branch[ROOT], (3, 9));
+        assert_eq!(branch[b], (1, 3));
+        let tagged = tree.dir_totals(true, true);
+        assert_eq!(tagged[ROOT], (1, 5));
     }
 
     #[test]

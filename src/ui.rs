@@ -19,7 +19,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Clear, List, ListItem, ListState, Paragraph};
 
-use crate::app::{self, App, FileView, Focus, MenuMode, Pane};
+use crate::app::{self, App, FileView, Focus, KbyteShow, MenuMode, Pane};
 use crate::config::{self, formats, theme};
 use crate::model::tree::{FileEntry, FileKind};
 use crate::ops::Operation;
@@ -140,6 +140,11 @@ fn draw_tree(frame: &mut Frame, pane: &mut Pane, active: bool, title: String, ar
     pane.tree_page = area.height.saturating_sub(2) as usize;
 
     let (range, mut state) = visible_window(&mut pane.tree_state, pane.rows.len(), pane.tree_page);
+    // Alt+K: tamanho ou nº de arquivos à direita de cada diretório.
+    let kbyte = pane.kbyte;
+    let totals = (kbyte.show != KbyteShow::None)
+        .then(|| pane.tree.dir_totals(kbyte.branch, kbyte.tagged_only));
+    let width = area.width.saturating_sub(2) as usize;
     let items: Vec<ListItem> = pane.rows[range]
         .iter()
         .map(|row| {
@@ -150,13 +155,30 @@ fn draw_tree(frame: &mut Frame, pane: &mut Pane, active: bool, title: String, ar
             } else {
                 Style::new()
             };
-            ListItem::new(Line::from(vec![
+            let mut spans = vec![
                 Span::styled(row.prefix.clone(), Style::new().fg(theme().dim)),
-                Span::styled(name, name_style),
-            ]))
+                Span::styled(name.clone(), name_style),
+            ];
+            if let Some(totals) = &totals {
+                let (count, bytes) = totals[row.id];
+                let value = match (node.scanned, kbyte.show) {
+                    (false, _) => "?".to_string(),
+                    (_, KbyteShow::Size) => format!("{}K", fmt_num(bytes.div_ceil(1024))),
+                    _ => fmt_num(count),
+                };
+                let used = row.prefix.chars().count() + name.chars().count();
+                let pad = width.saturating_sub(used + value.chars().count() + 1);
+                spans.push(Span::raw(" ".repeat(pad + 1)));
+                spans.push(Span::styled(value, Style::new().fg(theme().dim)));
+            }
+            ListItem::new(Line::from(spans))
         })
         .collect();
 
+    let title = match kbyte.show {
+        KbyteShow::None => title,
+        _ => format!("{} · {} ", title.trim_end(), kbyte.describe()),
+    };
     let list = List::new(items)
         .block(panel(title, active))
         .highlight_style(highlight(active));
