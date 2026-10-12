@@ -59,6 +59,11 @@ pub enum Command {
     QuitChangeDir,
     /// Alt+F: modo de exibição da janela de arquivos.
     FileDisplay,
+    /// Ctrl+F7 / Ctrl+F8 / Ctrl+F9 na árvore: marca, desmarca ou inverte
+    /// os arquivos logados do ramo.
+    TagBranch,
+    UntagBranch,
+    InvertBranch,
     /// ← e → na janela de arquivos: arquivo anterior/próximo em colunas,
     /// página acima/abaixo numa coluna só.
     Left,

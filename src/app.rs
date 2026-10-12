@@ -682,6 +682,19 @@ impl App {
             Command::ViewTagged => self.view_tagged(),
             Command::Treespec => self.start_treespec(),
             Command::FileDisplay => self.cycle_display(),
+            Command::TagBranch | Command::UntagBranch | Command::InvertBranch => {
+                let refs = self.branch_matching_files(self.current());
+                match cmd {
+                    Command::TagBranch => self.set_tags(&refs, |_| true),
+                    Command::UntagBranch => self.set_tags(&refs, |_| false),
+                    _ => self.set_tags(&refs, |t| !t),
+                }
+                let tagged = refs.iter().filter(|&&f| self.file(f).tagged).count();
+                self.message = Some(format!(
+                    "{tagged} of {} logged files in the branch are tagged",
+                    refs.len()
+                ));
+            }
             Command::Kbyte => {
                 let k = self.kbyte;
                 self.ask_kbyte(k);
@@ -3180,5 +3193,32 @@ mod tests {
         press(&mut app, KeyCode::Char('f'));
         answer_prompt(&mut app, "<TODAY");
         assert!(names(&app).is_empty());
+    }
+
+    #[test]
+    fn ctrl_f7_f8_f9_tag_the_branch() {
+        let (_tmp, mut app) = sample();
+        app.apply(Command::ExpandAll);
+        let fkey =
+            |app: &mut App, n| app.handle_key(KeyEvent::new(KeyCode::F(n), KeyModifiers::CONTROL));
+        let all_tagged = |app: &App| -> usize {
+            app.logged_matching_files()
+                .iter()
+                .filter(|&&f| app.file(f).tagged)
+                .count()
+        };
+        press(&mut app, KeyCode::Down); // sub
+        fkey(&mut app, 7);
+        assert_eq!(all_tagged(&app), 2, "sub/c.rs and sub/deep/a.rs");
+        assert!(app.message.as_deref().unwrap().starts_with("2 of 2"));
+        press(&mut app, KeyCode::Up);
+        fkey(&mut app, 9);
+        assert_eq!(
+            all_tagged(&app),
+            2,
+            "root's 2 files now tagged, sub's untagged"
+        );
+        fkey(&mut app, 8);
+        assert_eq!(all_tagged(&app), 0);
     }
 }

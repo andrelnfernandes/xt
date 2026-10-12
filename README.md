@@ -130,6 +130,7 @@ corrigido, para não apagar o que você escreveu).
 | `T` / `U` | marca / desmarca os arquivos do diretório | marca / desmarca o arquivo e desce |
 | Ctrl+T / Ctrl+U | marca / desmarca tudo o que foi logado (filespec) | marca / desmarca a lista inteira |
 | `I` | inverte as marcas do diretório | inverte as marcas da lista |
+| Ctrl+F7 / F8 / F9 | marca / desmarca / inverte os arquivos logados do ramo | |
 | `C` | | copia o arquivo |
 | `M` | cria um subdiretório | move o arquivo |
 | `D` | apaga o diretório (só se vazio) | apaga o arquivo |
@@ -403,7 +404,7 @@ Todas as teclas podem ser trocadas em `[keys]` no `config.toml`.
   (O, recuperar apagados), Release/descarregar da memória (Alt+R, `-`,
   Ctrl+Backspace), Hide (Alt+H), Info (Alt+I), Wash (Alt+W), Volume
   (Ctrl+V), F5/F6 (esconder níveis de subdiretórios),
-  marcar/desmarcar o ramo (Ctrl+F7/F8), marcar por atributo (Alt+T/U),
+  marcar por atributo (Alt+T/U),
   Treespec em modo de edição (F5, curingas) e pastas especiais (F6), busca
   ao digitar com prompt (`|`) e modo ativo, janela de
   estatísticas (`?`), troca de drive (`<` e `>`).

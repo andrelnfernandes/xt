@@ -254,8 +254,13 @@ impl Pane {
 
     /// Todos os arquivos logados que passam no filespec.
     pub fn logged_matching_files(&self) -> Vec<FileRef> {
+        self.branch_matching_files(ROOT)
+    }
+
+    /// Os arquivos logados do ramo de `id` que passam no filespec.
+    pub fn branch_matching_files(&self, id: NodeId) -> Vec<FileRef> {
         let mut refs = Vec::new();
-        for dir in self.tree.visible_subtree(ROOT) {
+        for dir in self.tree.visible_subtree(id) {
             for (idx, f) in self.tree.node(dir).files.iter().enumerate() {
                 let shown = self.tree.show_hidden || !is_hidden(&f.name);
                 if shown && self.filespec.matches_entry(f) {
