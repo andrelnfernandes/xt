@@ -36,9 +36,11 @@ use app::App;
 const USAGE: &str = "\
 xt - text-mode file manager inspired by XTree/ZTreeWin
 
-Usage: xt [DIRECTORY]
+Usage: xt [--cwd-file FILE] [DIRECTORY]
 
 Options:
+  --cwd-file FILE    on Alt+Q (quit and change directory), write the current
+                     directory to FILE, for a shell function to cd into it
   --default-config   print a commented configuration file
   -h, --help         show this help
   -V, --version      show the version
@@ -48,8 +50,14 @@ Inside xt, press F1 for the list of keys.";
 
 fn main() -> anyhow::Result<()> {
     let mut root = None;
-    for arg in std::env::args_os().skip(1) {
+    let mut cwd_file: Option<PathBuf> = None;
+    let mut args = std::env::args_os().skip(1);
+    while let Some(arg) = args.next() {
         match arg.to_str() {
+            Some("--cwd-file") => match args.next() {
+                Some(file) => cwd_file = Some(PathBuf::from(file)),
+                None => bail!("--cwd-file needs a file name\n\n{USAGE}"),
+            },
             Some("-h" | "--help") => {
                 println!("{USAGE}");
                 return Ok(());
@@ -97,6 +105,17 @@ fn main() -> anyhow::Result<()> {
     ratatui::restore();
     // Arquivos extraídos de ZIP/TAR para abrir com O.
     let _ = std::fs::remove_dir_all(app::temp_dir());
+    // Alt+Q: deixa o diretório para a função do shell fazer o cd.
+    if let Some(dir) = &app.quit_dir {
+        match &cwd_file {
+            Some(file) => std::fs::write(file, dir.as_os_str().as_encoded_bytes())
+                .with_context(|| format!("cannot write {}", file.display()))?,
+            None => eprintln!(
+                "xt: Alt+Q changes the shell's directory only through a shell function \
+                 using --cwd-file (see the README)"
+            ),
+        }
+    }
     result
 }
 

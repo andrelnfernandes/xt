@@ -200,6 +200,8 @@ const COMPARE_OPTIONS: &[&str] = &[
 
 enum ConfirmKind {
     Quit,
+    /// Alt+Q: sai e deixa este diretório para o shell.
+    QuitChangeDir(PathBuf),
     DeleteFiles(Vec<Source>),
     DeleteDir(NodeId),
     /// `branch`: compara o ramo inteiro, não só o diretório.
@@ -266,6 +268,8 @@ pub struct App {
     pruning: Option<PathBuf>,
     pub keymap: Keymap,
     pub should_quit: bool,
+    /// Alt+Q: o diretório para o shell ir ao sair.
+    pub quit_dir: Option<PathBuf>,
     /// Ctrl/Alt pressionado agora (só em terminais que avisam isso).
     pub held: Option<MenuMode>,
     /// Menu escolhido com F9; a próxima letra recebe esse modificador.
@@ -314,6 +318,7 @@ impl App {
             pruning: None,
             keymap: Keymap::default(),
             should_quit: false,
+            quit_dir: None,
             held: None,
             sticky: MenuMode::Normal,
         }
@@ -614,6 +619,18 @@ impl App {
         match cmd {
             Command::Quit if !self.options.confirm_quit => self.should_quit = true,
             Command::Quit => self.ask(ConfirmKind::Quit, "Quit xt?".into()),
+            Command::QuitChangeDir => {
+                // Dentro de um ZIP/TAR, o diretório real é onde ele está.
+                let base = self.outer.as_deref().unwrap_or(self);
+                let dir = base.current_path();
+                if self.options.confirm_quit {
+                    let q = format!("Quit xt and change to {}?", dir.display());
+                    self.ask(ConfirmKind::QuitChangeDir(dir), q);
+                } else {
+                    self.quit_dir = Some(dir);
+                    self.should_quit = true;
+                }
+            }
             Command::SwitchWindow => match self.focus {
                 Focus::Tree => self.focus = Focus::Files,
                 Focus::Files => self.back_to_tree(),
@@ -1364,6 +1381,10 @@ impl App {
             }
             _ if !yes => {}
             ConfirmKind::Quit => self.should_quit = true,
+            ConfirmKind::QuitChangeDir(dir) => {
+                self.quit_dir = Some(dir);
+                self.should_quit = true;
+            }
             ConfirmKind::DeleteFiles(sources) => self.start_op(Operation::delete(sources)),
             ConfirmKind::DeleteDir(id) => {
                 let path = self.tree.path(id);
@@ -3102,5 +3123,31 @@ mod tests {
         alt(&mut app, 'k');
         press(&mut app, KeyCode::Char('n'));
         assert_eq!(app.kbyte.show, KbyteShow::None);
+    }
+
+    #[test]
+    fn alt_q_quits_remembering_the_directory() {
+        let (tmp, mut app) = sample();
+        press(&mut app, KeyCode::Down);
+        alt(&mut app, 'q');
+        assert!(
+            app.confirm
+                .as_ref()
+                .unwrap()
+                .question
+                .starts_with("Quit xt and change to")
+        );
+        press(&mut app, KeyCode::Char('y'));
+        assert!(app.should_quit);
+        assert_eq!(
+            app.quit_dir.as_deref(),
+            Some(tmp.path().join("sub").as_path())
+        );
+
+        // Q normal não muda o diretório.
+        let (_tmp, mut app) = sample();
+        press(&mut app, KeyCode::Char('q'));
+        press(&mut app, KeyCode::Char('y'));
+        assert!(app.should_quit && app.quit_dir.is_none());
     }
 }

@@ -55,6 +55,8 @@ pub enum Command {
     Treespec,
     /// Alt+K: tamanho ou nº de arquivos por diretório na árvore.
     Kbyte,
+    /// Alt+Q: sai deixando o shell no diretório atual.
+    QuitChangeDir,
     Back,
     Filespec,
     Showall,

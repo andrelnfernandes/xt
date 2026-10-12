@@ -22,6 +22,27 @@ xt [diretório]
 
 Sem argumento, abre o diretório atual. `xt --help` mostra as opções.
 
+### Sair mudando o diretório do shell (Alt+Q)
+
+Um programa não consegue mudar o diretório do shell que o chamou. Por isso,
+como nos outros gerenciadores de arquivos, o **Alt+Q** grava o diretório
+atual num arquivo (`--cwd-file`) e uma pequena função do shell faz o `cd`.
+Coloque no `~/.bashrc` (ou `~/.zshrc`):
+
+```bash
+xt() {
+    local tmp dir
+    tmp=$(mktemp) || return
+    command xt --cwd-file "$tmp" "$@"
+    dir=$(cat -- "$tmp")
+    rm -f -- "$tmp"
+    [ -n "$dir" ] && [ -d "$dir" ] && cd -- "$dir"
+}
+```
+
+Com ela, `xt` funciona como antes; só ao sair com **Alt+Q** o shell fica no
+diretório em que você estava no xt. `Q` e F10 saem sem mudar nada.
+
 ## Configuração
 
 A forma mais fácil é a **tela de configuração: F12** (ou Alt+F10, como no
@@ -99,6 +120,7 @@ corrigido, para não apagar o que você escreveu).
 | F1 | ajuda: lista das teclas em vigor | idem |
 | F12 / Alt+F10 | tela de configuração | idem |
 | `Q` / F10 | sair (pede confirmação) | sair |
+| Alt+Q | sai deixando o shell no diretório atual (veja acima) | idem |
 
 ### Tags e operações
 
@@ -369,7 +391,7 @@ Todas as teclas podem ser trocadas em `[keys]` no `config.toml`.
   janelas (Ctrl+F6), Partial Untag (Ctrl+F8), copiar caminho para a área de
   transferência (Ctrl+Insert).
 - **Geral:** macros (F12), menu de aplicativos (F9), marcadores (F11, `[`
-  e `]`), Quit mudando o diretório do shell (Ctrl+Q/Alt+Q), salvar e
+  e `]`), Quit and shell (Ctrl+Q), salvar e
   carregar o log (Zlist, Ctrl/Alt+Z), lixeira, cores por nome e atributo
   (ZCOLORS.INI), mouse, opções de linha de comando do ZTreeWin, comandos de
   vídeo (Alt+F6–F9), criar arquivos compactados (F5).

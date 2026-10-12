@@ -208,6 +208,11 @@ const COMMANDS: &[(&str, Command, &str)] = &[
     ),
     ("help", Command::Help, "this help"),
     ("quit", Command::Quit, "quit"),
+    (
+        "quit_cd",
+        Command::QuitChangeDir,
+        "quit leaving the shell in the current directory (see README)",
+    ),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -244,6 +249,7 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("f", Any, "filespec"),
     ("i", Any, "invert"),
     ("q", Any, "quit"),
+    ("alt+q", Any, "quit_cd"),
     ("r", Any, "rename"),
     ("s", Any, "showall"),
     ("t", Any, "tag"),
