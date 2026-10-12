@@ -227,7 +227,7 @@ impl Reader {
 enum Writer {
     Zip(Box<zip::ZipWriter<File>>),
     Tar(tar::Builder<File>),
-    TarGz(tar::Builder<flate2::write::GzEncoder<File>>),
+    TarGz(Box<tar::Builder<flate2::write::GzEncoder<File>>>),
 }
 
 /// Um arquivo a pôr no compactado: o caminho no disco e o nome lá dentro.
@@ -265,9 +265,9 @@ impl ArchiveJob {
         let writer = match kind {
             Kind::Zip => Writer::Zip(Box::new(zip::ZipWriter::new(file))),
             Kind::Tar => Writer::Tar(no_follow(tar::Builder::new(file))),
-            Kind::TarGz => Writer::TarGz(no_follow(tar::Builder::new(
+            Kind::TarGz => Writer::TarGz(Box::new(no_follow(tar::Builder::new(
                 flate2::write::GzEncoder::new(file, flate2::Compression::default()),
-            ))),
+            )))),
         };
         Ok(ArchiveJob {
             writer: Some(writer),
