@@ -85,12 +85,30 @@ pub struct Viewer {
 }
 
 impl Viewer {
-    pub fn open(path: PathBuf) -> io::Result<Self> {
+    /// Lê só o começo do arquivo (o Autoview usa um limite menor, para
+    /// andar rápido por arquivos grandes).
+    pub fn open_limited(path: PathBuf, limit: u64) -> io::Result<Self> {
         let file = File::open(&path)?;
         let size = file.metadata()?.len();
         let mut data = Vec::new();
-        file.take(MAX_BYTES).read_to_end(&mut data)?;
+        file.take(limit).read_to_end(&mut data)?;
         Ok(Self::from_bytes(path, size, data))
+    }
+
+    /// Rolagem do Autoview (Shift+setas): só move o conteúdo.
+    pub fn scroll(&mut self, code: KeyCode) {
+        let page = self.page.max(1);
+        let max_top = self.line_count().saturating_sub(page);
+        self.top = match code {
+            KeyCode::Up => self.top.saturating_sub(1),
+            KeyCode::Down => self.top + 1,
+            KeyCode::PageUp => self.top.saturating_sub(page),
+            KeyCode::PageDown => self.top + page,
+            KeyCode::Home => 0,
+            KeyCode::End => max_top,
+            _ => self.top,
+        }
+        .min(max_top);
     }
 
     /// Visualiza bytes já lidos (ex.: uma entrada de um arquivo compactado).
@@ -491,10 +509,10 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("f.txt");
         std::fs::write(&path, "abc").unwrap();
-        let v = Viewer::open(path).unwrap();
+        let v = Viewer::open_limited(path, MAX_BYTES).unwrap();
         assert_eq!(v.size, 3);
         assert!(!v.truncated());
-        assert!(Viewer::open(tmp.path().join("missing")).is_err());
+        assert!(Viewer::open_limited(tmp.path().join("missing"), MAX_BYTES).is_err());
     }
 
     fn pat(t: &str) -> Pattern {

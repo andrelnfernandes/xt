@@ -25,7 +25,7 @@ use crate::model::tree::{FileEntry, FileKind};
 use crate::ops::Operation;
 use crate::pane::FileDisplay;
 use crate::settings::{self, Settings};
-use crate::viewer::{self, ViewMode};
+use crate::viewer::{self, ViewMode, Viewer};
 
 const STATS_WIDTH: u16 = 28;
 const SMALL_FILE_WINDOW: u16 = 8;
@@ -53,7 +53,23 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     draw_header(frame, app, header);
     draw_menu(frame, app, menu);
 
-    if app.is_split() {
+    if app.autoview.is_some() {
+        // F7: lista à esquerda, conteúdo do arquivo selecionado à direita.
+        let [list, view] =
+            Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)])
+                .areas(main);
+        let active = app.active;
+        draw_files(frame, &mut app.panes[active], true, list);
+        if let Some(v) = &mut app.autoview {
+            let name = v
+                .path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
+            draw_viewer_body(frame, v, format!(" Autoview: {name} "), view);
+        }
+    } else if app.is_split() {
         // Duas janelas lado a lado; o painel de estatísticas sai para dar espaço.
         let halves: [Rect; 2] =
             Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
@@ -931,19 +947,11 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
     }
     frame.render_widget(Line::from(title), header);
 
-    let inner = panel("", false).inner(body);
-    v.page = inner.height as usize;
-    v.width = inner.width as usize;
-    let lines: Vec<Line> = v
-        .visible(inner.height as usize)
-        .into_iter()
-        .map(|(line, mark)| highlighted(line, mark))
-        .collect();
     let mode = match v.mode {
         ViewMode::Text => " TEXT ",
         ViewMode::Hex => " HEX ",
     };
-    frame.render_widget(Paragraph::new(lines).block(panel(mode, true)), body);
+    draw_viewer_body(frame, v, mode.to_string(), body);
 
     let total = v.line_count().max(1);
     let position = match v.mode {
@@ -989,6 +997,19 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
         vec![first, second]
     };
     frame.render_widget(Paragraph::new(lines), menu);
+}
+
+/// O conteúdo do visualizador numa moldura (também usado pelo Autoview).
+fn draw_viewer_body(frame: &mut Frame, v: &mut Viewer, title: String, area: Rect) {
+    let inner = panel("", false).inner(area);
+    v.page = inner.height as usize;
+    v.width = inner.width as usize;
+    let lines: Vec<Line> = v
+        .visible(inner.height as usize)
+        .into_iter()
+        .map(|(line, mark)| highlighted(line, mark))
+        .collect();
+    frame.render_widget(Paragraph::new(lines).block(panel(title, true)), area);
 }
 
 fn key(k: &str) -> Span<'static> {

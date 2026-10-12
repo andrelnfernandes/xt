@@ -105,6 +105,7 @@ corrigido, para não apagar o que você escreveu).
 | Alt+S | ordena os arquivos: nome, extensão, data, tamanho; ordem | idem |
 | F3 (ou F2) | relê o diretório do disco | idem |
 | `V` | | visualiza o arquivo (texto/hex, com busca) |
+| F7 | Autoview: lista com o conteúdo do arquivo selecionado ao lado | idem |
 | Ctrl+S | | procura um texto nos marcados e desmarca os que não o têm |
 | Ctrl+V | | visualiza os marcados em sequência |
 | `O` | | abre o arquivo no programa padrão (`xdg-open`) |
@@ -192,6 +193,12 @@ coluna, só os nomes inteiros). Nos modos de colunas, os arquivos seguem da
 esquerda para a direita, ← → andam um arquivo e ↑ ↓ uma linha; nomes com mais
 de 20 caracteres são cortados com `…`. O modo inicial fica em `file_display`
 (página 2 da configuração).
+
+**Autoview (F7):** divide a tela entre a lista de arquivos e o conteúdo do
+arquivo selecionado, que acompanha o cursor. As teclas da janela de arquivos
+continuam valendo (T marca, por exemplo); Shift+↑/↓/PgUp/PgDn/Home/End
+rolam o conteúdo; F7, Esc ou Enter saem. Mostra o primeiro 1 MiB de cada
+arquivo (o V mostra até 16 MiB).
 
 **KByte (Alt+K):** mostra à direita de cada diretório da árvore o
 **S**ize (total em K) ou o **C**ount (nº de arquivos); **N**one desliga.
@@ -411,7 +418,7 @@ Todas as teclas podem ser trocadas em `[keys]` no `config.toml`.
 - **Arquivos:** Open em nova janela de terminal (Alt+O), New date (N),
   Batch (Ctrl+B/Alt+B), JFC (J, comparar o conteúdo de dois arquivos), ZAAP
   (Y), sHortcut (H), Print (P), Rename com máscara, localizar e trocar e mudança de maiúsculas,
-  dono/grupo (chown), Megaview e Autoview (F7), juntar marcados entre as
+  dono/grupo (chown), Megaview (Ctrl+F7 na janela de arquivos), juntar marcados entre as
   janelas (Ctrl+F6), Partial Untag (Ctrl+F8), copiar caminho para a área de
   transferência (Ctrl+Insert).
 - **Geral:** macros (F12), menu de aplicativos (F9), marcadores (F11, `[`

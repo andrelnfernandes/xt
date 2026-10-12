@@ -64,6 +64,8 @@ pub enum Command {
     TagBranch,
     UntagBranch,
     InvertBranch,
+    /// F7: a lista de arquivos com o conteúdo do selecionado ao lado.
+    Autoview,
     /// ← e → na janela de arquivos: arquivo anterior/próximo em colunas,
     /// página acima/abaixo numa coluna só.
     Left,

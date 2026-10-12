@@ -206,6 +206,11 @@ const COMMANDS: &[(&str, Command, &str)] = &[
         Command::Kbyte,
         "show size or file count of each directory in the tree",
     ),
+    (
+        "autoview",
+        Command::Autoview,
+        "file list with the selected file's contents beside it",
+    ),
     ("help", Command::Help, "this help"),
     (
         "file_display",
@@ -263,6 +268,7 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("space", Any, "down"),
     ("backspace", Any, "parent"),
     ("f8", Any, "split"),
+    ("f7", Any, "autoview"),
     ("f10", Any, "quit"),
     ("f12", Any, "settings"),
     ("alt+f10", Any, "settings"),

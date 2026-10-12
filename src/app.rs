@@ -151,6 +151,9 @@ pub struct TaggedView {
     pub index: usize,
 }
 
+/// O Autoview lê só o começo de cada arquivo, para andar rápido.
+const AUTOVIEW_BYTES: u64 = 1024 * 1024;
+
 /// Entradas guardadas por tipo de prompt.
 const HISTORY_SIZE: usize = 100;
 
@@ -241,6 +244,8 @@ pub struct App {
     /// Espaço no Ctrl+V continuar a busca feita com Ctrl+S).
     pub search: Option<SearchSpec>,
     pub tagged_view: Option<TaggedView>,
+    /// F7: o conteúdo do arquivo selecionado ao lado da lista.
+    pub autoview: Option<Viewer>,
     /// Copy/Move/Delete em andamento.
     pub op: Option<Operation>,
     pub viewer: Option<Viewer>,
@@ -303,6 +308,7 @@ impl App {
             search_job: None,
             search: None,
             tagged_view: None,
+            autoview: None,
             op: None,
             viewer: None,
             last_dest: None,
@@ -569,6 +575,9 @@ impl App {
             self.viewer_action(action);
             return;
         }
+        if self.autoview.is_some() && self.autoview_key(key) {
+            return;
+        }
         if key.code == KeyCode::F(9) {
             self.sticky = match self.sticky {
                 MenuMode::Normal => MenuMode::Ctrl,
@@ -605,6 +614,55 @@ impl App {
         if let Some(cmd) = self.keymap.lookup(key, self.focus) {
             self.apply(cmd);
         }
+        self.sync_autoview();
+    }
+
+    /// Teclas próprias do Autoview: F7, Esc e Enter saem; Shift+setas rolam
+    /// o conteúdo. Devolve se a tecla foi usada.
+    fn autoview_key(&mut self, key: KeyEvent) -> bool {
+        match key.code {
+            KeyCode::F(7) | KeyCode::Esc | KeyCode::Enter => {
+                self.autoview = None;
+                true
+            }
+            KeyCode::Up
+            | KeyCode::Down
+            | KeyCode::PageUp
+            | KeyCode::PageDown
+            | KeyCode::Home
+            | KeyCode::End
+                if key.modifiers.contains(KeyModifiers::SHIFT) =>
+            {
+                if let Some(v) = &mut self.autoview {
+                    v.scroll(key.code);
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Mantém o Autoview mostrando o arquivo selecionado.
+    fn sync_autoview(&mut self) {
+        let Some(current) = &self.autoview else {
+            return;
+        };
+        let Some(f) = self.selected_file() else {
+            return;
+        };
+        let path = self.file_path(f);
+        if current.path == path {
+            return;
+        }
+        let (page, width) = (current.page, current.width);
+        let size = self.file(f).size;
+        let mut v = self
+            .load_viewer_limited(path.clone(), size, AUTOVIEW_BYTES)
+            .unwrap_or_else(|e| {
+                Viewer::from_bytes(path, 0, format!("Cannot view file: {e}").into_bytes())
+            });
+        (v.page, v.width) = (page, width);
+        self.autoview = Some(v);
     }
 
     pub fn apply(&mut self, cmd: Command) {
@@ -682,6 +740,12 @@ impl App {
             Command::ViewTagged => self.view_tagged(),
             Command::Treespec => self.start_treespec(),
             Command::FileDisplay => self.cycle_display(),
+            Command::Autoview => {
+                // Abre na janela de arquivos, com um visualizador vazio que
+                // `sync_autoview` troca pelo arquivo selecionado.
+                self.focus = Focus::Files;
+                self.autoview = Some(Viewer::from_bytes(PathBuf::new(), 0, Vec::new()));
+            }
             Command::TagBranch | Command::UntagBranch | Command::InvertBranch => {
                 let refs = self.branch_matching_files(self.current());
                 match cmd {
@@ -1586,14 +1650,18 @@ impl App {
 
     /// Abre `path` no visualizador (de dentro do ZIP/TAR, se for o caso).
     fn load_viewer(&self, path: PathBuf, size: u64) -> std::io::Result<Viewer> {
+        self.load_viewer_limited(path, size, viewer::MAX_BYTES)
+    }
+
+    fn load_viewer_limited(&self, path: PathBuf, size: u64, limit: u64) -> std::io::Result<Viewer> {
         match &self.archive {
             Some(root) => {
                 let entry = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
                 let mut data = Vec::new();
-                archive::Reader::open(root)?.extract(&entry, &mut data, viewer::MAX_BYTES)?;
+                archive::Reader::open(root)?.extract(&entry, &mut data, limit)?;
                 Ok(Viewer::from_bytes(path, size, data))
             }
-            None => Viewer::open(path),
+            None => Viewer::open_limited(path, limit),
         }
     }
 
@@ -3220,5 +3288,24 @@ mod tests {
         );
         fkey(&mut app, 8);
         assert_eq!(all_tagged(&app), 0);
+    }
+
+    #[test]
+    fn f7_autoview_follows_the_cursor() {
+        let (_tmp, mut app) = sample();
+        press(&mut app, KeyCode::F(7));
+        assert_eq!(app.focus, Focus::Files);
+        let shown = |app: &App| app.autoview.as_ref().unwrap().visible_lines(1)[0].clone();
+        assert_eq!(shown(&app), "fn main() {}");
+        press(&mut app, KeyCode::Down);
+        assert_eq!(shown(&app), "b");
+        // Os comandos da janela de arquivos continuam valendo.
+        press(&mut app, KeyCode::Char('t'));
+        assert_eq!(tagged(&app), ["b.txt"]);
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT));
+        assert!(app.autoview.is_some());
+        press(&mut app, KeyCode::F(7));
+        assert!(app.autoview.is_none());
+        assert_eq!(app.focus, Focus::Files);
     }
 }
