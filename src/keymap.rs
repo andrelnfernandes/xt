@@ -221,6 +221,11 @@ const COMMANDS: &[(&str, Command, &str)] = &[
         Command::NewDate { tagged: true },
         "change the modification date of the tagged files",
     ),
+    (
+        "batch",
+        Command::Batch,
+        "write a script or list with one line per tagged file",
+    ),
     ("help", Command::Help, "this help"),
     (
         "file_display",
@@ -281,6 +286,7 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("f7", Any, "autoview"),
     ("n", Any, "new_date"),
     ("ctrl+n", Files, "new_date_tagged"),
+    ("ctrl+b", Files, "batch"),
     ("f10", Any, "quit"),
     ("f12", Any, "settings"),
     ("alt+f10", Any, "settings"),

@@ -97,6 +97,11 @@ enum PromptKind {
     },
     /// New date: data e hora para estes caminhos.
     NewDate(Vec<PathBuf>),
+    /// Batch: primeiro o arquivo a criar, depois a máscara de linha.
+    BatchFile,
+    BatchMask {
+        file: PathBuf,
+    },
     /// Confirmação de um Prune: o texto digitado tem de ser `word`.
     Prune {
         root: PathBuf,
@@ -115,6 +120,8 @@ impl PromptKind {
             PromptKind::Log => "log",
             PromptKind::Treespec { .. } => "treespec",
             PromptKind::NewDate(_) => "date",
+            PromptKind::BatchFile => "batch_file",
+            PromptKind::BatchMask { .. } => "batch_mask",
             PromptKind::Execute => "execute",
             PromptKind::MakeDir(_) => "mkdir",
             PromptKind::SearchTagged { .. } | PromptKind::ViewerSearch { .. } => "search",
@@ -745,6 +752,15 @@ impl App {
             Command::Treespec => self.start_treespec(),
             Command::FileDisplay => self.cycle_display(),
             Command::NewDate { tagged } => self.prompt_new_date(tagged),
+            Command::Batch => {
+                if self.sources_or_warn(true).is_some() {
+                    let base = self.outer.as_deref().unwrap_or(self);
+                    let default = base.current_path().join("xt-batch.sh");
+                    let default = default.to_string_lossy().into_owned();
+                    let label = "BATCH: write to file: ".to_string();
+                    self.open_prompt(PromptKind::BatchFile, label, &default);
+                }
+            }
             Command::Autoview => {
                 // Abre na janela de arquivos, com um visualizador vazio que
                 // `sync_autoview` troca pelo arquivo selecionado.
@@ -1219,6 +1235,42 @@ impl App {
         }
     }
 
+    /// Escreve o arquivo do Batch: uma linha por marcado. Um `.sh` ganha o
+    /// `#!/bin/sh` e permissão de execução.
+    fn write_batch(&mut self, file: &Path, mask: &str) -> Result<(), String> {
+        if mask.trim().is_empty() {
+            return Err("Batch cancelled: empty line mask".into());
+        }
+        let sources = self.sources(true);
+        let script = file.extension().is_some_and(|e| e == "sh");
+        let mut data = Vec::new();
+        if script {
+            data.extend_from_slice(b"#!/bin/sh\n");
+        }
+        for s in &sources {
+            data.extend(shell::batch_line(mask, &s.path, s.size));
+            data.push(b'\n');
+        }
+        let mut out = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(file)
+            .map_err(|e| format!("Cannot create {}: {e}", file.display()))?;
+        std::io::Write::write_all(&mut out, &data).map_err(|e| e.to_string())?;
+        if script {
+            let _ = out.set_permissions(fs::Permissions::from_mode(0o755));
+        }
+        if let Some(dir) = file.parent() {
+            self.rescan_everywhere(&[dir]);
+        }
+        self.message = Some(format!(
+            "Wrote {} lines to {}",
+            sources.len(),
+            file.display()
+        ));
+        Ok(())
+    }
+
     /// N: pede a nova data, já com a atual (do arquivo ou do diretório).
     fn prompt_new_date(&mut self, tagged: bool) {
         let paths: Vec<PathBuf> = if self.focus == Focus::Tree && !tagged {
@@ -1416,6 +1468,21 @@ impl App {
             }),
             PromptKind::Log => self.log(&text),
             PromptKind::NewDate(paths) => self.new_date(&paths, &text),
+            PromptKind::BatchFile => {
+                let base = self.outer.as_deref().unwrap_or(self).current_path();
+                let file = ops::resolve_path(&text, &base);
+                if fs::symlink_metadata(&file).is_ok() {
+                    Err(format!("{} already exists", file.display()))
+                } else {
+                    let label = format!(
+                        "BATCH line per tagged file (%f %d %n %b %e %s; uppercase = unquoted) into {}: ",
+                        fit_name(&file)
+                    );
+                    self.open_prompt(PromptKind::BatchMask { file }, label, "");
+                    Ok(())
+                }
+            }
+            PromptKind::BatchMask { file } => self.write_batch(&file, &text),
             // A navegação já aconteceu enquanto digitava; fora da árvore,
             // vira um Log.
             PromptKind::Treespec { .. } => match self.treespec_target(&text) {
@@ -3432,5 +3499,46 @@ mod tests {
         press(&mut app, KeyCode::Char('n'));
         answer_prompt(&mut app, "2018-01-01");
         assert_eq!(mtime("sub").date_naive().to_string(), "2018-01-01");
+    }
+
+    #[test]
+    fn ctrl_b_writes_a_batch_file() {
+        let (tmp, mut app) = sample();
+        press(&mut app, KeyCode::Enter);
+        ctrl(&mut app, 't');
+        ctrl(&mut app, 'b');
+        assert_eq!(
+            app.prompt.as_ref().unwrap().input.text,
+            tmp.path().join("xt-batch.sh").to_str().unwrap()
+        );
+        press(&mut app, KeyCode::Enter);
+        type_text(&mut app, "wc -c %f");
+        press(&mut app, KeyCode::Enter);
+        let script = tmp.path().join("xt-batch.sh");
+        let text = fs::read_to_string(&script).unwrap();
+        let a = tmp.path().join("a.rs");
+        assert!(text.starts_with("#!/bin/sh\n"));
+        assert!(text.contains(&format!("wc -c '{}'\n", a.display())));
+        assert_eq!(
+            fs::metadata(&script).unwrap().permissions().mode() & 0o111,
+            0o111
+        );
+        assert!(
+            names(&app).contains(&"xt-batch.sh".to_string()),
+            "list refreshed"
+        );
+
+        // Lista de dados, e não sobrescreve.
+        ctrl(&mut app, 'b');
+        answer_prompt(&mut app, "lista.csv");
+        type_text(&mut app, "%N;%S");
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(
+            fs::read_to_string(tmp.path().join("lista.csv")).unwrap(),
+            "a.rs;13\nb.txt;1\n"
+        );
+        ctrl(&mut app, 'b');
+        answer_prompt(&mut app, "lista.csv");
+        assert!(app.message.as_deref().unwrap().ends_with("already exists"));
     }
 }

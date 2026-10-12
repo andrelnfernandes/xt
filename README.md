@@ -139,6 +139,7 @@ corrigido, para não apagar o que você escreveu).
 | `R` | renomeia o diretório | renomeia o arquivo |
 | `A` | | permissões (octal, ex.: `644`) |
 | `N` | muda a data do diretório | muda a data do arquivo (Ctrl+N: dos marcados) |
+| Ctrl+B | | Batch: cria um script ou lista com uma linha por marcado |
 | Ctrl + `C` `M` `D` `A` | idem, nos arquivos marcados | idem, nos arquivos marcados |
 | Alt+C | Compare do ramo inteiro | copia os marcados **recriando os caminhos** |
 | Alt+M | | move os marcados **recriando os caminhos** |
@@ -285,6 +286,14 @@ atual no seu formato; aceita também `now` e `today`. Só com a data (sem
 `HH:MM`), cada arquivo mantém a sua hora. Links simbólicos são pulados (a
 data mudaria a do arquivo para onde apontam).
 
+**Batch (Ctrl+B):** pede o nome do arquivo a criar e uma máscara de linha,
+e escreve uma linha por arquivo marcado. Parâmetros: `%f` caminho, `%d`
+diretório, `%n` nome, `%b` nome sem extensão, `%e` extensão, `%s` tamanho.
+Em minúsculas saem entre aspas, seguros para o shell (`convert %f %b.png`);
+em maiúsculas, como texto puro, para listas (`%N;%S`). Um arquivo `.sh`
+ganha `#!/bin/sh` e permissão de execução (rode-o com `X`). Um arquivo que
+já existe não é sobrescrito.
+
 **Delete** apaga de verdade (não vai para a lixeira) e sempre pede confirmação.
 
 **Prune (Alt+P na árvore):** loga o ramo inteiro, mostra quantos arquivos,
@@ -421,7 +430,7 @@ Todas as teclas podem ser trocadas em `[keys]` no `config.toml`.
   Treespec em modo de edição (F5, curingas) e pastas especiais (F6), busca
   ao digitar com prompt (`|`) e modo ativo, janela de
   estatísticas (`?`), troca de drive (`<` e `>`).
-- **Arquivos:** Open em nova janela de terminal (Alt+O), Batch (Ctrl+B/Alt+B), JFC (J, comparar o conteúdo de dois arquivos), ZAAP
+- **Arquivos:** Open em nova janela de terminal (Alt+O), Batch do arquivo atual (Alt+B), JFC (J, comparar o conteúdo de dois arquivos), ZAAP
   (Y), sHortcut (H), Print (P), Rename com máscara, localizar e trocar e mudança de maiúsculas,
   dono/grupo (chown), Megaview (Ctrl+F7 na janela de arquivos), juntar marcados entre as
   janelas (Ctrl+F6), Partial Untag (Ctrl+F8), copiar caminho para a área de

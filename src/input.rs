@@ -71,6 +71,8 @@ pub enum Command {
     NewDate {
         tagged: bool,
     },
+    /// Ctrl+B: cria um arquivo com uma linha por arquivo marcado.
+    Batch,
     /// ← e → na janela de arquivos: arquivo anterior/próximo em colunas,
     /// página acima/abaixo numa coluna só.
     Left,

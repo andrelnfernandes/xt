@@ -112,6 +112,63 @@ pub fn expand(template: &str, file: Option<&Path>, tagged: &[PathBuf], dir: &Pat
     OsString::from_vec(out)
 }
 
+/// Uma linha do Batch (Ctrl+B) para `file`: `%f` caminho, `%d` diretório,
+/// `%n` nome, `%b` nome sem extensão, `%e` extensão, `%s` tamanho. Em
+/// minúsculas saem entre aspas (para scripts); em maiúsculas, como texto
+/// puro (para listas). `%%` é um `%`.
+pub fn batch_line(mask: &str, file: &Path, size: u64) -> Vec<u8> {
+    let name = file.file_name().unwrap_or_default();
+    let (base, ext) = split_ext(name.as_bytes());
+    let dir = file.parent().unwrap_or(Path::new(""));
+    let size = size.to_string();
+    let mut out = Vec::new();
+    let mut chars = mask.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '%' {
+            let mut buf = [0; 4];
+            out.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
+            continue;
+        }
+        let Some(&k) = chars.peek() else {
+            out.push(b'%');
+            continue;
+        };
+        let value: &[u8] = match k.to_ascii_lowercase() {
+            'f' => file.as_os_str().as_bytes(),
+            'd' => dir.as_os_str().as_bytes(),
+            'n' => name.as_bytes(),
+            'b' => base,
+            'e' => ext,
+            's' => size.as_bytes(),
+            '%' => {
+                chars.next();
+                out.push(b'%');
+                continue;
+            }
+            _ => {
+                out.push(b'%');
+                continue;
+            }
+        };
+        chars.next();
+        if k.is_ascii_lowercase() {
+            out.extend(quote(OsStr::from_bytes(value)));
+        } else {
+            out.extend_from_slice(value);
+        }
+    }
+    out
+}
+
+/// "foto.tar.gz" → ("foto.tar", "gz"); ".bashrc" e "Makefile" não têm
+/// extensão.
+fn split_ext(name: &[u8]) -> (&[u8], &[u8]) {
+    match name.iter().rposition(|&b| b == b'.') {
+        Some(0) | None => (name, b""),
+        Some(i) => (&name[..i], &name[i + 1..]),
+    }
+}
+
 /// Aspas simples do shell: `it's` → `'it'\''s'`.
 fn quote(s: &OsStr) -> Vec<u8> {
     let mut out = vec![b'\''];
@@ -164,6 +221,20 @@ mod tests {
             "tar cf t.tar '/x/1' '/x/2'"
         );
         assert_eq!(expand("echo %f%z", None, &[], Path::new("/")), "echo %z");
+    }
+
+    #[test]
+    fn batch_lines() {
+        let f = Path::new("/fotos/it's.JPG");
+        let line = |m| String::from_utf8(batch_line(m, f, 1234)).unwrap();
+        assert_eq!(
+            line("convert %f %b.png"),
+            "convert '/fotos/it'\\''s.JPG' 'it'\\''s'.png"
+        );
+        assert_eq!(line("%N;%S;%E;%D"), "it's.JPG;1234;JPG;/fotos");
+        assert_eq!(line("100%% %x"), "100% %x");
+        assert_eq!(split_ext(b".bashrc"), (&b".bashrc"[..], &b""[..]));
+        assert_eq!(split_ext(b"a.tar.gz"), (&b"a.tar"[..], &b"gz"[..]));
     }
 
     #[test]
