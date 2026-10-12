@@ -6,8 +6,10 @@ mod app;
 mod input;
 mod model;
 mod ui;
+mod viewer;
 
 use std::path::PathBuf;
+use std::time::Duration;
 
 use anyhow::{Context, bail};
 use ratatui::DefaultTerminal;
@@ -20,8 +22,8 @@ fn main() -> anyhow::Result<()> {
         Some(arg) => PathBuf::from(arg),
         None => std::env::current_dir().context("cannot read current directory")?,
     };
-    let root = std::fs::canonicalize(&root)
-        .with_context(|| format!("cannot open {}", root.display()))?;
+    let root =
+        std::fs::canonicalize(&root).with_context(|| format!("cannot open {}", root.display()))?;
     if !root.is_dir() {
         bail!("{} is not a directory", root.display());
     }
@@ -37,6 +39,12 @@ fn main() -> anyhow::Result<()> {
 fn run(terminal: &mut DefaultTerminal, app: &mut App) -> anyhow::Result<()> {
     while !app.should_quit {
         terminal.draw(|frame| ui::draw(frame, app))?;
+        // Com uma leitura em andamento, não bloqueia esperando tecla:
+        // processa um pedaço e redesenha o progresso.
+        if app.job.is_some() && !event::poll(Duration::ZERO)? {
+            app.tick(Duration::from_millis(50));
+            continue;
+        }
         if let Event::Key(key) = event::read()?
             && key.kind == KeyEventKind::Press
         {

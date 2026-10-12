@@ -8,7 +8,7 @@ use std::ffi::OsString;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{Duration, Instant, SystemTime};
 
 pub type NodeId = usize;
 
@@ -61,6 +61,30 @@ pub struct Totals {
 
 pub struct Tree {
     nodes: Vec<DirNode>,
+}
+
+/// Leitura de um ramo inteiro feita aos poucos, para a interface poder
+/// mostrar o progresso e o usuário poder cancelar.
+pub struct LogJob {
+    stack: Vec<NodeId>,
+    /// Além de ler, expande os nós na árvore (tecla `*`).
+    expand: bool,
+    /// Diretórios processados até agora.
+    pub dirs: u64,
+}
+
+impl LogJob {
+    pub fn new(root: NodeId, expand: bool) -> Self {
+        LogJob {
+            stack: vec![root],
+            expand,
+            dirs: 0,
+        }
+    }
+
+    pub fn is_done(&self) -> bool {
+        self.stack.is_empty()
+    }
 }
 
 impl Tree {
@@ -143,12 +167,49 @@ impl Tree {
         self.nodes[id].expanded = false;
     }
 
-    /// Expande o ramo inteiro abaixo de `id` (tecla `*`).
+    /// Expande o ramo inteiro abaixo de `id` de uma vez.
+    #[cfg(test)]
     pub fn expand_all(&mut self, id: NodeId) {
+        let mut job = LogJob::new(id, true);
+        self.run_job(&mut job, Duration::MAX);
+    }
+
+    /// Avança um [`LogJob`] até terminar ou estourar `budget`.
+    pub fn run_job(&mut self, job: &mut LogJob, budget: Duration) {
+        let start = Instant::now();
+        while let Some(n) = job.stack.pop() {
+            if job.expand {
+                self.expand(n);
+            } else {
+                self.scan(n);
+            }
+            job.dirs += 1;
+            // Ordem reversa para visitar os filhos em ordem alfabética.
+            job.stack
+                .extend(self.nodes[n].children.iter().rev().copied());
+            if start.elapsed() >= budget {
+                break;
+            }
+        }
+    }
+
+    /// `id` e todos os seus descendentes já criados, em pré-ordem.
+    pub fn subtree(&self, id: NodeId) -> Vec<NodeId> {
+        let mut out = Vec::new();
         let mut stack = vec![id];
         while let Some(n) = stack.pop() {
-            self.expand(n);
-            stack.extend(self.nodes[n].children.iter().copied());
+            out.push(n);
+            stack.extend(self.nodes[n].children.iter().rev().copied());
+        }
+        out
+    }
+
+    /// Expande os ancestrais de `id` para que ele apareça na árvore.
+    pub fn reveal(&mut self, id: NodeId) {
+        let mut cur = self.nodes[id].parent;
+        while let Some(n) = cur {
+            self.nodes[n].expanded = true;
+            cur = self.nodes[n].parent;
         }
     }
 
@@ -280,7 +341,11 @@ mod tests {
         let (_tmp, tree) = sample();
         let root = tree.node(ROOT);
         assert_eq!(names(&tree, &root.children), ["a", "b"]);
-        let files: Vec<_> = root.files.iter().map(|f| f.name.to_str().unwrap()).collect();
+        let files: Vec<_> = root
+            .files
+            .iter()
+            .map(|f| f.name.to_str().unwrap())
+            .collect();
         assert_eq!(files, ["A.txt", "z.txt"]);
     }
 
@@ -314,10 +379,45 @@ mod tests {
         // raiz + a + b (filhos lidos ao expandir a raiz)
         assert_eq!(
             tree.logged_totals(),
-            Totals { dirs: 3, files: 3, bytes: 9 }
+            Totals {
+                dirs: 3,
+                files: 3,
+                bytes: 9
+            }
         );
         tree.expand_all(ROOT);
         assert_eq!(tree.logged_totals().dirs, 5);
+    }
+
+    #[test]
+    fn log_job_can_run_in_slices() {
+        let (_tmp, mut tree) = sample();
+        let mut job = LogJob::new(ROOT, false);
+        // Orçamento zero: processa um diretório por chamada.
+        let mut calls = 0;
+        while !job.is_done() {
+            tree.run_job(&mut job, Duration::ZERO);
+            calls += 1;
+        }
+        assert_eq!(calls, 5);
+        assert_eq!(job.dirs, 5);
+        assert_eq!(tree.logged_totals().dirs, 5);
+        // Só leu, não expandiu.
+        assert_eq!(tree.visible_rows().len(), 3);
+    }
+
+    #[test]
+    fn subtree_and_reveal() {
+        let (_tmp, mut tree) = sample();
+        tree.expand_all(ROOT);
+        let b = tree.node(ROOT).children[1];
+        assert_eq!(names(&tree, &tree.subtree(b)), ["b", "deep", "deeper"]);
+
+        let deeper = tree.subtree(b)[2];
+        tree.collapse(ROOT);
+        tree.collapse(b);
+        tree.reveal(deeper);
+        assert!(tree.visible_rows().iter().any(|r| r.id == deeper));
     }
 
     #[test]

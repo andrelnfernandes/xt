@@ -9,6 +9,7 @@
 //!  menu de comandos (2 linhas)
 //! ```
 
+use std::ops::Range;
 use std::time::SystemTime;
 
 use chrono::{DateTime, Local};
@@ -16,10 +17,11 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, List, ListItem, Paragraph};
+use ratatui::widgets::{Block, BorderType, List, ListItem, ListState, Paragraph};
 
-use crate::app::{App, Focus};
+use crate::app::{App, FileView, Focus};
 use crate::model::tree::{FileEntry, FileKind};
+use crate::viewer::{self, ViewMode};
 
 const BG: Color = Color::Blue;
 const FG: Color = Color::White;
@@ -33,6 +35,11 @@ const SMALL_FILE_WINDOW: u16 = 8;
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let base = Style::new().fg(FG).bg(BG);
     frame.render_widget(Block::new().style(base), frame.area());
+
+    if app.viewer.is_some() {
+        draw_viewer(frame, app);
+        return;
+    }
 
     let [header, main, menu] = Layout::vertical([
         Constraint::Length(1),
@@ -77,7 +84,7 @@ fn highlight(active: bool) -> Style {
 }
 
 fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
-    let path = app.tree.path(app.current());
+    let path = app.tree.path(app.header_dir());
     let clock = Local::now().format("%d/%m/%Y %H:%M").to_string();
     let [left, right] =
         Layout::horizontal([Constraint::Min(1), Constraint::Length(clock.len() as u16)])
@@ -96,8 +103,8 @@ fn draw_tree(frame: &mut Frame, app: &mut App, area: Rect) {
     let active = app.focus == Focus::Tree;
     app.tree_page = area.height.saturating_sub(2) as usize;
 
-    let items: Vec<ListItem> = app
-        .rows
+    let (range, mut state) = visible_window(&mut app.tree_state, app.rows.len(), app.tree_page);
+    let items: Vec<ListItem> = app.rows[range]
         .iter()
         .map(|row| {
             let node = app.tree.node(row.id);
@@ -117,34 +124,70 @@ fn draw_tree(frame: &mut Frame, app: &mut App, area: Rect) {
     let list = List::new(items)
         .block(panel(" Tree ", active))
         .highlight_style(highlight(active));
-    frame.render_stateful_widget(list, area, &mut app.tree_state);
+    frame.render_stateful_widget(list, area, &mut state);
 }
 
 fn draw_files(frame: &mut Frame, app: &mut App, area: Rect) {
     let active = app.focus == Focus::Files;
     app.file_page = area.height.saturating_sub(2) as usize;
 
-    let node = app.tree.node(app.current());
     let width = area.width.saturating_sub(2) as usize;
-    let items: Vec<ListItem> = if let Some(err) = &node.error {
+    let error = match app.view {
+        FileView::Dir => app.tree.node(app.current()).error.as_ref(),
+        _ => None,
+    };
+    let (range, mut state) = visible_window(&mut app.file_state, app.files.len(), app.file_page);
+    let items: Vec<ListItem> = if let Some(err) = error {
         vec![ListItem::new(Span::styled(
             format!("Cannot read directory: {err}"),
             Style::new().fg(Color::LightRed),
         ))]
-    } else if node.files.is_empty() {
+    } else if app.files.is_empty() {
         vec![ListItem::new(Span::styled(
-            "No files",
+            "No matching files",
             Style::new().fg(DIM),
         ))]
     } else {
-        node.files.iter().map(|f| file_line(f, width)).collect()
+        app.files[range]
+            .iter()
+            .map(|&f| file_line(app.file(f), width))
+            .collect()
     };
 
-    let title = format!(" Files ({}) ", node.files.len());
+    let kind = match app.view {
+        FileView::Dir => "Files",
+        FileView::Branch(_) => "Branch",
+        FileView::Showall => "Showall",
+    };
+    let title = format!(
+        " {kind}: {} ({}) ",
+        app.filespec.text(),
+        fmt_num(app.files.len() as u64)
+    );
     let list = List::new(items)
         .block(panel(title, active))
         .highlight_style(highlight(active));
-    frame.render_stateful_widget(list, area, &mut app.file_state);
+    frame.render_stateful_widget(list, area, &mut state);
+}
+
+/// Ajusta a rolagem de `state` para o item selecionado ficar visível.
+/// Devolve a faixa de itens que cabe em `height` linhas e o estado a usar
+/// para desenhar só essa faixa (listas grandes não são montadas inteiras).
+fn visible_window(state: &mut ListState, len: usize, height: usize) -> (Range<usize>, ListState) {
+    let height = height.max(1);
+    let sel = state.selected().unwrap_or(0).min(len.saturating_sub(1));
+    let mut offset = state.offset().min(sel);
+    if sel >= offset + height {
+        offset = sel + 1 - height;
+    }
+    // Sem espaço vazio no fim quando a lista encolhe.
+    offset = offset.min(len.saturating_sub(height));
+    *state.offset_mut() = offset;
+    let range = offset..(offset + height).min(len);
+    (
+        range,
+        ListState::default().with_selected(Some(sel - offset)),
+    )
 }
 
 /// Uma linha da janela de arquivos: nome, tamanho, data e permissões.
@@ -174,10 +217,14 @@ fn file_line(f: &FileEntry, width: usize) -> ListItem<'static> {
 }
 
 fn draw_stats(frame: &mut Frame, app: &App, area: Rect) {
-    let id = app.current();
-    let node = app.tree.node(id);
+    let id = app.header_dir();
     let logged = app.tree.logged_totals();
-    let dir_bytes: u64 = node.files.iter().map(|f| f.size).sum();
+    let matching_bytes: u64 = app.files.iter().map(|&f| app.file(f).size).sum();
+    let section = match app.view {
+        FileView::Dir => "DIRECTORY",
+        FileView::Branch(_) => "BRANCH",
+        FileView::Showall => "SHOWALL",
+    };
 
     let label = |s: &'static str| Line::from(Span::styled(s, Style::new().fg(KEY)));
     let value = |k: &str, v: String| {
@@ -189,7 +236,7 @@ fn draw_stats(frame: &mut Frame, app: &App, area: Rect) {
 
     let mut lines = vec![
         label("FILE"),
-        value("Spec", "*".into()),
+        value("Spec", fit(app.filespec.text(), STATS_WIDTH as usize - 10)),
         Line::default(),
     ];
 
@@ -208,16 +255,44 @@ fn draw_stats(frame: &mut Frame, app: &App, area: Rect) {
         value("Files", fmt_num(logged.files)),
         value("Bytes", fmt_num(logged.bytes)),
         Line::default(),
-        label("DIRECTORY"),
-        value("Files", fmt_num(node.files.len() as u64)),
-        value("Bytes", fmt_num(dir_bytes)),
+        label(section),
+        value("Match", fmt_num(app.files.len() as u64)),
+        value("Bytes", fmt_num(matching_bytes)),
     ]);
 
     frame.render_widget(Paragraph::new(lines).block(panel(" xt ", false)), area);
 }
 
 fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
-    let lines = if app.confirm_quit {
+    let bold = Style::new().add_modifier(Modifier::BOLD);
+    let lines = if let Some(prompt) = &app.prompt {
+        let label = "FILESPEC: ";
+        let col = area.x + (label.len() + prompt.cursor) as u16;
+        frame.set_cursor_position((col.min(area.right().saturating_sub(1)), area.y));
+        vec![
+            Line::from(vec![
+                Span::styled(label, bold),
+                Span::raw(prompt.text.clone()),
+            ]),
+            menu_line(
+                "",
+                &[
+                    ("Enter", "accept"),
+                    ("Esc", "cancel"),
+                    ("Ctrl+U", "clear"),
+                    ("e.g.", "*.rs *.toml -*.bak"),
+                ],
+            ),
+        ]
+    } else if let Some(job) = &app.job {
+        vec![
+            Line::from(vec![
+                Span::styled("Logging... ", bold),
+                Span::raw(format!("{} dirs", fmt_num(job.log.dirs))),
+            ]),
+            menu_line("", &[("Esc", "cancel")]),
+        ]
+    } else if app.confirm_quit {
         vec![
             Line::from(vec![
                 Span::styled("Quit xt? ", Style::new().add_modifier(Modifier::BOLD)),
@@ -232,9 +307,35 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
         let first = match app.focus {
             Focus::Tree => menu_line(
                 "DIR",
-                &[("←→", "collapse/expand"), ("*", "expand branch"), ("Q", "quit")],
+                &[
+                    ("←→", "collapse/expand"),
+                    ("*", "log branch"),
+                    ("B", "branch"),
+                    ("F", "filespec"),
+                    ("S", "showall"),
+                    ("Q", "quit"),
+                ],
             ),
-            Focus::Files => menu_line("FILE", &[("Esc", "back to tree"), ("Q", "quit")]),
+            Focus::Files => menu_line(
+                "FILE",
+                &[
+                    ("V", "view"),
+                    ("B", "branch"),
+                    ("F", "filespec"),
+                    ("S", "showall"),
+                    ("Esc", "back to tree"),
+                    ("Q", "quit"),
+                ],
+            ),
+        };
+        let first = match &app.message {
+            Some(msg) => Line::from(Span::styled(
+                msg.clone(),
+                Style::new()
+                    .fg(Color::LightRed)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            None => first,
         };
         let second = menu_line(
             "",
@@ -250,8 +351,73 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(Paragraph::new(lines), area);
 }
 
+fn draw_viewer(frame: &mut Frame, app: &mut App) {
+    let Some(v) = &mut app.viewer else { return };
+    let [header, body, menu] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(1),
+        Constraint::Length(2),
+    ])
+    .areas(frame.area());
+
+    let mut title = vec![
+        Span::styled("View: ", Style::new().fg(KEY)),
+        Span::raw(v.path.to_string_lossy().into_owned()),
+        Span::styled(format!("  {} bytes", fmt_num(v.size)), Style::new().fg(DIM)),
+    ];
+    if v.truncated() {
+        title.push(Span::styled(
+            format!("  (showing first {})", fmt_num(viewer::MAX_BYTES)),
+            Style::new().fg(Color::LightRed),
+        ));
+    }
+    frame.render_widget(Line::from(title), header);
+
+    let inner = panel("", false).inner(body);
+    v.page = inner.height as usize;
+    let lines: Vec<Line> = v
+        .visible_lines(inner.height as usize)
+        .into_iter()
+        .map(Line::from)
+        .collect();
+    let mode = match v.mode {
+        ViewMode::Text => " TEXT ",
+        ViewMode::Hex => " HEX ",
+    };
+    frame.render_widget(Paragraph::new(lines).block(panel(mode, true)), body);
+
+    let total = v.line_count().max(1);
+    let position = match v.mode {
+        ViewMode::Text => format!(
+            "Line {} of {}",
+            fmt_num(v.top as u64 + 1),
+            fmt_num(total as u64)
+        ),
+        ViewMode::Hex => format!("Offset {:08X}", v.top * viewer::HEX_WIDTH),
+    };
+    let percent = ((v.top + v.page).min(total) * 100) / total;
+    frame.render_widget(
+        Paragraph::new(vec![
+            menu_line(
+                "VIEW",
+                &[
+                    ("↑↓ PgUp/PgDn", "scroll"),
+                    ("←→", "pan"),
+                    ("H", "hex/text"),
+                    ("Esc", "close"),
+                ],
+            ),
+            Line::from(format!("{:9}{position}  ({percent}%)", "")),
+        ]),
+        menu,
+    );
+}
+
 fn key(k: &str) -> Span<'static> {
-    Span::styled(k.to_string(), Style::new().fg(KEY).add_modifier(Modifier::BOLD))
+    Span::styled(
+        k.to_string(),
+        Style::new().fg(KEY).add_modifier(Modifier::BOLD),
+    )
 }
 
 fn menu_line(title: &str, entries: &[(&str, &str)]) -> Line<'static> {
@@ -298,7 +464,9 @@ fn fmt_num(n: u64) -> String {
 }
 
 fn fmt_time(t: SystemTime) -> String {
-    DateTime::<Local>::from(t).format("%Y-%m-%d %H:%M").to_string()
+    DateTime::<Local>::from(t)
+        .format("%Y-%m-%d %H:%M")
+        .to_string()
 }
 
 /// Permissões no formato do `ls -l`, ex.: "-rwxr-xr-x".
@@ -340,6 +508,26 @@ mod tests {
     fn fits_names() {
         assert_eq!(fit("abc", 5), "abc  ");
         assert_eq!(fit("abcdef", 4), "abc…");
+    }
+
+    #[test]
+    fn window_follows_selection() {
+        let mut state = ListState::default().with_selected(Some(0));
+        let (range, local) = visible_window(&mut state, 100, 10);
+        assert_eq!((range, local.selected()), (0..10, Some(0)));
+
+        state.select(Some(15));
+        let (range, local) = visible_window(&mut state, 100, 10);
+        assert_eq!((range, local.selected()), (6..16, Some(9)));
+
+        // Subindo dentro da janela, ela não se move.
+        state.select(Some(8));
+        assert_eq!(visible_window(&mut state, 100, 10).0, 6..16);
+
+        // A lista encolheu: a janela recua.
+        state.select(Some(2));
+        assert_eq!(visible_window(&mut state, 5, 10).0, 0..5);
+        assert_eq!(visible_window(&mut state, 0, 10).0, 0..0);
     }
 
     #[test]
