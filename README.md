@@ -17,6 +17,14 @@ will probably get a Windows version too.
 xt follows ZTreeWin's keys and way of working whenever possible; the
 differences are listed in [Comparison with ZTreeWin](#comparison-with-ztreewin).
 
+## Disclaimer
+
+xt is an independent project, written from scratch. It is not affiliated
+with, endorsed by or connected to Zedtek, Inc. (ZTreeWin) or to the owners of
+XTree. It contains no code from those programs; their names are mentioned only
+to describe what inspired xt and how it compares. XTree, ZTree and ZTreeWin
+are trademarks of their respective owners.
+
 ## Installation
 
 Requires Rust (via [rustup](https://rustup.rs)). In the project folder:

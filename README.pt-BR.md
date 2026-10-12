@@ -17,6 +17,14 @@ isso, provavelmente o xt também terá uma versão para Windows.
 O xt segue as teclas e o jeito de trabalhar do ZTreeWin sempre que possível;
 as diferenças estão descritas em [Comparação com o ZTreeWin](#comparação-com-o-ztreewin).
 
+## Aviso
+
+O xt é um projeto independente, escrito do zero. Não tem ligação com a
+Zedtek, Inc. (ZTreeWin) nem com os donos do XTree, nem é endossado por eles.
+Não contém código desses programas; os nomes deles aparecem só para descrever
+o que inspirou o xt e como ele se compara. XTree, ZTree e ZTreeWin são marcas
+de seus respectivos donos.
+
 ## Instalação
 
 Requer Rust (via [rustup](https://rustup.rs)). Na pasta do projeto:
