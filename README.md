@@ -2,10 +2,22 @@
 
 Gerenciador de arquivos em modo texto para Linux, inspirado no XTree e no ZTreeWin.
 
+## Instalação
+
+Requer Rust (via [rustup](https://rustup.rs)). Na pasta do projeto:
+
+```bash
+cargo install --path .
+```
+
+O binário vai para `~/.cargo/bin/xt` (que o rustup já coloca no `PATH`).
+Para atualizar depois de mudanças no código, rode o mesmo comando de novo;
+para remover, `cargo uninstall xt`.
+
 ## Uso
 
 ```bash
-cargo run --release -- [diretório]
+xt [diretório]
 ```
 
 Sem argumento, abre o diretório atual. `xt --help` mostra as opções.
@@ -186,10 +198,13 @@ Na árvore, `+` no conector (`├─+`) indica um diretório recolhido que tem s
 - [x] Fase 2 — tagging, copy/move/delete/rename, makedir, permissões, re-log
 - [x] Fase 3 — janela dividida (F8), Log, Compare, ZIP/TAR, inotify, Edit,
   eXecute, histórico nos prompts
-- [ ] Fase 4 — temas, keymap configurável, empacotamento
+- [x] Fase 4 — configuração, temas, teclas configuráveis, ajuda (F1),
+  histórico persistente, build de release e instalação
 
 ### Para depois
 
+- pacote `.deb` (falta definir licença e mantenedor)
+- versões para macOS e Windows
 - macros
 - dono/grupo (chown), Prune, Graft, rename com curinga
 - lixeira (em vez de apagar de vez)

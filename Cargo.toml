@@ -2,6 +2,10 @@
 name = "xt"
 version = "0.1.0"
 edition = "2024"
+description = "Text-mode file manager inspired by XTree and ZTreeWin"
+readme = "README.md"
+keywords = ["file-manager", "xtree", "ztree", "tui", "terminal"]
+categories = ["command-line-utilities", "filesystem"]
 
 [dependencies]
 anyhow = "1.0.104"
@@ -18,3 +22,9 @@ zip = { version = "9.0.2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"
+
+# Binário de release menor e um pouco mais rápido.
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
