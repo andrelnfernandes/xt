@@ -652,7 +652,7 @@ fn prompt_lines(frame: &mut Frame, prompt: &app::Prompt, area: Rect) -> Vec<Line
         help.push(("↑↓", "history"));
     }
     if prompt.label.starts_with("FILESPEC") {
-        help.push(("e.g.", "*.rs *.toml -*.bak"));
+        help.push(("e.g.", "*.rs -*.bak >TODAY-7 >s1M"));
     }
     vec![
         Line::from(vec![

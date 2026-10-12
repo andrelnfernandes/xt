@@ -258,7 +258,7 @@ impl Pane {
         for dir in self.tree.visible_subtree(ROOT) {
             for (idx, f) in self.tree.node(dir).files.iter().enumerate() {
                 let shown = self.tree.show_hidden || !is_hidden(&f.name);
-                if shown && self.filespec.matches(&f.name) {
+                if shown && self.filespec.matches_entry(f) {
                     refs.push(FileRef { dir, idx });
                 }
             }
@@ -583,7 +583,7 @@ impl Pane {
         for (rank, dir) in dirs.into_iter().enumerate() {
             for (idx, f) in self.tree.node(dir).files.iter().enumerate() {
                 let shown = self.tree.show_hidden || !is_hidden(&f.name);
-                if shown && self.filespec.matches(&f.name) {
+                if shown && self.filespec.matches_entry(f) {
                     files.push((FileRef { dir, idx }, rank));
                 }
             }

@@ -246,8 +246,23 @@ Terminal, Ptyxis, Terminator, Tilix) use **F9 M** (ou Alt+M e F6 no prompt).
 
 Durante um log demorado, o progresso aparece no rodapé e `Esc` cancela.
 
-**Filespec:** padrões glob separados por espaço, `;` ou `,`, sem diferenciar
-maiúsculas. Um `-` na frente exclui: `*.rs *.toml -*.bak`.
+**Filespec (`F`):** especificações separadas por espaço, `;` ou `,`, de três
+tipos, como no ZTreeWin:
+
+- **nome:** glob (`*.rs`, `a?c*`, `[abc]*`), sem diferenciar maiúsculas;
+  entre aspas, o nome pode ter espaços (`"meu arquivo*"`);
+- **data:** `<`, `=`, `>`, `<=`, `>=` ou `<>` e uma data na ordem do formato
+  configurado, com `/`, `.` ou `-` e ano de 2 ou 4 dígitos (`>01/05/2026`;
+  `2026-05-01` sempre vale), ou `TODAY` e `TODAY-n` (`>TODAY-7`: últimos 7
+  dias);
+- **tamanho:** o mesmo com `s` depois do operador (`>=s200000`); no xt
+  também valem K, M e G (`>s100M`).
+
+Um `-` na frente nega (`-*.bak`; `-<s1K` é o mesmo que `>=s1K`). Dentro de
+cada tipo, as especificações positivas valem com "ou", exceto `>a` logo
+seguido de `<b`, que é a faixa entre os dois (`>=01/05/2026,<=31/05/2026`:
+maio); `<>` exclui. Entre os tipos vale "e": `*.txt,=TODAY,<s1000` são os
+`.txt` de hoje com menos de 1000 bytes.
 
 **Copy/Move:** o destino pode ser um diretório (relativo ao diretório do
 cursor da árvore, absoluto ou com `~`) ou, para um único arquivo, um novo nome. Se o destino já existe,
@@ -345,7 +360,7 @@ configuração (Alt+F10).
 
 | Recurso | No ZTreeWin | No xt |
 |---|---|---|
-| Filespec | regras próprias, filtros por data, tamanho e atributo, filespec invertido | glob (`*`, `?`, `[abc]`), exclusão com `-`, sem filtros por data/tamanho/atributo |
+| Filespec | nome com regras próprias de nome e extensão, data, tamanho, atributo, filespec invertido (Ctrl+I), rótulos | glob para os nomes, data e tamanho como no ZTreeWin (com K/M/G); sem atributos, inversão e rótulos |
 | Visualizador | modos Alpha, Dump, Hex, Junk e Wrap; conjuntos de caracteres; edição hex; marcadores; auto-scroll | texto (UTF-8) ou hex, com a busca do ZTreeWin (F, B, /, \\, Espaço, + e -), sem quebra de linha; até 16 MiB |
 | Ctrl+S | texto, hex ou Unicode; busca só no índice de ZIPs | texto ou hex |
 | Attributes | atributos do Windows (R, A, S, H) | permissões do Unix em octal (`644`); sem dono/grupo |

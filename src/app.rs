@@ -16,11 +16,11 @@ use std::time::Duration;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, ModifierKeyCode};
 
 use crate::archive;
-use crate::config::{self, Config, Options, PruneConfirm, Theme};
+use crate::config::{self, Config, DateFormat, Options, PruneConfirm, Theme};
 use crate::input::{Command, LineEvent, LineInput};
 use crate::keymap::Keymap;
 use crate::model::compare::{self, CompareMode};
-use crate::model::filespec::Filespec;
+use crate::model::filespec::{DateOrder, Filespec};
 use crate::model::sort::{Sort, SortKey};
 use crate::model::tree::{LogJob, NodeId, ROOT};
 use crate::ops::{self, Answer, OpKind, Operation, Source};
@@ -377,6 +377,15 @@ impl App {
                     s.message = Some(format!("Cannot apply: {e}"));
                 }
             }
+        }
+    }
+
+    /// Ordem das datas digitadas no Filespec: a do formato configurado.
+    fn date_order(&self) -> DateOrder {
+        match self.options.date_format {
+            DateFormat::Iso => DateOrder::Ymd,
+            DateFormat::Dmy => DateOrder::Dmy,
+            DateFormat::Mdy => DateOrder::Mdy,
         }
     }
 
@@ -1254,7 +1263,7 @@ impl App {
     fn submit(&mut self, kind: PromptKind, text: String) {
         self.remember(&kind, &text);
         let result = match kind {
-            PromptKind::Filespec => Filespec::parse(&text).map(|spec| {
+            PromptKind::Filespec => Filespec::parse_with(&text, self.date_order()).map(|spec| {
                 self.filespec = spec;
                 self.refresh_files();
             }),
@@ -3152,5 +3161,24 @@ mod tests {
         press(&mut app, KeyCode::Char('q'));
         press(&mut app, KeyCode::Char('y'));
         assert!(app.should_quit && app.quit_dir.is_none());
+    }
+
+    #[test]
+    fn filespec_with_size_and_date_in_configured_order() {
+        let (tmp, mut app) = sample();
+        write(tmp.path().join("big.bin"), vec![0u8; 5000]).unwrap();
+        app.apply(Command::Relog);
+        press(&mut app, KeyCode::Char('f'));
+        answer_prompt(&mut app, ">s4K");
+        assert_eq!(names(&app), ["big.bin"]);
+
+        app.options.date_format = DateFormat::Dmy;
+        let today = chrono::Local::now().format("%d/%m/%Y").to_string();
+        press(&mut app, KeyCode::Char('f'));
+        answer_prompt(&mut app, &format!("*.rs,={today}"));
+        assert_eq!(names(&app), ["a.rs"]);
+        press(&mut app, KeyCode::Char('f'));
+        answer_prompt(&mut app, "<TODAY");
+        assert!(names(&app).is_empty());
     }
 }
