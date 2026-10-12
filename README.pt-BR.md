@@ -75,7 +75,7 @@ xt). Ela tem quatro páginas:
 | Página | Opções |
 |---|---|
 | 1. Programas e formatos | editor, formato de data, formato de número |
-| 2. Exibição e ordenação | mostrar ocultos, ordenação inicial e sentido, o que o Enter faz na janela de arquivos, modo inicial da janela de arquivos |
+| 2. Exibição e ordenação | mostrar ocultos, ordenação inicial e sentido, o que o Enter faz na janela de arquivos, modo inicial da janela de arquivos, cores de sintaxe no visualizador |
 | 3. Confirmações e histórico | confirmar ao sair, confirmação do Prune, não guardar entradas com `@` |
 | 4. Compare e atualização | ignorar 2 s, ignorar 1 h, atualização automática |
 
@@ -345,6 +345,15 @@ Links simbólicos são removidos sem seguir o destino, e **outros pontos de
 montagem dentro do ramo são pulados** (um pendrive montado ali dentro não é
 apagado). A raiz da árvore não pode sofrer Prune.
 
+**Cores de sintaxe:** o visualizador colore código-fonte e scripts em cerca de
+150 linguagens (Rust, Python, shell, C, JavaScript, SQL, YAML, Markdown...),
+reconhecidas pela extensão, pelo nome (`Makefile`) ou pela primeira linha
+(`#!/bin/bash`). **C** liga e desliga as cores durante a visualização; o
+padrão é `syntax_highlight` (página 2 da configuração). As cores são ajustadas
+para ficarem legíveis no fundo do tema atual, inclusive o azul clássico. Só as
+primeiras 20.000 linhas são coloridas, para arquivos enormes não deixarem o
+visualizador lento.
+
 **Visualizador:** setas/PgUp/PgDn/Home/End rolam, ←→ deslocam na horizontal,
 `H` alterna texto/hex, `Esc` fecha. Arquivos binários abrem em hex.
 Arquivos acima de 16 MiB mostram só o começo. Busca, como no ZTreeWin:
@@ -425,7 +434,7 @@ configuração (Alt+F10).
 | Recurso | No ZTreeWin | No xt |
 |---|---|---|
 | Filespec | nome com regras próprias de nome e extensão, data, tamanho, atributo, filespec invertido (Ctrl+I), rótulos | glob para os nomes, data e tamanho como no ZTreeWin (com K/M/G); sem atributos, inversão e rótulos |
-| Visualizador | modos Alpha, Dump, Hex, Junk e Wrap; conjuntos de caracteres; edição hex; marcadores; auto-scroll | texto (UTF-8) ou hex, com a busca do ZTreeWin (F, B, /, \\, Espaço, + e -), sem quebra de linha; até 16 MiB |
+| Visualizador | modos Alpha, Dump, Hex, Junk e Wrap; conjuntos de caracteres; edição hex; marcadores; auto-scroll | texto (UTF-8) ou hex, com a busca do ZTreeWin (F, B, /, \\, Espaço, + e -), cores de sintaxe (que o ZTreeWin não tem), sem quebra de linha; até 16 MiB |
 | Ctrl+S | texto, hex ou Unicode; busca só no índice de ZIPs | texto ou hex |
 | Attributes | atributos do Windows (R, A, S, H) | permissões do Unix em octal (`644`); sem dono/grupo |
 | Sort | Name, Ext, Date, Time, Length, Alpha, nuMber, Size, Value, Unsorted; Charset; same/diff na tela dividida | Name, Ext, Date, Size, crescente/decrescente, Path first; cada janela tem a sua ordem |

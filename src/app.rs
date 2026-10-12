@@ -17,6 +17,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, M
 
 use crate::archive::{self, ArchiveItem, ArchiveJob};
 use crate::config::{self, Config, DateFormat, Options, PruneConfirm, Theme};
+use crate::highlight;
 use crate::info;
 use crate::input::{Command, LineEvent, LineInput};
 use crate::keymap::Keymap;
@@ -362,6 +363,8 @@ impl App {
         let keymap = Keymap::from_config(&config.keys, &config.options)?;
         let theme = Theme::from_config(config)?;
         self.keymap = keymap;
+        highlight::set_xt_theme(&config.theme, theme.background);
+        highlight::set_enabled(config.options.syntax_highlight);
         config::set_theme(theme);
         config::set_formats(config.options.formats());
         self.options = config.options.clone();

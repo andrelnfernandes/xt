@@ -17,6 +17,7 @@ nix = { version = "0.31.3", features = ["fs", "user"] }
 notify = { version = "8.2.0", default-features = false }
 ratatui = "0.30.2"
 serde = { version = "1.0.229", features = ["derive"] }
+syntect = { version = "5.3.0", default-features = false, features = ["default-syntaxes", "default-themes", "regex-fancy", "parsing"] }
 tar = "0.4.46"
 toml = "1.1.8"
 toml_edit = "0.25.17"

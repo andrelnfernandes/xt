@@ -707,21 +707,6 @@ fn prompt_lines(frame: &mut Frame, prompt: &app::Prompt, area: Rect) -> Vec<Line
     ]
 }
 
-/// Viewer line with the matched span highlighted.
-fn highlighted(line: String, mark: Option<(usize, usize)>) -> Line<'static> {
-    let Some((s, e)) = mark else {
-        return Line::from(line);
-    };
-    let chars: Vec<char> = line.chars().collect();
-    let (s, e) = (s.min(chars.len()), e.min(chars.len()));
-    let part = |a: usize, b: usize| chars[a..b].iter().collect::<String>();
-    Line::from(vec![
-        Span::raw(part(0, s)),
-        Span::styled(part(s, e), highlight(true).add_modifier(Modifier::BOLD)),
-        Span::raw(part(e, chars.len())),
-    ])
-}
-
 /// Footer during Copy/Move/Delete: current file and progress bar,
 /// or the conflict question.
 fn op_lines(op: &Operation) -> Vec<Line<'static>> {
@@ -995,7 +980,7 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
     let lines = if let Some(prompt) = &app.prompt {
         prompt_lines(frame, prompt, menu)
     } else {
-        let mut words = vec!["Find", "Backward", "Hex"];
+        let mut words = vec!["Find", "Backward", "Hex", "Colors"];
         if tagged.is_some() {
             words.extend(["Next", "Prev", "Untag"]);
         }
@@ -1020,7 +1005,13 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
                     .fg(theme().message)
                     .add_modifier(Modifier::BOLD),
             ),
-            None => Line::from(format!("{:9}{position}  ({percent}%)", "")),
+            None => {
+                let language = v
+                    .language()
+                    .map(|l| format!("{l}  ·  "))
+                    .unwrap_or_default();
+                Line::from(format!("{:9}{language}{position}  ({percent}%)", ""))
+            }
         };
         vec![first, second]
     };
@@ -1032,10 +1023,22 @@ fn draw_viewer_body(frame: &mut Frame, v: &mut Viewer, title: String, area: Rect
     let inner = panel("", false).inner(area);
     v.page = inner.height as usize;
     v.width = inner.width as usize;
+    let mark = highlight(true).add_modifier(Modifier::BOLD);
     let lines: Vec<Line> = v
-        .visible(inner.height as usize)
+        .styled(inner.height as usize)
         .into_iter()
-        .map(|(line, mark)| highlighted(line, mark))
+        .map(|segments| {
+            Line::from(
+                segments
+                    .into_iter()
+                    .map(|(text, color, marked)| match (marked, color) {
+                        (true, _) => Span::styled(text, mark),
+                        (false, Some(c)) => Span::styled(text, Style::new().fg(c)),
+                        (false, None) => Span::raw(text),
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        })
         .collect();
     frame.render_widget(Paragraph::new(lines).block(panel(title, true)), area);
 }

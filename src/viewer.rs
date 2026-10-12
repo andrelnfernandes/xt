@@ -7,6 +7,9 @@ use std::path::PathBuf;
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+use ratatui::style::Color;
+
+use crate::highlight::Highlighter;
 use crate::search::Pattern;
 
 /// Larger files are displayed only up to this limit.
@@ -82,7 +85,15 @@ pub struct Viewer {
     pub forward: bool,
     /// Footer notice (e.g. "Not found").
     pub note: Option<String>,
+    /// Syntax highlighting, when the language is known.
+    colors: Option<Highlighter>,
+    /// Colors shown (C toggles).
+    pub colors_on: bool,
 }
+
+/// A piece of a displayed line: text, its color and whether it is part of
+/// the search match.
+pub type Segment = (String, Option<Color>, bool);
 
 impl Viewer {
     /// Reads only the start of the file (Autoview uses a smaller limit, to
@@ -118,11 +129,17 @@ impl Viewer {
         } else {
             ViewMode::Text
         };
+        let lines = text_lines(&data);
+        let colors = (mode == ViewMode::Text)
+            .then(|| Highlighter::for_file(&path, lines.first().map_or("", String::as_str)))
+            .flatten();
         Viewer {
+            colors_on: colors.is_some(),
+            colors,
             path,
             size,
             mode,
-            lines: text_lines(&data),
+            lines,
             data,
             top: 0,
             left: 0,
@@ -179,6 +196,49 @@ impl Viewer {
         }
     }
 
+    /// Language being highlighted, if colors are on.
+    pub fn language(&self) -> Option<&str> {
+        self.colors
+            .as_ref()
+            .filter(|_| self.colors_on && self.mode == ViewMode::Text)
+            .map(|h| h.language.as_str())
+    }
+
+    /// Like `visible`, split into colored pieces (syntax colors and the
+    /// search match).
+    pub fn styled(&mut self, height: usize) -> Vec<Vec<Segment>> {
+        let rows = self.visible(height);
+        let use_colors = self.colors_on && self.mode == ViewMode::Text;
+        let (top, left) = (self.top, self.left);
+        let (colors, lines) = (&mut self.colors, &self.lines);
+        rows.into_iter()
+            .enumerate()
+            .map(|(k, (line, mark))| {
+                // Color of each character of the whole line.
+                let per_char: Vec<Color> = colors
+                    .as_mut()
+                    .filter(|_| use_colors)
+                    .and_then(|h| h.line(top + k, lines))
+                    .map(|segs| {
+                        segs.iter()
+                            .flat_map(|(c, s)| std::iter::repeat_n(*c, s.chars().count()))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let mut out: Vec<Segment> = Vec::new();
+                for (j, ch) in line.chars().enumerate() {
+                    let color = per_char.get(left + j).copied();
+                    let marked = mark.is_some_and(|(s, e)| j >= s && j < e);
+                    match out.last_mut() {
+                        Some((text, c, m)) if *c == color && *m == marked => text.push(ch),
+                        _ => out.push((ch.to_string(), color, marked)),
+                    }
+                }
+                out
+            })
+            .collect()
+    }
+
     /// Handles a key; what does not belong to the viewer itself (close, switch
     /// file, search) comes back as an `Action`.
     pub fn handle_key(&mut self, key: KeyEvent) -> Action {
@@ -225,6 +285,17 @@ impl Viewer {
             KeyCode::Char(c) => match c.to_ascii_lowercase() {
                 'h' => {
                     self.toggle_mode();
+                    Action::None
+                }
+                'c' => {
+                    self.note = Some(match &self.colors {
+                        None => "No syntax colors for this file".into(),
+                        Some(h) => {
+                            self.colors_on = !self.colors_on;
+                            let state = if self.colors_on { "on" } else { "off" };
+                            format!("{} colors {state}", h.language)
+                        }
+                    });
                     Action::None
                 }
                 'f' => Action::Search {
@@ -610,5 +681,36 @@ mod tests {
         assert!(v.search(&pat("mzp"), true, SearchFrom::Edge));
         assert_eq!(v.hit.map(|h| (h.line, h.start)), Some((2, 40)));
         assert!(!v.search_next(&pat("mzp"), true));
+    }
+
+    #[test]
+    fn colors_code_and_keeps_the_search_mark() {
+        let src = b"fn main() {\n    let senha = 1;\n}\n";
+        let mut v = Viewer::from_bytes(PathBuf::from("a.rs"), src.len() as u64, src.to_vec());
+        assert_eq!(v.language(), Some("Rust"));
+        v.page = 5;
+        assert!(v.search(&pat("senha"), true, SearchFrom::Edge));
+        let rows = v.styled(5);
+        let line1: String = rows[1].iter().map(|(t, ..)| t.as_str()).collect();
+        assert_eq!(line1, "    let senha = 1;");
+        assert!(rows[1].iter().any(|(t, _, marked)| *marked && t == "senha"));
+        assert!(
+            rows[1]
+                .iter()
+                .any(|(t, c, _)| t.contains("let") && c.is_some())
+        );
+
+        // C desliga as cores; o texto não muda.
+        press(&mut v, KeyCode::Char('c'));
+        assert_eq!(v.language(), None);
+        assert!(v.styled(5)[1].iter().all(|(_, c, _)| c.is_none()));
+        assert_eq!(v.note.as_deref(), Some("Rust colors off"));
+
+        let mut plain = viewer(b"just text\n");
+        press(&mut plain, KeyCode::Char('c'));
+        assert_eq!(
+            plain.note.as_deref(),
+            Some("No syntax colors for this file")
+        );
     }
 }

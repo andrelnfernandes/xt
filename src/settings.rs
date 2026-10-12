@@ -15,6 +15,7 @@ pub enum Opt {
     NumberFormat,
     ShowHidden,
     FileDisplay,
+    SyntaxColors,
     Sort,
     SortDescending,
     EnterViews,
@@ -46,6 +47,7 @@ pub const PAGES: &[Page] = &[
             ('C', "Initial sort order", Opt::SortDescending),
             ('D', "Enter in the file window", Opt::EnterViews),
             ('E', "Initial file display (Alt+F)", Opt::FileDisplay),
+            ('F', "Syntax colors in the viewer", Opt::SyntaxColors),
         ],
     ),
     (
@@ -93,6 +95,7 @@ impl Opt {
             Opt::DateFormat => o.date_format.as_str().into(),
             Opt::NumberFormat => o.number_format.as_str().into(),
             Opt::ShowHidden => yes_no(o.show_hidden),
+            Opt::SyntaxColors => yes_no(o.syntax_highlight),
             Opt::FileDisplay => match o.file_display.as_str() {
                 "names" => "Names in columns".into(),
                 "names_size" => "Names and sizes in columns".into(),
@@ -134,6 +137,7 @@ impl Opt {
             Opt::DateFormat => o.date_format = o.date_format.next(),
             Opt::NumberFormat => o.number_format = o.number_format.next(),
             Opt::ShowHidden => o.show_hidden = !o.show_hidden,
+            Opt::SyntaxColors => o.syntax_highlight = !o.syntax_highlight,
             Opt::FileDisplay => o.file_display = o.file_display.next(),
             Opt::Sort => o.sort = o.sort.next(),
             Opt::SortDescending => o.sort_descending = !o.sort_descending,

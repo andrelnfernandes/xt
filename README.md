@@ -75,7 +75,7 @@ reaches xt). It has four pages:
 | Page | Options |
 |---|---|
 | 1. Programs and formats | editor, date format, number format |
-| 2. Display and sorting | show hidden files, initial sort order and direction, what Enter does in the file window, initial mode of the file window |
+| 2. Display and sorting | show hidden files, initial sort order and direction, what Enter does in the file window, initial mode of the file window, syntax colors in the viewer |
 | 3. Confirmations and history | confirm on quit, Prune confirmation, don't keep entries containing `@` |
 | 4. Compare and refresh | ignore 2 s, ignore 1 h, automatic refresh |
 
@@ -345,6 +345,14 @@ Symbolic links are removed without following the target, and **other mount
 points inside the branch are skipped** (a USB drive mounted in there is not
 deleted). The tree's root cannot be pruned.
 
+**Syntax colors:** the viewer colors source code and scripts in about 150
+languages (Rust, Python, shell, C, JavaScript, SQL, YAML, Markdown...),
+recognized by extension, by name (`Makefile`) or by the first line
+(`#!/bin/bash`). **C** turns colors on and off while viewing; the default is
+`syntax_highlight` (page 2 of the configuration). Colors are adjusted to stay
+readable on the current theme's background, the classic blue included. Only
+the first 20,000 lines are colored, so huge files never slow the viewer down.
+
 **Viewer:** arrows/PgUp/PgDn/Home/End scroll, ←→ scroll horizontally,
 `H` toggles text/hex, `Esc` closes. Binary files open in hex.
 Files over 16 MiB show only the beginning. Search, as in ZTreeWin:
@@ -425,7 +433,7 @@ screen (Alt+F10).
 | Feature | In ZTreeWin | In xt |
 |---|---|---|
 | Filespec | name with its own name and extension rules, date, size, attribute, inverted filespec (Ctrl+I), labels | glob for names, date and size as in ZTreeWin (with K/M/G); no attributes, inversion or labels |
-| Viewer | Alpha, Dump, Hex, Junk and Wrap modes; character sets; hex editing; bookmarks; auto-scroll | text (UTF-8) or hex, with ZTreeWin's search (F, B, /, \\, Space, + and -), no line wrapping; up to 16 MiB |
+| Viewer | Alpha, Dump, Hex, Junk and Wrap modes; character sets; hex editing; bookmarks; auto-scroll | text (UTF-8) or hex, with ZTreeWin's search (F, B, /, \\, Space, + and -), syntax colors (which ZTreeWin does not have), no line wrapping; up to 16 MiB |
 | Ctrl+S | text, hex or Unicode; searches only the ZIP index | text or hex |
 | Attributes | Windows attributes (R, A, S, H) | Unix permissions in octal (`644`); no owner/group |
 | Sort | Name, Ext, Date, Time, Length, Alpha, nuMber, Size, Value, Unsorted; Charset; same/diff in split screen | Name, Ext, Date, Size, ascending/descending, Path first; each window has its own order |
