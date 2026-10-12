@@ -23,6 +23,7 @@ use crate::app::{self, App, FileView, Focus, KbyteShow, MenuMode, Pane};
 use crate::config::{self, formats, theme};
 use crate::model::tree::{FileEntry, FileKind};
 use crate::ops::Operation;
+use crate::pane::FileDisplay;
 use crate::settings::{self, Settings};
 use crate::viewer::{self, ViewMode};
 
@@ -186,9 +187,30 @@ fn draw_tree(frame: &mut Frame, pane: &mut Pane, active: bool, title: String, ar
 }
 
 fn draw_files(frame: &mut Frame, pane: &mut Pane, active: bool, area: Rect) {
+    let kind = match pane.view {
+        FileView::Dir => "Files",
+        FileView::Branch(_) => "Branch",
+        FileView::Showall => "Showall",
+    };
+    let title = format!(
+        " {kind}: {} ({}) {} ",
+        pane.filespec.text(),
+        fmt_num(pane.files.len() as u64),
+        pane.sort.label()
+    );
+    let error = match pane.view {
+        FileView::Dir => pane.tree.node(pane.current()).error.is_some(),
+        _ => false,
+    };
+    if pane.display.multi_column() && !pane.files.is_empty() && !error {
+        draw_file_columns(frame, pane, active, area, title);
+        return;
+    }
+    pane.file_cols = 1;
     pane.file_page = area.height.saturating_sub(2) as usize;
 
     let width = area.width.saturating_sub(2) as usize;
+    let names_only = pane.display == FileDisplay::LongNames;
     let (range, mut state) = visible_window(&mut pane.file_state, pane.files.len(), pane.file_page);
     let error = match pane.view {
         FileView::Dir => pane.tree.node(pane.current()).error.as_ref(),
@@ -207,21 +229,10 @@ fn draw_files(frame: &mut Frame, pane: &mut Pane, active: bool, area: Rect) {
     } else {
         pane.files[range]
             .iter()
-            .map(|&f| file_line(pane.file(f), width))
+            .map(|&f| file_line(pane.file(f), width, names_only))
             .collect()
     };
 
-    let kind = match pane.view {
-        FileView::Dir => "Files",
-        FileView::Branch(_) => "Branch",
-        FileView::Showall => "Showall",
-    };
-    let title = format!(
-        " {kind}: {} ({}) {} ",
-        pane.filespec.text(),
-        fmt_num(pane.files.len() as u64),
-        pane.sort.label()
-    );
     let list = List::new(items)
         .block(panel(title, active))
         .highlight_style(highlight(active));
@@ -248,13 +259,103 @@ fn visible_window(state: &mut ListState, len: usize, height: usize) -> (Range<us
     )
 }
 
-/// Uma linha da janela de arquivos: nome, tamanho, data e permissões.
-fn file_line(f: &FileEntry, width: usize) -> ListItem<'static> {
+/// Nomes maiores são cortados com `…` nos modos de colunas, para caberem
+/// várias colunas (como no XTree, de colunas de largura fixa).
+const MAX_COLUMN_NAME: usize = 20;
+
+/// Modos de várias colunas (Alt+F): os arquivos vão da esquerda para a
+/// direita e depois para a linha de baixo, como no XTree.
+fn draw_file_columns(frame: &mut Frame, pane: &mut Pane, active: bool, area: Rect, title: String) {
+    let block = panel(title, active);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let (width, height) = (inner.width as usize, (inner.height as usize).max(1));
+    let with_size = pane.display == FileDisplay::NamesSize;
+
+    let n = pane.files.len();
+    let name_len = |f: &FileEntry| {
+        f.name.to_string_lossy().chars().count() + usize::from(f.kind == FileKind::Symlink)
+    };
+    let name_w = pane
+        .files
+        .iter()
+        .map(|&f| name_len(pane.file(f)))
+        .max()
+        .unwrap_or(1)
+        .min(MAX_COLUMN_NAME);
+    // Marca de tag + nome + (tamanho e permissões) + espaço entre colunas.
+    let cell_w = 2 + name_w + if with_size { 23 } else { 0 } + 1;
+    let cols = (width / cell_w).max(1);
+    pane.file_cols = cols;
+    pane.file_page = height * cols;
+
+    // Rolagem por linhas, com o arquivo selecionado sempre visível.
+    let sel = pane.file_state.selected().unwrap_or(0).min(n - 1);
+    let rows = n.div_ceil(cols);
+    let sel_row = sel / cols;
+    let mut top = pane.file_state.offset().min(sel_row);
+    if sel_row >= top + height {
+        top = sel_row + 1 - height;
+    }
+    top = top.min(rows.saturating_sub(height));
+    *pane.file_state.offset_mut() = top;
+
+    let lines: Vec<Line> = (top..(top + height).min(rows))
+        .map(|r| {
+            let mut spans = Vec::new();
+            for i in r * cols..(r * cols + cols).min(n) {
+                let f = pane.file(pane.files[i]);
+                let mut name = f.name.to_string_lossy().into_owned();
+                if f.kind == FileKind::Symlink {
+                    name.push('@');
+                }
+                let mut cell = format!(
+                    "{}{}",
+                    if f.tagged { "■ " } else { "  " },
+                    fit(&name, name_w)
+                );
+                if with_size {
+                    cell.push_str(&format!(
+                        " {:>11} {}",
+                        fmt_num(f.size),
+                        fmt_mode(f.mode, f.kind)
+                    ));
+                }
+                cell.push(' ');
+                let style = if i == sel {
+                    highlight(active)
+                } else {
+                    file_style(f)
+                };
+                spans.push(Span::styled(cell, style));
+            }
+            Line::from(spans)
+        })
+        .collect();
+    frame.render_widget(Paragraph::new(lines), inner);
+}
+
+/// Cor do nome conforme o tipo (e se está marcado).
+fn file_style(f: &FileEntry) -> Style {
+    match f.kind {
+        _ if f.tagged => Style::new().fg(theme().tagged).add_modifier(Modifier::BOLD),
+        FileKind::Symlink => Style::new().fg(theme().symlink),
+        FileKind::Other => Style::new().fg(theme().special),
+        FileKind::File if f.mode & 0o111 != 0 => Style::new().fg(theme().executable),
+        FileKind::File => Style::new(),
+    }
+}
+
+/// Uma linha da janela de arquivos: nome, tamanho, data e permissões (ou
+/// só o nome, no modo de nomes longos).
+fn file_line(f: &FileEntry, width: usize, names_only: bool) -> ListItem<'static> {
     let size = fmt_num(f.size);
     let date = f.modified.map(fmt_time).unwrap_or_default();
     let mode = fmt_mode(f.mode, f.kind);
     // Em janelas estreitas (tela dividida), as colunas menos úteis saem.
-    let details = if width >= 72 {
+    let details = if names_only {
+        String::new()
+    } else if width >= 72 {
         format!(" {size:>15} {date:16} {mode}")
     } else if width >= 50 {
         format!(" {size:>13} {date:16}")
@@ -270,13 +371,7 @@ fn file_line(f: &FileEntry, width: usize) -> ListItem<'static> {
     }
     let name = fit(&name, name_width);
 
-    let style = match f.kind {
-        _ if f.tagged => Style::new().fg(theme().tagged).add_modifier(Modifier::BOLD),
-        FileKind::Symlink => Style::new().fg(theme().symlink),
-        FileKind::Other => Style::new().fg(theme().special),
-        FileKind::File if f.mode & 0o111 != 0 => Style::new().fg(theme().executable),
-        FileKind::File => Style::new(),
-    };
+    let style = file_style(f);
     let mark = if f.tagged { "■ " } else { "  " };
     ListItem::new(Line::from(vec![
         Span::styled(mark, Style::new().fg(theme().tagged)),
@@ -1075,6 +1170,27 @@ mod tests {
         app.held = None;
         app.sticky = MenuMode::Alt;
         assert!(footer(&mut app).starts_with("ALT "));
+    }
+
+    #[test]
+    fn renders_files_in_columns() {
+        use ratatui::{Terminal, backend::TestBackend};
+        let tmp = tempfile::tempdir().unwrap();
+        for name in ["aa", "bb", "cc", "dd", "ee"] {
+            std::fs::write(tmp.path().join(name), "").unwrap();
+        }
+        let mut app = App::new(tmp.path().to_path_buf());
+        app.apply(crate::input::Command::SwitchWindow);
+        app.display = FileDisplay::Names;
+        let mut term = Terminal::new(TestBackend::new(60, 12)).unwrap();
+        term.draw(|f| draw(f, &mut app)).unwrap();
+        let buf = term.backend().buffer();
+        let row: String = (0..60).map(|x| buf[(x, 2)].symbol()).collect();
+        assert!(
+            row.contains("aa") && row.contains("bb") && row.contains("cc"),
+            "{row}"
+        );
+        assert!(app.file_cols > 1);
     }
 
     #[test]

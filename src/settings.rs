@@ -14,6 +14,7 @@ pub enum Opt {
     DateFormat,
     NumberFormat,
     ShowHidden,
+    FileDisplay,
     Sort,
     SortDescending,
     EnterViews,
@@ -44,6 +45,7 @@ pub const PAGES: &[Page] = &[
             ('B', "Initial sort", Opt::Sort),
             ('C', "Initial sort order", Opt::SortDescending),
             ('D', "Enter in the file window", Opt::EnterViews),
+            ('E', "Initial file display (Alt+F)", Opt::FileDisplay),
         ],
     ),
     (
@@ -91,6 +93,12 @@ impl Opt {
             Opt::DateFormat => o.date_format.as_str().into(),
             Opt::NumberFormat => o.number_format.as_str().into(),
             Opt::ShowHidden => yes_no(o.show_hidden),
+            Opt::FileDisplay => match o.file_display.as_str() {
+                "names" => "Names in columns".into(),
+                "names_size" => "Names and sizes in columns".into(),
+                "details" => "Details".into(),
+                _ => "Long names".into(),
+            },
             Opt::Sort => o.sort.as_str().into(),
             Opt::SortDescending => if o.sort_descending {
                 "Descending"
@@ -126,6 +134,7 @@ impl Opt {
             Opt::DateFormat => o.date_format = o.date_format.next(),
             Opt::NumberFormat => o.number_format = o.number_format.next(),
             Opt::ShowHidden => o.show_hidden = !o.show_hidden,
+            Opt::FileDisplay => o.file_display = o.file_display.next(),
             Opt::Sort => o.sort = o.sort.next(),
             Opt::SortDescending => o.sort_descending = !o.sort_descending,
             Opt::EnterViews => o.enter_views = !o.enter_views,

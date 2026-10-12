@@ -207,6 +207,13 @@ const COMMANDS: &[(&str, Command, &str)] = &[
         "show size or file count of each directory in the tree",
     ),
     ("help", Command::Help, "this help"),
+    (
+        "file_display",
+        Command::FileDisplay,
+        "file window: names in columns, with size, details, long names",
+    ),
+    ("left", Command::Left, "previous file (one column: page up)"),
+    ("right", Command::Right, "next file (one column: page down)"),
     ("quit", Command::Quit, "quit"),
     (
         "quit_cd",
@@ -278,8 +285,9 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("alt+p", Tree, "prune"),
     ("alt+k", Any, "kbyte"),
     ("esc", Files, "back"),
-    ("left", Files, "page_up"),
-    ("right", Files, "page_down"),
+    ("left", Files, "left"),
+    ("right", Files, "right"),
+    ("alt+f", Any, "file_display"),
     ("alt+c", Files, "copy_tagged_paths"),
     ("alt+m", Files, "move_tagged_paths"),
     ("alt+f5", Files, "open_archive"),
@@ -605,13 +613,10 @@ mod tests {
             map(KeyCode::Char('o'), KeyModifiers::CONTROL, Focus::Files),
             Some(Command::OpenWith { tagged: true })
         );
-        assert_eq!(
-            map(KeyCode::Left, none, Focus::Files),
-            Some(Command::PageUp)
-        );
+        assert_eq!(map(KeyCode::Left, none, Focus::Files), Some(Command::Left));
         assert_eq!(
             map(KeyCode::Right, none, Focus::Files),
-            Some(Command::PageDown)
+            Some(Command::Right)
         );
         assert_eq!(
             map(KeyCode::Backspace, none, Focus::Tree),

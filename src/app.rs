@@ -672,6 +672,7 @@ impl App {
             }
             Command::ViewTagged => self.view_tagged(),
             Command::Treespec => self.start_treespec(),
+            Command::FileDisplay => self.cycle_display(),
             Command::Kbyte => {
                 let k = self.kbyte;
                 self.ask_kbyte(k);
@@ -1027,6 +1028,7 @@ impl App {
         let base = self.outer.as_deref().unwrap_or(self);
         let mut pane = Pane::new(base.tree.path(ROOT));
         pane.sort = self.sort;
+        pane.display = self.display;
         pane.goto(&base.current_path());
         self.panes.push(pane);
     }
@@ -1177,8 +1179,9 @@ impl App {
             return Err(format!("{} is not a directory", path.display()));
         }
         if !self.goto(&path) {
-            let sort = self.sort;
+            let (sort, display) = (self.sort, self.display);
             *self.deref_mut() = Pane::new(path);
+            self.display = display;
             self.set_sort(sort);
         }
         Ok(())

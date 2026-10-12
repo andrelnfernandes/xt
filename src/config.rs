@@ -13,6 +13,7 @@ use serde::Deserialize;
 
 use crate::keymap::Keymap;
 use crate::model::sort::{Sort, SortKey};
+use crate::pane::FileDisplay;
 
 /// Exemplo comentado, impresso por `xt --default-config`. Os valores são os
 /// padrões: um arquivo com só isto equivale a não ter arquivo.
@@ -37,6 +38,11 @@ number_format = "1,234"
 show_hidden = true
 # Enter na janela de arquivos visualiza o arquivo (em vez de voltar à árvore).
 enter_views = false
+# Modo inicial da janela de arquivos (Alt+F muda durante o uso): "names"
+# (várias colunas), "names_size" (colunas com tamanho), "details" (uma
+# coluna com tamanho, data e permissões) ou "long_names" (uma coluna, só
+# nomes).
+file_display = "details"
 # Ordenação inicial dos arquivos: "name", "ext", "date" ou "size"
 # (Alt+S muda durante o uso).
 sort = "name"
@@ -122,6 +128,8 @@ pub struct Options {
     pub number_format: NumberFormat,
     pub show_hidden: bool,
     pub enter_views: bool,
+    /// Modo inicial da janela de arquivos (Alt+F muda durante o uso).
+    pub file_display: FileDisplay,
     /// Ordenação inicial dos arquivos.
     pub sort: SortKey,
     pub sort_descending: bool,
@@ -143,6 +151,7 @@ impl Default for Options {
             number_format: NumberFormat::Comma,
             show_hidden: true,
             enter_views: false,
+            file_display: FileDisplay::Details,
             sort: SortKey::Name,
             sort_descending: false,
             confirm_quit: true,
@@ -175,6 +184,7 @@ impl Options {
             ("number_format", s(self.number_format.as_str())),
             ("show_hidden", Value::from(self.show_hidden)),
             ("enter_views", Value::from(self.enter_views)),
+            ("file_display", s(self.file_display.as_str())),
             ("sort", s(self.sort.as_str())),
             ("sort_descending", Value::from(self.sort_descending)),
             ("confirm_quit", Value::from(self.confirm_quit)),
@@ -299,6 +309,23 @@ impl Choice for PruneConfirm {
             PruneConfirm::Prune => "prune",
             PruneConfirm::Name => "name",
             PruneConfirm::Y => "y",
+        }
+    }
+}
+
+impl Choice for FileDisplay {
+    const ALL: &'static [Self] = &[
+        FileDisplay::Names,
+        FileDisplay::NamesSize,
+        FileDisplay::Details,
+        FileDisplay::LongNames,
+    ];
+    fn as_str(self) -> &'static str {
+        match self {
+            FileDisplay::Names => "names",
+            FileDisplay::NamesSize => "names_size",
+            FileDisplay::Details => "details",
+            FileDisplay::LongNames => "long_names",
         }
     }
 }

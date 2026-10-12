@@ -52,7 +52,7 @@ xt). Ela tem quatro páginas:
 | Página | Opções |
 |---|---|
 | 1. Programas e formatos | editor, formato de data, formato de número |
-| 2. Exibição e ordenação | mostrar ocultos, ordenação inicial e sentido, o que o Enter faz na janela de arquivos |
+| 2. Exibição e ordenação | mostrar ocultos, ordenação inicial e sentido, o que o Enter faz na janela de arquivos, modo inicial da janela de arquivos |
 | 3. Confirmações e histórico | confirmar ao sair, confirmação do Prune, não guardar entradas com `@` |
 | 4. Compare e atualização | ignorar 2 s, ignorar 1 h, atualização automática |
 
@@ -90,8 +90,9 @@ corrigido, para não apagar o que você escreveu).
 |---|---|---|
 | ↑ ↓ PgUp PgDn Home End | move o cursor | move o cursor |
 | → / `+` | expande o diretório | |
-| ← / `-` | recolhe (ou vai para o pai) | página acima |
-| → | expande | página abaixo |
+| ← / `-` | recolhe (ou vai para o pai) | página acima (em colunas: arquivo anterior) |
+| → | expande | página abaixo (em colunas: próximo arquivo) |
+| Alt+F | | modo de exibição: colunas de nomes, colunas com tamanho, detalhes, nomes longos |
 | Backspace | diretório pai | mostra os arquivos do diretório pai |
 | Espaço | desce uma linha | idem |
 | `*` | loga e expande o ramo inteiro | |
@@ -182,6 +183,14 @@ diretório do mesmo nível; Backspace volta níveis; Enter confirma; Esc volta
 para onde estava. ↑ traz o histórico (salvo entre execuções). Um caminho fora
 da árvore vira um Log ao confirmar. No Branch/Showall, `\` vai direto ao
 diretório do arquivo selecionado, com ele em destaque.
+
+**Modos de exibição (Alt+F):** alterna, na ordem do ZTreeWin, entre
+**nomes em várias colunas**, **nomes e tamanhos em colunas**, **detalhes**
+(uma coluna com tamanho, data e permissões, o padrão) e **nomes longos** (uma
+coluna, só os nomes inteiros). Nos modos de colunas, os arquivos seguem da
+esquerda para a direita, ← → andam um arquivo e ↑ ↓ uma linha; nomes com mais
+de 20 caracteres são cortados com `…`. O modo inicial fica em `file_display`
+(página 2 da configuração).
 
 **KByte (Alt+K):** mostra à direita de cada diretório da árvore o
 **S**ize (total em K) ou o **C**ount (nº de arquivos); **N**one desliga.
@@ -385,8 +394,7 @@ Todas as teclas podem ser trocadas em `[keys]` no `config.toml`.
   estatísticas (`?`), troca de drive (`<` e `>`).
 - **Arquivos:** Open em nova janela de terminal (Alt+O), New date (N),
   Batch (Ctrl+B/Alt+B), JFC (J, comparar o conteúdo de dois arquivos), ZAAP
-  (Y), sHortcut (H), Print (P), modos de exibição (Alt+F: várias colunas,
-  só nomes), Rename com máscara, localizar e trocar e mudança de maiúsculas,
+  (Y), sHortcut (H), Print (P), Rename com máscara, localizar e trocar e mudança de maiúsculas,
   dono/grupo (chown), Megaview e Autoview (F7), juntar marcados entre as
   janelas (Ctrl+F6), Partial Untag (Ctrl+F8), copiar caminho para a área de
   transferência (Ctrl+Insert).

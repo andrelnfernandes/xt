@@ -57,6 +57,12 @@ pub enum Command {
     Kbyte,
     /// Alt+Q: sai deixando o shell no diretório atual.
     QuitChangeDir,
+    /// Alt+F: modo de exibição da janela de arquivos.
+    FileDisplay,
+    /// ← e → na janela de arquivos: arquivo anterior/próximo em colunas,
+    /// página acima/abaixo numa coluna só.
+    Left,
+    Right,
     Back,
     Filespec,
     Showall,

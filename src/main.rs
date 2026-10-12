@@ -88,6 +88,7 @@ fn main() -> anyhow::Result<()> {
     let (config, config_error) = config::Config::load();
     let mut app = App::new(root);
     app.set_sort(config.options.initial_sort());
+    app.display = config.options.file_display;
     // `load` já validou; com erro no arquivo, `config` são os padrões.
     let _ = app.apply_config(&config);
     app.config_file = config::Config::path();

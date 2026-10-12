@@ -38,6 +38,36 @@ pub struct FileRef {
     pub idx: usize,
 }
 
+/// Modos da janela de arquivos (Alt+F), na ordem do ZTreeWin.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FileDisplay {
+    /// Várias colunas, só os nomes.
+    Names,
+    /// Várias colunas: nome, tamanho e permissões.
+    NamesSize,
+    /// Uma coluna: nome, tamanho, data e permissões.
+    #[default]
+    Details,
+    /// Uma coluna, só os nomes (inteiros).
+    LongNames,
+}
+
+impl FileDisplay {
+    pub fn next(self) -> Self {
+        match self {
+            FileDisplay::Names => FileDisplay::NamesSize,
+            FileDisplay::NamesSize => FileDisplay::Details,
+            FileDisplay::Details => FileDisplay::LongNames,
+            FileDisplay::LongNames => FileDisplay::Names,
+        }
+    }
+
+    pub fn multi_column(self) -> bool {
+        matches!(self, FileDisplay::Names | FileDisplay::NamesSize)
+    }
+}
+
 /// O que o Alt+K mostra ao lado dos diretórios.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Kbyte {
@@ -84,6 +114,11 @@ pub struct Pane {
     pub sort: Sort,
     /// Alt+K: tamanho ou nº de arquivos ao lado de cada diretório.
     pub kbyte: Kbyte,
+    /// Alt+F: como a janela de arquivos mostra a lista.
+    pub display: FileDisplay,
+    /// Colunas da janela de arquivos no último desenho (modos de várias
+    /// colunas), para as setas andarem por linha.
+    pub file_cols: usize,
     /// Altura útil das listas no último desenho (para PgUp/PgDn).
     pub tree_page: usize,
     pub file_page: usize,
@@ -138,6 +173,8 @@ impl Pane {
             filespec: Filespec::default(),
             sort: Sort::default(),
             kbyte: Kbyte::default(),
+            display: FileDisplay::default(),
+            file_cols: 1,
             tree_page: 1,
             file_page: 1,
             archive: None,
@@ -458,8 +495,31 @@ impl Pane {
 
     pub fn apply_files(&mut self, cmd: Command) {
         let pos = self.file_state.selected().unwrap_or(0);
-        let target = move_cursor(cmd, pos, self.files.len(), self.file_page);
+        let len = self.files.len();
+        let cols = if self.display.multi_column() {
+            self.file_cols.max(1)
+        } else {
+            1
+        };
+        let target = match cmd {
+            // Em colunas, ← e → andam um arquivo e ↑ ↓ uma linha; numa
+            // coluna só, ← e → paginam (como no ZTreeWin).
+            Command::Left if cols > 1 => pos.saturating_sub(1),
+            Command::Right if cols > 1 => (pos + 1).min(len.saturating_sub(1)),
+            Command::Left => move_cursor(Command::PageUp, pos, len, self.file_page),
+            Command::Right => move_cursor(Command::PageDown, pos, len, self.file_page),
+            Command::Up if cols > 1 => pos.checked_sub(cols).unwrap_or(pos),
+            Command::Down if cols > 1 && pos + cols < len => pos + cols,
+            Command::Down if cols > 1 => pos,
+            _ => move_cursor(cmd, pos, len, self.file_page),
+        };
         self.file_state.select(Some(target));
+    }
+
+    /// Alt+F: próximo modo de exibição.
+    pub fn cycle_display(&mut self) {
+        self.display = self.display.next();
+        *self.file_state.offset_mut() = 0;
     }
 
     pub fn set_view(&mut self, view: FileView) {
@@ -656,6 +716,41 @@ mod tests {
         assert_eq!(current(&pane), "beta", "wraps around");
         pane.spell_jump('Z');
         assert_eq!(current(&pane), "beta", "no match: stays");
+    }
+
+    #[test]
+    fn arrows_move_by_column_in_multi_column_modes() {
+        let tmp = tempfile::tempdir().unwrap();
+        for i in 0..10 {
+            std::fs::write(tmp.path().join(format!("f{i}")), "").unwrap();
+        }
+        let mut pane = Pane::new(tmp.path().to_path_buf());
+        pane.display = FileDisplay::Names;
+        pane.file_cols = 4;
+        pane.file_page = 8;
+        let sel = |p: &Pane| p.file_state.selected().unwrap();
+        pane.apply_files(Command::Right);
+        assert_eq!(sel(&pane), 1);
+        pane.apply_files(Command::Down);
+        assert_eq!(sel(&pane), 5);
+        pane.apply_files(Command::Down);
+        assert_eq!(sel(&pane), 9);
+        pane.apply_files(Command::Down);
+        assert_eq!(sel(&pane), 9, "no row below");
+        pane.apply_files(Command::Up);
+        assert_eq!(sel(&pane), 5);
+        pane.apply_files(Command::Left);
+        assert_eq!(sel(&pane), 4);
+
+        // Numa coluna, ← e → paginam.
+        pane.display = FileDisplay::Details;
+        pane.file_page = 3;
+        pane.apply_files(Command::Right);
+        assert_eq!(sel(&pane), 7);
+        pane.cycle_display();
+        assert_eq!(pane.display, FileDisplay::LongNames);
+        pane.cycle_display();
+        assert_eq!(pane.display, FileDisplay::Names);
     }
 
     #[test]
