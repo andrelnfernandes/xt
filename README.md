@@ -111,7 +111,8 @@ saída. Ao voltar, os diretórios abertos são relidos.
 
 **Histórico:** nos prompts, ↑/↓ trazem as entradas anteriores. Cada tipo de
 prompt (Filespec, destino do Copy/Move, Log, eXecute...) tem o seu histórico,
-que por enquanto dura só até sair do xt.
+guardado em `~/.local/state/xt/history.toml` (ou `$XDG_STATE_HOME/xt/`), com
+permissão só para você, já que pode conter comandos digitados.
 
 **Arquivos compactados:** `O` na janela de arquivos abre `.zip`, `.jar`,
 `.war`, `.apk`, `.tar`, `.tar.gz` ou `.tgz` como uma árvore, somente leitura:
@@ -173,6 +174,7 @@ Na árvore, `+` no conector (`├─+`) indica um diretório recolhido que tem s
 - `src/watch.rs` — avisos de mudanças no disco (inotify)
 - `src/shell.rs` — editor e comandos do shell (com aspas seguras)
 - `src/config.rs` — arquivo de configuração e temas
+- `src/state.rs` — histórico dos prompts entre execuções
 - `src/model/compare.rs` — regras do Compare
 - `src/model/filespec.rs` — filtro de arquivos
 - `src/ops/` — copiar, mover e apagar, em passos (progresso, conflitos, cancelamento)

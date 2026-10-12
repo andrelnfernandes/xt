@@ -5,7 +5,7 @@
 //! o visualizador. `App` dá acesso direto à janela ativa (`app.tree`,
 //! `app.files`...), via `Deref`.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs;
 use std::ops::{Deref, DerefMut};
 use std::os::unix::fs::PermissionsExt;
@@ -24,6 +24,7 @@ use crate::model::tree::{LogJob, NodeId, ROOT};
 use crate::ops::{self, Answer, OpKind, Operation, Source};
 pub use crate::pane::{FileView, Focus, Pane};
 use crate::shell::{self, External};
+use crate::state::{self, History};
 use crate::viewer::{self, Viewer};
 
 /// Leitura em andamento e o que fazer quando ela terminar.
@@ -156,7 +157,9 @@ pub struct App {
     /// Diretórios que mudaram no disco e ainda não foram relidos.
     pending_changes: HashSet<PathBuf>,
     /// Histórico dos prompts, por tipo.
-    history: HashMap<&'static str, Vec<String>>,
+    pub history: History,
+    /// Onde gravar o histórico a cada entrada nova (sem arquivo nos testes).
+    pub history_file: Option<PathBuf>,
     /// Programa externo (editor, comando) a rodar pelo laço principal,
     /// que entrega o terminal a ele.
     pub external: Option<External>,
@@ -198,7 +201,8 @@ impl App {
             viewer: None,
             last_dest: None,
             pending_changes: HashSet::new(),
-            history: HashMap::new(),
+            history: History::new(),
+            history_file: None,
             external: None,
             options: Options::default(),
             keymap: Keymap::default(),
@@ -703,11 +707,16 @@ impl App {
         if text.trim().is_empty() {
             return;
         }
-        let list = self.history.entry(key).or_default();
+        let list = self.history.entry(key.to_string()).or_default();
         list.retain(|t| t != text);
         list.push(text.to_string());
         if list.len() > HISTORY_SIZE {
             list.remove(0);
+        }
+        if let Some(path) = &self.history_file
+            && let Err(e) = state::save_history(path, &self.history)
+        {
+            self.message = Some(format!("Cannot save history to {}: {e}", path.display()));
         }
     }
 
@@ -1822,5 +1831,22 @@ mod tests {
         assert!(viewer.visible_lines(1)[0].starts_with("xt - keys in use"));
         press(&mut app, KeyCode::Esc);
         assert!(app.viewer.is_none());
+    }
+
+    #[test]
+    fn history_is_saved_after_each_entry() {
+        let (tmp, mut app) = sample();
+        let file = tmp.path().join("state/history.toml");
+        app.history_file = Some(file.clone());
+        press(&mut app, KeyCode::Char('f'));
+        answer_prompt(&mut app, "*.rs");
+        assert_eq!(state::load_history(&file)["filespec"], ["*.rs"]);
+
+        // Uma nova execução começa com o histórico salvo.
+        let mut again = App::new(tmp.path().to_path_buf());
+        again.history = state::load_history(&file);
+        press(&mut again, KeyCode::Char('f'));
+        press(&mut again, KeyCode::Up);
+        assert_eq!(again.prompt.as_ref().unwrap().input.text, "*.rs");
     }
 }

@@ -11,6 +11,7 @@ mod model;
 mod ops;
 mod pane;
 mod shell;
+mod state;
 mod ui;
 mod viewer;
 mod watch;
@@ -82,6 +83,10 @@ fn main() -> anyhow::Result<()> {
     app.options = config.options;
     app.keymap = keymap::Keymap::from_config(&config.keys).unwrap_or_default();
     app.message = config_error;
+    app.history_file = state::history_path();
+    if let Some(path) = &app.history_file {
+        app.history = state::load_history(path);
+    }
     // `init` também instala um panic hook que restaura o terminal.
     let mut terminal = ratatui::init();
     let mut keyboard = Keyboard::detect();
