@@ -58,11 +58,35 @@ pub struct Prompt {
 
 enum PromptKind {
     Filespec,
-    Transfer(OpKind, Vec<Source>),
+    Transfer {
+        kind: OpKind,
+        sources: Vec<Source>,
+        tagged: bool,
+        /// Recriar os subdiretórios a partir de `base` no destino.
+        paths: bool,
+        base: PathBuf,
+    },
     RenameFile(PathBuf),
     RenameDir(NodeId),
     MakeDir(NodeId),
     Chmod(Vec<PathBuf>),
+}
+
+impl Prompt {
+    /// O prompt de Copy/Move de marcados aceita F6 (com/sem caminhos).
+    pub fn toggles_paths(&self) -> bool {
+        matches!(self.kind, PromptKind::Transfer { tagged: true, .. })
+    }
+}
+
+fn transfer_label(kind: OpKind, sources: &[Source], tagged: bool, paths: bool) -> String {
+    let verb = if kind == OpKind::Copy { "COPY" } else { "MOVE" };
+    let mode = match (tagged, paths) {
+        (false, _) => "",
+        (true, false) => " (no paths)",
+        (true, true) => " (with paths)",
+    };
+    format!("{verb} {}{mode} to: ", describe(sources))
 }
 
 /// Pergunta Sim/Não no rodapé.
@@ -158,6 +182,15 @@ impl App {
         }
     }
 
+    /// Diretório-raiz da lista atual: o diretório, o Branch ou a árvore.
+    fn view_root(&self) -> NodeId {
+        match self.view {
+            FileView::Dir => self.current(),
+            FileView::Branch(id) => id,
+            FileView::Showall => ROOT,
+        }
+    }
+
     /// Há trabalho em andamento que não depende do usuário.
     pub fn busy(&self) -> bool {
         self.job.is_some() || self.op.as_ref().is_some_and(|op| op.conflict.is_none())
@@ -208,6 +241,19 @@ impl App {
             return;
         }
         if let Some(prompt) = &mut self.prompt {
+            if key.code == KeyCode::F(6)
+                && let PromptKind::Transfer {
+                    kind,
+                    sources,
+                    tagged: true,
+                    paths,
+                    ..
+                } = &mut prompt.kind
+            {
+                *paths = !*paths;
+                prompt.label = transfer_label(*kind, sources, true, *paths);
+                return;
+            }
             match prompt.input.handle_key(key) {
                 LineEvent::Submit => {
                     let prompt = self.prompt.take().unwrap();
@@ -238,11 +284,7 @@ impl App {
             }
             Command::Showall => self.set_view(FileView::Showall),
             Command::Branch => {
-                let id = match self.view {
-                    FileView::Dir => self.current(),
-                    FileView::Branch(id) => id,
-                    FileView::Showall => ROOT,
-                };
+                let id = self.view_root();
                 self.start_job(LogJob::new(id, false), AfterLog::OpenBranch(id));
             }
             Command::ExpandAll => {
@@ -276,8 +318,8 @@ impl App {
                 self.set_tags(&refs, |_| tag);
             }
             Command::Invert => self.set_tags(&self.files.clone(), |t| !t),
-            Command::Copy { tagged } => self.prompt_transfer(OpKind::Copy, tagged),
-            Command::Move { tagged } => self.prompt_transfer(OpKind::Move, tagged),
+            Command::Copy { tagged, paths } => self.prompt_transfer(OpKind::Copy, tagged, paths),
+            Command::Move { tagged, paths } => self.prompt_transfer(OpKind::Move, tagged, paths),
             Command::Delete { tagged: false } if !in_files => self.ask_delete_dir(),
             Command::Delete { tagged } => {
                 if let Some(sources) = self.sources_or_warn(tagged) {
@@ -376,11 +418,19 @@ impl App {
                 self.filespec = spec;
                 self.refresh_files();
             }),
-            PromptKind::Transfer(op_kind, sources) => {
-                let base = self.tree.path(self.header_dir());
-                let dest = ops::resolve_path(&text, &base);
-                self.last_dest = Some(text);
-                Operation::transfer(op_kind, sources, &dest).map(|op| self.start_op(op))
+            PromptKind::Transfer {
+                kind,
+                sources,
+                paths,
+                base,
+                ..
+            } => {
+                let dest = ops::resolve_path(&text, &self.tree.path(self.current()));
+                // Guarda o caminho absoluto: um relativo mudaria de sentido
+                // na próxima vez, a partir de outro diretório.
+                self.last_dest = Some(dest.to_string_lossy().into_owned());
+                let paths_from = paths.then_some(base.as_path());
+                Operation::transfer(kind, sources, &dest, paths_from).map(|op| self.start_op(op))
             }
             PromptKind::RenameFile(path) => self.rename_file(&path, &text),
             PromptKind::RenameDir(id) => self.rename_dir(id, &text),
@@ -446,19 +496,25 @@ impl App {
         Some(sources)
     }
 
-    fn prompt_transfer(&mut self, kind: OpKind, tagged: bool) {
+    fn prompt_transfer(&mut self, kind: OpKind, tagged: bool, paths: bool) {
         let Some(sources) = self.sources_or_warn(tagged) else {
             return;
         };
-        let verb = if kind == OpKind::Copy { "COPY" } else { "MOVE" };
-        let label = format!("{verb} {} to: ", describe(&sources));
+        let label = transfer_label(kind, &sources, tagged, paths);
         let default = self.last_dest.clone().unwrap_or_else(|| {
             self.tree
-                .path(self.header_dir())
+                .path(self.current())
                 .to_string_lossy()
                 .into_owned()
         });
-        self.open_prompt(PromptKind::Transfer(kind, sources), label, &default);
+        let prompt = PromptKind::Transfer {
+            kind,
+            sources,
+            tagged,
+            paths,
+            base: self.tree.path(self.view_root()),
+        };
+        self.open_prompt(prompt, label, &default);
     }
 
     fn prompt_chmod(&mut self, tagged: bool) {
@@ -591,8 +647,10 @@ impl App {
         refs
     }
 
+    /// Relê `dir`; se ele ainda não está na árvore (ex.: acabou de ser
+    /// criado), relê o ancestral mais próximo que está.
     fn rescan_path(&mut self, dir: &Path) {
-        if let Some(id) = self.tree.find(dir) {
+        if let Some(id) = dir.ancestors().find_map(|d| self.tree.find(d)) {
             self.tree.rescan(id);
         }
     }
@@ -1067,5 +1125,84 @@ mod tests {
         assert_eq!(names(&app).len(), 2);
         press(&mut app, KeyCode::F(2));
         assert_eq!(names(&app), ["a.rs", "b.txt", "new.txt"]);
+    }
+
+    fn alt(app: &mut App, c: char) {
+        app.handle_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::ALT));
+    }
+
+    /// Marca os dois a.rs do Branch da raiz (raiz e sub/deep).
+    fn tag_both_a_rs(tmp: &tempfile::TempDir, app: &mut App) -> PathBuf {
+        app.apply(Command::Branch);
+        app.filespec = Filespec::parse("a.rs").unwrap();
+        app.refresh_files();
+        ctrl(app, 't');
+        let dest = tmp.path().join("out");
+        std::fs::create_dir(&dest).unwrap();
+        dest
+    }
+
+    #[test]
+    fn alt_copy_recreates_paths() {
+        let (tmp, mut app) = sample();
+        let dest = tag_both_a_rs(&tmp, &mut app);
+        alt(&mut app, 'c');
+        assert!(app.prompt.as_ref().unwrap().label.contains("with paths"));
+        answer_prompt(&mut app, dest.to_str().unwrap());
+
+        assert!(dest.join("a.rs").exists());
+        assert_eq!(
+            std::fs::read_to_string(dest.join("sub/deep/a.rs")).unwrap(),
+            "deep"
+        );
+        // O destino aparece na árvore e, ao expandi-lo, as pastas criadas.
+        let out = app.tree.find(&dest).expect("dest in tree");
+        app.tree.expand(out);
+        assert!(app.tree.find(&dest.join("sub")).is_some());
+    }
+
+    #[test]
+    fn ctrl_copy_is_flat_and_f6_toggles() {
+        let (tmp, mut app) = sample();
+        let dest = tag_both_a_rs(&tmp, &mut app);
+        ctrl(&mut app, 'c');
+        assert!(app.prompt.as_ref().unwrap().label.contains("no paths"));
+        press(&mut app, KeyCode::F(6));
+        assert!(app.prompt.as_ref().unwrap().label.contains("with paths"));
+        press(&mut app, KeyCode::F(6));
+        answer_prompt(&mut app, dest.to_str().unwrap());
+
+        // Dois a.rs indo para o mesmo lugar: o segundo é um conflito.
+        assert!(app.op.as_ref().unwrap().conflict.is_some());
+        press(&mut app, KeyCode::Char('n'));
+        assert!(dest.join("a.rs").exists());
+        assert!(!dest.join("sub").exists());
+    }
+
+    #[test]
+    fn alt_move_with_paths_from_branch_root() {
+        let (tmp, mut app) = sample();
+        // Branch a partir de sub/: caminhos relativos a sub.
+        press(&mut app, KeyCode::Down);
+        app.apply(Command::Branch);
+        ctrl(&mut app, 't');
+        let dest = tmp.path().join("out");
+        std::fs::create_dir(&dest).unwrap();
+        alt(&mut app, 'm');
+        // Relativo ao diretório do cursor da árvore (sub), não ao do arquivo.
+        answer_prompt(&mut app, "../out");
+        // O próximo prompt, de outro diretório, sugere o destino já resolvido.
+        app.apply(Command::Back);
+        app.select_node(ROOT);
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Char('c'));
+        assert_eq!(
+            app.prompt.as_ref().unwrap().input.text,
+            dest.to_str().unwrap()
+        );
+
+        assert!(dest.join("c.rs").exists());
+        assert!(dest.join("deep/a.rs").exists());
+        assert!(!tmp.path().join("sub/deep/a.rs").exists());
     }
 }

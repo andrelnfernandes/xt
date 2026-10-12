@@ -41,25 +41,33 @@ Sem argumento, abre o diretório atual.
 | `D` | apaga o diretório (só se vazio) | apaga o arquivo |
 | `R` | renomeia o diretório | renomeia o arquivo |
 | `A` | | permissões (octal, ex.: `644`) |
-| Ctrl ou Alt + `C` `M` `D` `A` | idem, nos arquivos marcados | idem, nos arquivos marcados |
+| Ctrl + `C` `M` `D` `A` | idem, nos arquivos marcados | idem, nos arquivos marcados |
+| Alt + `C` `M` | copia / move os marcados **recriando os caminhos** | idem |
 
 As operações em grupo agem sobre os arquivos marcados **da lista atual**
-(o diretório, ou o Branch/Showall aberto). Toda operação em grupo também
-aceita Alt+letra.
+(o diretório, ou o Branch/Showall aberto).
+
+**Com ou sem caminhos:** Ctrl+C / Ctrl+M copiam ou movem os marcados todos
+direto para o destino. Alt+C / Alt+M recriam no destino os subdiretórios,
+relativos à raiz da lista (o diretório atual, a raiz do Branch, ou a raiz da
+árvore no Showall): `proj/src/model/tree.rs` → `destino/src/model/tree.rs`.
+No prompt do destino, **F6** troca entre os dois modos, e o modo atual aparece
+no próprio prompt. Alt+D e Alt+A funcionam como Ctrl+D e Ctrl+A.
 
 **Ctrl+M:** na maioria dos terminais, Ctrl+M chega igual a Enter. O xt liga
 automaticamente o protocolo de teclado do kitty quando o terminal o suporta
 (kitty, WezTerm, foot, Ghostty, Alacritty recente, iTerm2), e aí Ctrl+M move
 os arquivos marcados como no ZTree. Nos terminais baseados em VTE (GNOME
-Terminal, Ptyxis, Terminator, Tilix) use **Alt+M**.
+Terminal, Ptyxis, Terminator, Tilix) use **Alt+M** e, para mover sem
+caminhos, aperte **F6** no prompt.
 
 Durante um log demorado, o progresso aparece no rodapé e `Esc` cancela.
 
 **Filespec:** padrões glob separados por espaço, `;` ou `,`, sem diferenciar
 maiúsculas. Um `-` na frente exclui: `*.rs *.toml -*.bak`.
 
-**Copy/Move:** o destino pode ser um diretório (relativo ao atual, absoluto
-ou com `~`) ou, para um único arquivo, um novo nome. Se o destino já existe,
+**Copy/Move:** o destino pode ser um diretório (relativo ao diretório do
+cursor da árvore, absoluto ou com `~`) ou, para um único arquivo, um novo nome. Se o destino já existe,
 o xt pergunta: Yes / No / All / Skip all. A cópia é feita num temporário que
 só substitui o destino no fim: cancelar (`Esc`) ou um erro nunca deixa um
 arquivo pela metade. Permissões e data de modificação são preservadas, e links

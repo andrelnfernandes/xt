@@ -31,11 +31,14 @@ pub enum Command {
     UntagAll,
     Invert,
     // `tagged`: age sobre os arquivos marcados em vez do arquivo atual.
+    // `paths`: recria os subdiretórios no destino (Alt+C / Alt+M).
     Copy {
         tagged: bool,
+        paths: bool,
     },
     Move {
         tagged: bool,
+        paths: bool,
     },
     Delete {
         tagged: bool,
@@ -52,7 +55,8 @@ pub fn map_key(key: KeyEvent, focus: Focus) -> Option<Command> {
     use Command::*;
 
     // Ctrl+letra (ou Alt+letra) = versão "arquivos marcados" do comando.
-    // Alt existe porque Ctrl+M chega ao programa igual a Enter.
+    // No Copy/Move, Ctrl copia tudo direto no destino e Alt recria os
+    // caminhos; F6 no prompt troca entre os dois.
     if key
         .modifiers
         .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
@@ -60,11 +64,18 @@ pub fn map_key(key: KeyEvent, focus: Focus) -> Option<Command> {
         let KeyCode::Char(c) = key.code else {
             return None;
         };
+        let paths = key.modifiers.contains(KeyModifiers::ALT);
         return match c.to_ascii_lowercase() {
             't' => Some(TagAll),
             'u' => Some(UntagAll),
-            'c' => Some(Copy { tagged: true }),
-            'm' => Some(Move { tagged: true }),
+            'c' => Some(Copy {
+                tagged: true,
+                paths,
+            }),
+            'm' => Some(Move {
+                tagged: true,
+                paths,
+            }),
             'd' => Some(Delete { tagged: true }),
             'a' => Some(Attributes { tagged: true }),
             _ => None,
@@ -111,8 +122,14 @@ pub fn map_key(key: KeyEvent, focus: Focus) -> Option<Command> {
         Focus::Files => match key {
             KeyCode::Esc | KeyCode::Left => Some(Back),
             KeyCode::Char('v') => Some(View),
-            KeyCode::Char('c') => Some(Copy { tagged: false }),
-            KeyCode::Char('m') => Some(Move { tagged: false }),
+            KeyCode::Char('c') => Some(Copy {
+                tagged: false,
+                paths: false,
+            }),
+            KeyCode::Char('m') => Some(Move {
+                tagged: false,
+                paths: false,
+            }),
             KeyCode::Char('a') => Some(Attributes { tagged: false }),
             _ => None,
         },
@@ -202,21 +219,30 @@ mod tests {
         );
         assert_eq!(
             map(KeyCode::Char('M'), KeyModifiers::SHIFT, Focus::Files),
-            Some(Command::Move { tagged: false })
+            Some(Command::Move {
+                tagged: false,
+                paths: false
+            })
         );
         assert_eq!(map(KeyCode::Char('c'), none, Focus::Tree), None);
     }
 
     #[test]
     fn ctrl_and_alt_mean_tagged() {
-        for mods in [KeyModifiers::CONTROL, KeyModifiers::ALT] {
+        for (mods, paths) in [(KeyModifiers::CONTROL, false), (KeyModifiers::ALT, true)] {
             assert_eq!(
                 map(KeyCode::Char('c'), mods, Focus::Files),
-                Some(Command::Copy { tagged: true })
+                Some(Command::Copy {
+                    tagged: true,
+                    paths
+                })
             );
             assert_eq!(
                 map(KeyCode::Char('m'), mods, Focus::Tree),
-                Some(Command::Move { tagged: true })
+                Some(Command::Move {
+                    tagged: true,
+                    paths
+                })
             );
             assert_eq!(
                 map(KeyCode::Char('t'), mods, Focus::Tree),

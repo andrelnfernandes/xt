@@ -112,17 +112,34 @@ impl Operation {
     /// Prepara uma cópia ou movimentação para `dest`. Se `dest` for um
     /// diretório existente, os arquivos vão para dentro dele; com um único
     /// arquivo, `dest` também pode ser o novo nome.
-    pub fn transfer(kind: OpKind, sources: Vec<Source>, dest: &Path) -> Result<Self, String> {
+    ///
+    /// Com `paths_from`, cada arquivo vai para o mesmo caminho relativo a
+    /// esse diretório (`base/a/b/x` → `dest/a/b/x`), criando o que faltar.
+    pub fn transfer(
+        kind: OpKind,
+        sources: Vec<Source>,
+        dest: &Path,
+        paths_from: Option<&Path>,
+    ) -> Result<Self, String> {
         let items = if dest.is_dir() {
             sources
                 .into_iter()
-                .map(|s| Item {
-                    dst: dest.join(s.path.file_name().unwrap_or_default()),
-                    src: s.path,
-                    size: s.size,
+                .map(|s| {
+                    let rel = match (paths_from, s.path.parent()) {
+                        (Some(base), Some(dir)) => dir.strip_prefix(base).unwrap_or(Path::new("")),
+                        _ => Path::new(""),
+                    };
+                    Item {
+                        dst: dest.join(rel).join(s.path.file_name().unwrap_or_default()),
+                        src: s.path,
+                        size: s.size,
+                    }
                 })
                 .collect()
-        } else if sources.len() == 1 && dest.parent().is_some_and(Path::is_dir) {
+        } else if paths_from.is_none()
+            && sources.len() == 1
+            && dest.parent().is_some_and(Path::is_dir)
+        {
             let s = sources.into_iter().next().unwrap();
             vec![Item {
                 src: s.path,
@@ -285,6 +302,13 @@ impl Operation {
                     Overwrite::Always => {}
                 }
             }
+        }
+
+        if let Some(parent) = item.dst.parent()
+            && !parent.is_dir()
+            && let Err(e) = fs::create_dir_all(parent)
+        {
+            return self.fail(parent, e);
         }
 
         if self.kind == OpKind::Move {
@@ -510,7 +534,7 @@ mod tests {
         let mtime = fs::metadata(a.join("one.txt")).unwrap().modified().unwrap();
 
         let sources = vec![src(&a.join("one.txt")), src(&a.join("two.txt"))];
-        let mut op = Operation::transfer(OpKind::Copy, sources, &b).unwrap();
+        let mut op = Operation::transfer(OpKind::Copy, sources, &b, None).unwrap();
         assert_eq!(op.total_bytes, 7);
         run(&mut op);
 
@@ -533,6 +557,7 @@ mod tests {
             OpKind::Copy,
             vec![src(&a.join("one.txt"))],
             &b.join("new.txt"),
+            None,
         )
         .unwrap();
         run(&mut op);
@@ -543,9 +568,46 @@ mod tests {
     fn rejects_missing_destination_for_many_files() {
         let (_tmp, a, b) = setup();
         let sources = vec![src(&a.join("one.txt")), src(&a.join("two.txt"))];
-        assert!(Operation::transfer(OpKind::Copy, sources, &b.join("nope")).is_err());
+        assert!(Operation::transfer(OpKind::Copy, sources, &b.join("nope"), None).is_err());
         let one = vec![src(&a.join("one.txt"))];
-        assert!(Operation::transfer(OpKind::Copy, one, &b.join("x/y")).is_err());
+        assert!(Operation::transfer(OpKind::Copy, one, &b.join("x/y"), None).is_err());
+    }
+
+    #[test]
+    fn copies_with_relative_paths() {
+        let (tmp, a, b) = setup();
+        fs::create_dir_all(a.join("x/y")).unwrap();
+        fs::write(a.join("x/y/deep.txt"), "deep").unwrap();
+        let sources = vec![src(&a.join("one.txt")), src(&a.join("x/y/deep.txt"))];
+
+        let mut op = Operation::transfer(OpKind::Copy, sources.clone(), &b, Some(&a)).unwrap();
+        run(&mut op);
+        assert_eq!(op.done_files, 2);
+        assert!(b.join("one.txt").exists());
+        assert_eq!(fs::read_to_string(b.join("x/y/deep.txt")).unwrap(), "deep");
+        assert!(op.touched_dirs().contains(&b.join("x/y")));
+
+        // Sem paths_from, tudo vai direto para o destino.
+        let flat = tmp.path().join("flat");
+        fs::create_dir(&flat).unwrap();
+        let mut op = Operation::transfer(OpKind::Copy, sources.clone(), &flat, None).unwrap();
+        run(&mut op);
+        assert!(flat.join("deep.txt").exists());
+
+        // Com caminhos, o destino precisa ser um diretório existente.
+        assert!(Operation::transfer(OpKind::Copy, sources, &b.join("nope"), Some(&a)).is_err());
+    }
+
+    #[test]
+    fn moves_with_relative_paths() {
+        let (_tmp, a, b) = setup();
+        fs::create_dir_all(a.join("x")).unwrap();
+        fs::write(a.join("x/m.txt"), "m").unwrap();
+        let mut op =
+            Operation::transfer(OpKind::Move, vec![src(&a.join("x/m.txt"))], &b, Some(&a)).unwrap();
+        run(&mut op);
+        assert!(!a.join("x/m.txt").exists());
+        assert!(b.join("x/m.txt").exists());
     }
 
     #[test]
@@ -554,7 +616,7 @@ mod tests {
         fs::write(b.join("one.txt"), "old").unwrap();
         fs::write(b.join("two.txt"), "old").unwrap();
         let sources = vec![src(&a.join("one.txt")), src(&a.join("two.txt"))];
-        let mut op = Operation::transfer(OpKind::Copy, sources, &b).unwrap();
+        let mut op = Operation::transfer(OpKind::Copy, sources, &b, None).unwrap();
 
         run(&mut op);
         assert_eq!(op.conflict.as_deref(), Some(b.join("one.txt").as_path()));
@@ -577,7 +639,7 @@ mod tests {
             fs::write(b.join("one.txt"), "old").unwrap();
             fs::write(b.join("two.txt"), "old").unwrap();
             let sources = vec![src(&a.join("one.txt")), src(&a.join("two.txt"))];
-            let mut op = Operation::transfer(OpKind::Copy, sources, &b).unwrap();
+            let mut op = Operation::transfer(OpKind::Copy, sources, &b, None).unwrap();
             run(&mut op);
             op.answer(answer);
             run(&mut op);
@@ -590,7 +652,8 @@ mod tests {
     #[test]
     fn refuses_to_copy_file_onto_itself() {
         let (_tmp, a, _b) = setup();
-        let mut op = Operation::transfer(OpKind::Copy, vec![src(&a.join("one.txt"))], &a).unwrap();
+        let mut op =
+            Operation::transfer(OpKind::Copy, vec![src(&a.join("one.txt"))], &a, None).unwrap();
         run(&mut op);
         assert_eq!(op.errors.len(), 1);
         assert!(op.conflict.is_none());
@@ -604,7 +667,8 @@ mod tests {
         fs::write(&precious, "keep").unwrap();
         symlink(&precious, b.join("one.txt")).unwrap();
 
-        let mut op = Operation::transfer(OpKind::Copy, vec![src(&a.join("one.txt"))], &b).unwrap();
+        let mut op =
+            Operation::transfer(OpKind::Copy, vec![src(&a.join("one.txt"))], &b, None).unwrap();
         run(&mut op);
         op.answer(Answer::Yes);
         run(&mut op);
@@ -621,7 +685,8 @@ mod tests {
     fn copies_symlinks_as_links() {
         let (_tmp, a, b) = setup();
         symlink("one.txt", a.join("link")).unwrap();
-        let mut op = Operation::transfer(OpKind::Copy, vec![src(&a.join("link"))], &b).unwrap();
+        let mut op =
+            Operation::transfer(OpKind::Copy, vec![src(&a.join("link"))], &b, None).unwrap();
         run(&mut op);
         assert_eq!(fs::read_link(b.join("link")).unwrap(), Path::new("one.txt"));
     }
@@ -629,7 +694,8 @@ mod tests {
     #[test]
     fn moves_files() {
         let (_tmp, a, b) = setup();
-        let mut op = Operation::transfer(OpKind::Move, vec![src(&a.join("one.txt"))], &b).unwrap();
+        let mut op =
+            Operation::transfer(OpKind::Move, vec![src(&a.join("one.txt"))], &b, None).unwrap();
         run(&mut op);
         assert!(!a.join("one.txt").exists());
         assert_eq!(fs::read_to_string(b.join("one.txt")).unwrap(), "one");
@@ -638,7 +704,8 @@ mod tests {
     #[test]
     fn moves_across_devices_by_copying() {
         let (_tmp, a, b) = setup();
-        let mut op = Operation::transfer(OpKind::Move, vec![src(&a.join("two.txt"))], &b).unwrap();
+        let mut op =
+            Operation::transfer(OpKind::Move, vec![src(&a.join("two.txt"))], &b, None).unwrap();
         op.force_cross_device = true;
         run(&mut op);
         assert_eq!(op.done_files, 1);
@@ -664,7 +731,7 @@ mod tests {
         let big = a.join("big.bin");
         fs::write(&big, vec![7u8; CHUNK * 3 + 10]).unwrap();
 
-        let mut op = Operation::transfer(OpKind::Copy, vec![src(&big)], &b).unwrap();
+        let mut op = Operation::transfer(OpKind::Copy, vec![src(&big)], &b, None).unwrap();
         op.step(Duration::ZERO); // abre os arquivos
         op.step(Duration::ZERO); // primeiro bloco
         assert_eq!(op.done_bytes, CHUNK as u64);
@@ -675,7 +742,7 @@ mod tests {
         assert!(!b.join("big.bin").exists());
         assert!(no_temp_files(&b));
 
-        let mut op = Operation::transfer(OpKind::Copy, vec![src(&big)], &b).unwrap();
+        let mut op = Operation::transfer(OpKind::Copy, vec![src(&big)], &b, None).unwrap();
         run(&mut op);
         assert_eq!(
             fs::metadata(b.join("big.bin")).unwrap().len(),

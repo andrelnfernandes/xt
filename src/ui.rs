@@ -284,6 +284,9 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
         let col = area.x + (prompt.label.chars().count() + prompt.input.cursor) as u16;
         frame.set_cursor_position((col.min(area.right().saturating_sub(1)), area.y));
         let mut help = vec![("Enter", "accept"), ("Esc", "cancel"), ("Ctrl+U", "clear")];
+        if prompt.toggles_paths() {
+            help.push(("F6", "with/without paths"));
+        }
         if prompt.label.starts_with("FILESPEC") {
             help.push(("e.g.", "*.rs *.toml -*.bak"));
         }
@@ -358,7 +361,8 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
                 menu_line(
                     "",
                     &[
-                        ("Ctrl/Alt+C M D A", "on tagged files"),
+                        ("Ctrl+C M D A", "tagged"),
+                        ("Alt+C M", "tagged with paths"),
                         ("Ctrl+T/U", "all"),
                         ("F2", "relog"),
                         ("Esc", "tree"),
