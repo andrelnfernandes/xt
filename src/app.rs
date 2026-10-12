@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, ModifierKeyCode};
 
-use crate::archive;
+use crate::archive::{self, ArchiveItem, ArchiveJob};
 use crate::config::{self, Config, DateFormat, Options, PruneConfirm, Theme};
 use crate::input::{Command, LineEvent, LineInput};
 use crate::keymap::Keymap;
@@ -102,6 +102,8 @@ enum PromptKind {
     BatchMask {
         file: PathBuf,
     },
+    /// F5: nome do arquivo compactado a criar com estes arquivos.
+    CreateArchive(Vec<ArchiveItem>),
     /// Confirmação de um Prune: o texto digitado tem de ser `word`.
     Prune {
         root: PathBuf,
@@ -122,6 +124,7 @@ impl PromptKind {
             PromptKind::NewDate(_) => "date",
             PromptKind::BatchFile => "batch_file",
             PromptKind::BatchMask { .. } => "batch_mask",
+            PromptKind::CreateArchive(_) => "archive",
             PromptKind::Execute => "execute",
             PromptKind::MakeDir(_) => "mkdir",
             PromptKind::SearchTagged { .. } | PromptKind::ViewerSearch { .. } => "search",
@@ -256,6 +259,8 @@ pub struct App {
     pub tagged_view: Option<TaggedView>,
     /// F7: o conteúdo do arquivo selecionado ao lado da lista.
     pub autoview: Option<Viewer>,
+    /// F5: arquivo compactado sendo criado.
+    pub archive_job: Option<ArchiveJob>,
     /// Copy/Move/Delete em andamento.
     pub op: Option<Operation>,
     pub viewer: Option<Viewer>,
@@ -319,6 +324,7 @@ impl App {
             search: None,
             tagged_view: None,
             autoview: None,
+            archive_job: None,
             op: None,
             viewer: None,
             last_dest: None,
@@ -432,6 +438,7 @@ impl App {
     pub fn busy(&self) -> bool {
         self.job.is_some()
             || self.search_job.is_some()
+            || self.archive_job.is_some()
             || self.op.as_ref().is_some_and(|op| op.conflict.is_none())
     }
 
@@ -522,6 +529,16 @@ impl App {
                 pane.refresh_rows(pane.current());
                 self.job = None;
                 self.message = Some("Logging cancelled".into());
+            }
+            return;
+        }
+        if self.archive_job.is_some() {
+            if key.code == KeyCode::Esc
+                && let Some(job) = self.archive_job.take()
+            {
+                let dest = job.dest.clone();
+                job.cancel();
+                self.message = Some(format!("Cancelled: {} was not created", dest.display()));
             }
             return;
         }
@@ -689,6 +706,7 @@ impl App {
                 | Command::Execute
                 | Command::Prune
                 | Command::NewDate { .. }
+                | Command::CreateArchive { .. }
         );
         if writes && self.archive.is_some() {
             self.message = Some("Archives are read-only (use Copy to extract)".into());
@@ -752,6 +770,7 @@ impl App {
             Command::Treespec => self.start_treespec(),
             Command::FileDisplay => self.cycle_display(),
             Command::NewDate { tagged } => self.prompt_new_date(tagged),
+            Command::CreateArchive { tagged } => self.prompt_create_archive(tagged),
             Command::Batch => {
                 if self.sources_or_warn(true).is_some() {
                     let base = self.outer.as_deref().unwrap_or(self);
@@ -902,6 +921,27 @@ impl App {
 
     /// Avança o trabalho em andamento por no máximo `budget`.
     pub fn tick(&mut self, budget: Duration) {
+        if let Some(job) = &mut self.archive_job {
+            job.step(budget);
+            if job.is_done() {
+                let job = self.archive_job.take().unwrap();
+                let (count, errors) = (job.total() - job.errors.len(), job.errors.clone());
+                self.message = Some(match job.finish() {
+                    Ok(dest) => {
+                        if let Some(dir) = dest.parent() {
+                            self.rescan_everywhere(&[dir]);
+                        }
+                        let mut m = format!("Archived {count} files into {}", dest.display());
+                        if let Some(e) = errors.first() {
+                            m.push_str(&format!(". {} errors, first: {e}", errors.len()));
+                        }
+                        m
+                    }
+                    Err(e) => format!("Cannot create archive: {e}"),
+                });
+            }
+            return;
+        }
         if let Some(job) = &mut self.search_job {
             let pane = &mut self.panes[self.active];
             for (f, found) in job.step(budget) {
@@ -1235,6 +1275,39 @@ impl App {
         }
     }
 
+    /// F5 / Ctrl+F5: pede o nome do compactado. Dentro dele, os caminhos
+    /// ficam relativos à raiz da lista (como no Alt+C).
+    fn prompt_create_archive(&mut self, tagged: bool) {
+        let Some(sources) = self.sources_or_warn(tagged) else {
+            return;
+        };
+        let base = self.tree.path(self.view_root());
+        let items: Vec<ArchiveItem> = sources
+            .iter()
+            .map(|s| ArchiveItem {
+                name: s
+                    .path
+                    .strip_prefix(&base)
+                    .unwrap_or(Path::new(s.path.file_name().unwrap_or_default()))
+                    .to_string_lossy()
+                    .into_owned(),
+                path: s.path.clone(),
+                size: s.size,
+            })
+            .collect();
+        let stem = match sources.as_slice() {
+            [one] => fit_name(&one.path),
+            _ => fit_name(&base),
+        };
+        let default = self.current_path().join(format!("{stem}.tar.gz"));
+        let label = format!("ARCHIVE {} to (.zip, .tar, .tar.gz): ", describe(&sources));
+        self.open_prompt(
+            PromptKind::CreateArchive(items),
+            label,
+            &default.to_string_lossy(),
+        );
+    }
+
     /// Escreve o arquivo do Batch: uma linha por marcado. Um `.sh` ganha o
     /// `#!/bin/sh` e permissão de execução.
     fn write_batch(&mut self, file: &Path, mask: &str) -> Result<(), String> {
@@ -1483,6 +1556,21 @@ impl App {
                 }
             }
             PromptKind::BatchMask { file } => self.write_batch(&file, &text),
+            PromptKind::CreateArchive(items) => {
+                let dest = ops::resolve_path(&text, &self.current_path());
+                if fs::symlink_metadata(&dest).is_ok() {
+                    Err(format!("{} already exists", dest.display()))
+                } else {
+                    // O próprio arquivo compactado não entra nele.
+                    let items = items.into_iter().filter(|i| i.path != dest).collect();
+                    ArchiveJob::new(&dest, items)
+                        .map(|job| {
+                            self.archive_job = Some(job);
+                            self.tick(Duration::from_millis(30));
+                        })
+                        .map_err(|e| format!("Cannot create archive: {e}"))
+                }
+            }
             // A navegação já aconteceu enquanto digitava; fora da árvore,
             // vira um Log.
             PromptKind::Treespec { .. } => match self.treespec_target(&text) {
@@ -3539,6 +3627,46 @@ mod tests {
         );
         ctrl(&mut app, 'b');
         answer_prompt(&mut app, "lista.csv");
+        assert!(app.message.as_deref().unwrap().ends_with("already exists"));
+    }
+
+    #[test]
+    fn f5_creates_archives_with_relative_paths() {
+        let (tmp, mut app) = sample();
+        app.apply(Command::Branch);
+        ctrl(&mut app, 't');
+        app.handle_key(KeyEvent::new(KeyCode::F(5), KeyModifiers::CONTROL));
+        let prompt = app.prompt.as_ref().unwrap();
+        let root_name = tmp
+            .path()
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        assert!(prompt.input.text.ends_with(&format!("{root_name}.tar.gz")));
+        answer_prompt(&mut app, "pack.zip");
+        assert!(
+            app.message
+                .as_deref()
+                .unwrap()
+                .starts_with("Archived 4 files"),
+            "{:?}",
+            app.message
+        );
+
+        let mut r = archive::Reader::open(&tmp.path().join("pack.zip")).unwrap();
+        let mut names: Vec<String> = r
+            .list()
+            .unwrap()
+            .iter()
+            .map(|e| e.path.to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(names, ["a.rs", "b.txt", "sub/c.rs", "sub/deep/a.rs"]);
+
+        // Não sobrescreve.
+        app.handle_key(KeyEvent::new(KeyCode::F(5), KeyModifiers::CONTROL));
+        answer_prompt(&mut app, "pack.zip");
         assert!(app.message.as_deref().unwrap().ends_with("already exists"));
     }
 }

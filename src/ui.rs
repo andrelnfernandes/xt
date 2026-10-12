@@ -457,6 +457,34 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
     let bold = Style::new().add_modifier(Modifier::BOLD);
     let lines = if let Some(prompt) = &app.prompt {
         prompt_lines(frame, prompt, area)
+    } else if let Some(job) = &app.archive_job {
+        vec![
+            Line::from(vec![
+                Span::styled(
+                    format!(
+                        "Archiving {} of {}: ",
+                        (job.done() + 1).min(job.total()),
+                        job.total()
+                    ),
+                    bold,
+                ),
+                Span::raw(job.current().unwrap_or("").to_string()),
+            ]),
+            menu_line(
+                "",
+                &[
+                    (
+                        "",
+                        &format!(
+                            "{} of {} bytes",
+                            fmt_num(job.done_bytes),
+                            fmt_num(job.total_bytes)
+                        ),
+                    ),
+                    ("Esc", "cancel"),
+                ],
+            ),
+        ]
     } else if let Some(job) = &app.search_job {
         let name = job
             .current()

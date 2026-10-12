@@ -140,6 +140,7 @@ corrigido, para não apagar o que você escreveu).
 | `A` | | permissões (octal, ex.: `644`) |
 | `N` | muda a data do diretório | muda a data do arquivo (Ctrl+N: dos marcados) |
 | Ctrl+B | | Batch: cria um script ou lista com uma linha por marcado |
+| F5 / Ctrl+F5 | | cria um ZIP/TAR com o arquivo / com os marcados |
 | Ctrl + `C` `M` `D` `A` | idem, nos arquivos marcados | idem, nos arquivos marcados |
 | Alt+C | Compare do ramo inteiro | copia os marcados **recriando os caminhos** |
 | Alt+M | | move os marcados **recriando os caminhos** |
@@ -294,6 +295,13 @@ em maiúsculas, como texto puro, para listas (`%N;%S`). Um arquivo `.sh`
 ganha `#!/bin/sh` e permissão de execução (rode-o com `X`). Um arquivo que
 já existe não é sobrescrito.
 
+**Criar compactado (F5 / Ctrl+F5):** cria um `.zip`, `.tar`, `.tar.gz` ou
+`.tgz` (pelo nome digitado) com o arquivo atual ou com os marcados. Os
+caminhos lá dentro são relativos à raiz da lista, como no Alt+C: num Branch,
+as subpastas são mantidas. Tem progresso e `Esc` cancela; o arquivo é escrito
+num temporário e só ganha o nome no fim, então nunca fica pela metade. Links
+simbólicos entram como links. Um arquivo que já existe não é sobrescrito.
+
 **Delete** apaga de verdade (não vai para a lixeira) e sempre pede confirmação.
 
 **Prune (Alt+P na árvore):** loga o ramo inteiro, mostra quantos arquivos,
@@ -395,7 +403,7 @@ configuração (Alt+F10).
 | eXecute | parâmetros de batch `%1`–`%8`, nova janela (NTW) | `sh` com `%f`, `%t` e `%d`; sempre no terminal do xt |
 | Histórico | janela de histórico com marcadores | ↑/↓ no prompt, um histórico por tipo, salvo entre execuções |
 | Configuração | 7 páginas, editor de cores (F4) por elemento, Alt-Export | 4 páginas com as opções que fazem sentido no Linux; F4 escolhe entre 8 temas prontos; cores individuais no `config.toml` |
-| Arquivos compactados | qualquer formato com archiver externo, criar (F5), extrair (Alt-F5) | só leitura de ZIP/JAR/WAR/APK/TAR/TGZ; extrair com Copy |
+| Arquivos compactados | qualquer formato com archiver externo, criar (F5), extrair (Alt-F5) | ZIP/JAR/WAR/APK/TAR/TGZ: abrir (Alt+F5), extrair com Copy, criar com F5 (ZIP, TAR e TAR.GZ) |
 | Tela dividida | painéis de estatísticas opcionais por lado | sem painel de estatísticas |
 | Menus | menu de Ctrl/Alt ao segurar a tecla | igual em terminais com o protocolo do kitty; F9 em qualquer terminal |
 
@@ -439,4 +447,4 @@ Todas as teclas podem ser trocadas em `[keys]` no `config.toml`.
   e `]`), Quit and shell (Ctrl+Q), salvar e
   carregar o log (Zlist, Ctrl/Alt+Z), lixeira, cores por nome e atributo
   (ZCOLORS.INI), mouse, opções de linha de comando do ZTreeWin, comandos de
-  vídeo (Alt+F6–F9), criar arquivos compactados (F5).
+  vídeo (Alt+F6–F9).

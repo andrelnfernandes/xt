@@ -223,6 +223,161 @@ impl Reader {
     }
 }
 
+/// Escritor do arquivo compactado em criação.
+enum Writer {
+    Zip(Box<zip::ZipWriter<File>>),
+    Tar(tar::Builder<File>),
+    TarGz(tar::Builder<flate2::write::GzEncoder<File>>),
+}
+
+/// Um arquivo a pôr no compactado: o caminho no disco e o nome lá dentro.
+pub struct ArchiveItem {
+    pub path: PathBuf,
+    pub name: String,
+    pub size: u64,
+}
+
+/// Criação de um ZIP/TAR (F5), um arquivo por vez, num temporário que só
+/// ganha o nome final no fim: cancelar ou falhar não deixa um arquivo
+/// compactado pela metade.
+pub struct ArchiveJob {
+    writer: Option<Writer>,
+    items: Vec<ArchiveItem>,
+    next: usize,
+    pub dest: PathBuf,
+    tmp: PathBuf,
+    pub done_bytes: u64,
+    pub total_bytes: u64,
+    pub errors: Vec<String>,
+}
+
+impl ArchiveJob {
+    pub fn new(dest: &Path, items: Vec<ArchiveItem>) -> io::Result<Self> {
+        let kind = Kind::detect(dest).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "use a name ending in .zip, .tar, .tar.gz or .tgz",
+            )
+        })?;
+        let name = dest.file_name().unwrap_or_default().to_string_lossy();
+        let tmp = dest.with_file_name(format!(".{name}.xt-{}.tmp", std::process::id()));
+        let file = File::create(&tmp)?;
+        let writer = match kind {
+            Kind::Zip => Writer::Zip(Box::new(zip::ZipWriter::new(file))),
+            Kind::Tar => Writer::Tar(no_follow(tar::Builder::new(file))),
+            Kind::TarGz => Writer::TarGz(no_follow(tar::Builder::new(
+                flate2::write::GzEncoder::new(file, flate2::Compression::default()),
+            ))),
+        };
+        Ok(ArchiveJob {
+            writer: Some(writer),
+            total_bytes: items.iter().map(|i| i.size).sum(),
+            items,
+            next: 0,
+            dest: dest.to_path_buf(),
+            tmp,
+            done_bytes: 0,
+            errors: Vec::new(),
+        })
+    }
+
+    pub fn total(&self) -> usize {
+        self.items.len()
+    }
+
+    pub fn done(&self) -> usize {
+        self.next
+    }
+
+    pub fn current(&self) -> Option<&str> {
+        self.items.get(self.next).map(|i| i.name.as_str())
+    }
+
+    pub fn is_done(&self) -> bool {
+        self.next >= self.items.len()
+    }
+
+    /// Acrescenta arquivos até estourar `budget`.
+    pub fn step(&mut self, budget: std::time::Duration) {
+        let start = std::time::Instant::now();
+        while !self.is_done() {
+            let item = &self.items[self.next];
+            let writer = self.writer.as_mut().expect("writer open until finish");
+            if let Err(e) = add(writer, item) {
+                self.errors.push(format!("{}: {e}", item.path.display()));
+            }
+            self.done_bytes += item.size;
+            self.next += 1;
+            if start.elapsed() >= budget {
+                break;
+            }
+        }
+    }
+
+    /// Fecha o arquivo compactado e o põe no lugar.
+    pub fn finish(mut self) -> io::Result<PathBuf> {
+        let result = match self.writer.take().expect("not finished yet") {
+            Writer::Zip(z) => z.finish().map(drop).map_err(io::Error::other),
+            Writer::Tar(t) => t.into_inner().map(drop),
+            Writer::TarGz(t) => t.into_inner()?.finish().map(drop),
+        };
+        match result.and_then(|()| std::fs::rename(&self.tmp, &self.dest)) {
+            Ok(()) => Ok(self.dest.clone()),
+            Err(e) => {
+                let _ = std::fs::remove_file(&self.tmp);
+                Err(e)
+            }
+        }
+    }
+
+    /// Desiste: apaga o temporário.
+    pub fn cancel(mut self) {
+        self.writer = None;
+        let _ = std::fs::remove_file(&self.tmp);
+    }
+}
+
+fn no_follow<W: Write>(mut b: tar::Builder<W>) -> tar::Builder<W> {
+    // Links simbólicos entram como links, não como o arquivo apontado.
+    b.follow_symlinks(false);
+    b
+}
+
+fn add(writer: &mut Writer, item: &ArchiveItem) -> io::Result<()> {
+    match writer {
+        Writer::Tar(t) => t.append_path_with_name(&item.path, &item.name),
+        Writer::TarGz(t) => t.append_path_with_name(&item.path, &item.name),
+        Writer::Zip(z) => {
+            let meta = std::fs::symlink_metadata(&item.path)?;
+            let mut opts = zip::write::SimpleFileOptions::default().unix_permissions(
+                std::os::unix::fs::PermissionsExt::mode(&meta.permissions()) & 0o7777,
+            );
+            if let Ok(t) = meta.modified() {
+                use chrono::{Datelike, Timelike};
+                let t = chrono::DateTime::<Local>::from(t);
+                if let Ok(dt) = zip::DateTime::from_date_and_time(
+                    t.year().clamp(1980, 2107) as u16,
+                    t.month() as u8,
+                    t.day() as u8,
+                    t.hour() as u8,
+                    t.minute() as u8,
+                    t.second() as u8,
+                ) {
+                    opts = opts.last_modified_time(dt);
+                }
+            }
+            if meta.is_symlink() {
+                let target = std::fs::read_link(&item.path)?;
+                z.add_symlink(&item.name, target.to_string_lossy(), opts)
+                    .map_err(io::Error::other)
+            } else {
+                z.start_file(&item.name, opts).map_err(io::Error::other)?;
+                io::copy(&mut File::open(&item.path)?, z).map(drop)
+            }
+        }
+    }
+}
+
 /// Só componentes normais: nada de `..`, `/` no começo ou `C:`.
 fn is_safe(path: &Path) -> bool {
     path.components().all(|c| matches!(c, Component::Normal(_)))
@@ -371,6 +526,57 @@ pub mod tests {
             assert_eq!(err.kind(), io::ErrorKind::Unsupported);
             assert!(r.extract(Path::new("nope"), &mut Vec::new(), 10).is_err());
         }
+    }
+
+    #[test]
+    fn creates_archives_that_read_back() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("src");
+        std::fs::create_dir_all(src.join("sub")).unwrap();
+        std::fs::write(src.join("a.txt"), "alpha").unwrap();
+        std::fs::write(src.join("sub/b.txt"), "beta").unwrap();
+        std::os::unix::fs::symlink("a.txt", src.join("link")).unwrap();
+        let items = || {
+            ["a.txt", "sub/b.txt", "link"]
+                .map(|n| ArchiveItem {
+                    path: src.join(n),
+                    name: n.into(),
+                    size: 4,
+                })
+                .into_iter()
+                .collect::<Vec<_>>()
+        };
+        for name in ["out.zip", "out.tar", "out.tar.gz"] {
+            let dest = tmp.path().join(name);
+            let mut job = ArchiveJob::new(&dest, items()).unwrap();
+            while !job.is_done() {
+                job.step(std::time::Duration::ZERO);
+            }
+            assert!(job.errors.is_empty(), "{name}: {:?}", job.errors);
+            job.finish().unwrap();
+
+            let mut r = Reader::open(&dest).unwrap();
+            let entries = r.list().unwrap();
+            assert_eq!(paths(&entries), ["a.txt", "link", "sub/b.txt"], "{name}");
+            let link = entries.iter().find(|e| e.path.ends_with("link")).unwrap();
+            assert_eq!(link.kind, EntryKind::Symlink, "{name}: stored as a link");
+            let mut out = Vec::new();
+            r.extract(Path::new("sub/b.txt"), &mut out, u64::MAX)
+                .unwrap();
+            assert_eq!(out, b"beta");
+        }
+        // Cancelar não deixa nada; extensão desconhecida é recusada.
+        let job = ArchiveJob::new(&tmp.path().join("x.zip"), items()).unwrap();
+        job.cancel();
+        let left: Vec<_> = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert!(
+            !left.iter().any(|n| n.to_string_lossy().contains("x.zip")),
+            "{left:?}"
+        );
+        assert!(ArchiveJob::new(&tmp.path().join("x.rar"), items()).is_err());
     }
 
     #[test]

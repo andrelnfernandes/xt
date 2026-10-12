@@ -73,6 +73,10 @@ pub enum Command {
     },
     /// Ctrl+B: cria um arquivo com uma linha por arquivo marcado.
     Batch,
+    /// F5 / Ctrl+F5: cria um ZIP/TAR com o arquivo ou com os marcados.
+    CreateArchive {
+        tagged: bool,
+    },
     /// ← e → na janela de arquivos: arquivo anterior/próximo em colunas,
     /// página acima/abaixo numa coluna só.
     Left,

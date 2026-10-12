@@ -226,6 +226,16 @@ const COMMANDS: &[(&str, Command, &str)] = &[
         Command::Batch,
         "write a script or list with one line per tagged file",
     ),
+    (
+        "archive",
+        Command::CreateArchive { tagged: false },
+        "create a zip/tar archive with the file",
+    ),
+    (
+        "archive_tagged",
+        Command::CreateArchive { tagged: true },
+        "create a zip/tar archive with the tagged files",
+    ),
     ("help", Command::Help, "this help"),
     (
         "file_display",
@@ -287,6 +297,8 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("n", Any, "new_date"),
     ("ctrl+n", Files, "new_date_tagged"),
     ("ctrl+b", Files, "batch"),
+    ("f5", Files, "archive"),
+    ("ctrl+f5", Files, "archive_tagged"),
     ("f10", Any, "quit"),
     ("f12", Any, "settings"),
     ("alt+f10", Any, "settings"),
