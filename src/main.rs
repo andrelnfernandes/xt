@@ -5,6 +5,7 @@
 mod app;
 mod archive;
 mod config;
+mod info;
 mod input;
 mod keymap;
 mod model;

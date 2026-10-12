@@ -17,6 +17,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, M
 
 use crate::archive::{self, ArchiveItem, ArchiveJob};
 use crate::config::{self, Config, DateFormat, Options, PruneConfirm, Theme};
+use crate::info;
 use crate::input::{Command, LineEvent, LineInput};
 use crate::keymap::Keymap;
 use crate::model::compare::{self, CompareMode};
@@ -771,6 +772,15 @@ impl App {
             Command::FileDisplay => self.cycle_display(),
             Command::NewDate { tagged } => self.prompt_new_date(tagged),
             Command::CreateArchive { tagged } => self.prompt_create_archive(tagged),
+            Command::Info => {
+                let text = self.info_text();
+                self.show_text("xt info", text);
+            }
+            Command::Avail => self.show_text("xt avail", info::avail()),
+            Command::Stats => {
+                let text = self.stats_text();
+                self.show_text("xt statistics", text);
+            }
             Command::Batch => {
                 if self.sources_or_warn(true).is_some() {
                     let base = self.outer.as_deref().unwrap_or(self);
@@ -1273,6 +1283,111 @@ impl App {
         if let Some(id) = self.treespec_target(&text) {
             self.show_node(id);
         }
+    }
+
+    /// Mostra um texto no visualizador (Info, Avail, estatísticas).
+    fn show_text(&mut self, title: &str, text: String) {
+        let data = text.into_bytes();
+        self.tagged_view = None;
+        self.viewer = Some(Viewer::from_bytes(title.into(), data.len() as u64, data));
+    }
+
+    /// Alt+I: o arquivo sob o cursor ou, na árvore, o diretório (com o que
+    /// está logado nele e no ramo).
+    fn info_text(&self) -> String {
+        let in_files = self.focus == Focus::Files;
+        match self.selected_file().filter(|_| in_files) {
+            Some(f) if self.archive.is_none() => info::path_info(&self.file_path(f)),
+            Some(f) => {
+                let e = self.file(f);
+                format!(
+                    "INFO  {} (inside an archive)\n\n  Size          {} bytes\n  Permissions   {:04o}\n",
+                    self.file_path(f).display(),
+                    info::group(e.size),
+                    e.mode
+                )
+            }
+            None => {
+                let id = self.current();
+                let mut text = if self.archive.is_some() {
+                    format!(
+                        "INFO  {} (inside an archive)\n",
+                        self.current_path().display()
+                    )
+                } else {
+                    info::path_info(&self.current_path())
+                };
+                let dir = self.tree.dir_totals(false, false)[id];
+                let branch = self.tree.dir_totals(true, false)[id];
+                let subdirs = self.tree.visible_subtree(id).len() - 1;
+                text.push_str(&format!(
+                    "\nLOGGED\n  {:<14}{} files, {} bytes\n  {:<14}{} files, {} bytes, {} subdirectories\n",
+                    "Directory",
+                    info::group(dir.0),
+                    info::group(dir.1),
+                    "Branch",
+                    info::group(branch.0),
+                    info::group(branch.1),
+                    info::group(subdirs as u64)
+                ));
+                text
+            }
+        }
+    }
+
+    /// ?: estatísticas da janela ativa.
+    fn stats_text(&self) -> String {
+        let g = info::group;
+        let logged = self.tree.logged_totals();
+        let listed: u64 = self.files.iter().map(|&f| self.file(f).size).sum();
+        let (tagged, tagged_bytes) = self
+            .files
+            .iter()
+            .map(|&f| self.file(f))
+            .filter(|f| f.tagged)
+            .fold((0u64, 0u64), |(n, b), f| (n + 1, b + f.size));
+        let view = match self.view {
+            FileView::Dir => "directory",
+            FileView::Branch(_) => "branch",
+            FileView::Showall => "showall",
+        };
+        let mut text = format!("STATISTICS  {}\n\n", self.tree.path(ROOT).display());
+        let mut row = |k: &str, v: String| text.push_str(&format!("  {k:<14}{v}\n"));
+        row(
+            "Logged",
+            format!(
+                "{} dirs, {} files, {} bytes",
+                g(logged.dirs),
+                g(logged.files),
+                g(logged.bytes)
+            ),
+        );
+        row("Filespec", self.filespec.text().to_string());
+        row("Sort", self.sort.label());
+        row(
+            "Listing",
+            format!(
+                "{view}: {} files, {} bytes",
+                g(self.files.len() as u64),
+                g(listed)
+            ),
+        );
+        row(
+            "Tagged",
+            format!("{} files, {} bytes", g(tagged), g(tagged_bytes)),
+        );
+        if let Ok(st) = nix::sys::statvfs::statvfs(&self.current_path()) {
+            let frag = st.fragment_size();
+            row(
+                "Disk",
+                format!(
+                    "{} bytes free of {}",
+                    g(st.blocks_available() * frag),
+                    g(st.blocks() * frag)
+                ),
+            );
+        }
+        text
     }
 
     /// F5 / Ctrl+F5: pede o nome do compactado. Dentro dele, os caminhos
@@ -3668,5 +3783,35 @@ mod tests {
         app.handle_key(KeyEvent::new(KeyCode::F(5), KeyModifiers::CONTROL));
         answer_prompt(&mut app, "pack.zip");
         assert!(app.message.as_deref().unwrap().ends_with("already exists"));
+    }
+
+    #[test]
+    fn info_avail_and_stats_screens() {
+        let (_tmp, mut app) = sample();
+        let first_line = |app: &App| app.viewer.as_ref().unwrap().visible_lines(1)[0].clone();
+
+        alt(&mut app, 'i');
+        assert!(first_line(&app).starts_with("INFO "));
+        let text = app.viewer.as_ref().unwrap().visible_lines(40).join("\n");
+        assert!(
+            text.contains("directory") && text.contains("LOGGED"),
+            "{text}"
+        );
+        press(&mut app, KeyCode::Esc);
+
+        press(&mut app, KeyCode::Enter);
+        alt(&mut app, 'i');
+        let text = app.viewer.as_ref().unwrap().visible_lines(40).join("\n");
+        assert!(text.contains("a.rs") && text.contains("13 bytes"), "{text}");
+        press(&mut app, KeyCode::Esc);
+        press(&mut app, KeyCode::Esc);
+
+        press(&mut app, KeyCode::Char('a'));
+        assert!(first_line(&app).starts_with("AVAIL"));
+        press(&mut app, KeyCode::Esc);
+
+        press(&mut app, KeyCode::Char('?'));
+        let text = app.viewer.as_ref().unwrap().visible_lines(20).join("\n");
+        assert!(text.contains("Logged") && text.contains("Tagged"), "{text}");
     }
 }

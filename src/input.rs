@@ -73,6 +73,12 @@ pub enum Command {
     },
     /// Ctrl+B: cria um arquivo com uma linha por arquivo marcado.
     Batch,
+    /// Alt+I: detalhes do arquivo ou diretório.
+    Info,
+    /// A na árvore: sistemas de arquivos montados.
+    Avail,
+    /// ?: estatísticas da janela.
+    Stats,
     /// F5 / Ctrl+F5: cria um ZIP/TAR com o arquivo ou com os marcados.
     CreateArchive {
         tagged: bool,

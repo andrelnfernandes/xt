@@ -236,6 +236,13 @@ const COMMANDS: &[(&str, Command, &str)] = &[
         Command::CreateArchive { tagged: true },
         "create a zip/tar archive with the tagged files",
     ),
+    ("info", Command::Info, "details of the file or directory"),
+    (
+        "avail",
+        Command::Avail,
+        "mounted file systems and free space",
+    ),
+    ("stats", Command::Stats, "statistics of the pane"),
     ("help", Command::Help, "this help"),
     (
         "file_display",
@@ -297,6 +304,9 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("n", Any, "new_date"),
     ("ctrl+n", Files, "new_date_tagged"),
     ("ctrl+b", Files, "batch"),
+    ("alt+i", Any, "info"),
+    ("a", Tree, "avail"),
+    ("?", Any, "stats"),
     ("f5", Files, "archive"),
     ("ctrl+f5", Files, "archive_tagged"),
     ("f10", Any, "quit"),

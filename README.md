@@ -119,6 +119,9 @@ corrigido, para não apagar o que você escreveu).
 | Tab | troca de janela (tela dividida) | idem |
 | Enter | abre a janela de arquivos | volta para a árvore |
 | Esc | | volta para a árvore (no diretório do arquivo) |
+| Alt+I | Info: detalhes do diretório (e o que está logado nele) | Info: detalhes do arquivo |
+| `A` | Avail: sistemas de arquivos montados e espaço livre | |
+| `?` | estatísticas da janela | idem |
 | F1 | ajuda: lista das teclas em vigor | idem |
 | F12 / Alt+F10 | tela de configuração | idem |
 | `Q` / F10 | sair (pede confirmação) | sair |
@@ -302,6 +305,13 @@ as subpastas são mantidas. Tem progresso e `Esc` cancela; o arquivo é escrito
 num temporário e só ganha o nome no fim, então nunca fica pela metade. Links
 simbólicos entram como links. Um arquivo que já existe não é sobrescrito.
 
+**Info, Avail e estatísticas:** Alt+I mostra tipo, tamanho, permissões,
+dono e grupo, datas (modificação, acesso e mudança), inode, links e
+dispositivo do arquivo ou diretório (de um link, para onde aponta; de um
+diretório, também o que está logado nele e no ramo). `A` na árvore lista os
+sistemas de arquivos montados com total, usado, livre e % de uso, como o
+`df`. `?` resume a janela: o que está logado, a lista, os marcados e o disco.
+
 **Delete** apaga de verdade (não vai para a lixeira) e sempre pede confirmação.
 
 **Prune (Alt+P na árvore):** loga o ramo inteiro, mostra quantos arquivos,
@@ -430,14 +440,13 @@ Todas as teclas podem ser trocadas em `[keys]` no `config.toml`.
 
 ### Não implementado
 
-- **Árvore:** Avail (A), Global (G), Graft (Alt+G), Mirror (Alt+M), Oops
+- **Árvore:** Global (G), Graft (Alt+G), Mirror (Alt+M), Oops
   (O, recuperar apagados), Release/descarregar da memória (Alt+R, `-`,
-  Ctrl+Backspace), Hide (Alt+H), Info (Alt+I), Wash (Alt+W), Volume
+  Ctrl+Backspace), Hide (Alt+H), Wash (Alt+W), Volume
   (Ctrl+V), F5/F6 (esconder níveis de subdiretórios),
   marcar por atributo (Alt+T/U),
   Treespec em modo de edição (F5, curingas) e pastas especiais (F6), busca
-  ao digitar com prompt (`|`) e modo ativo, janela de
-  estatísticas (`?`), troca de drive (`<` e `>`).
+  ao digitar com prompt (`|`) e modo ativo, troca de drive (`<` e `>`).
 - **Arquivos:** Open em nova janela de terminal (Alt+O), Batch do arquivo atual (Alt+B), JFC (J, comparar o conteúdo de dois arquivos), ZAAP
   (Y), sHortcut (H), Print (P), Rename com máscara, localizar e trocar e mudança de maiúsculas,
   dono/grupo (chown), Megaview (Ctrl+F7 na janela de arquivos), juntar marcados entre as
