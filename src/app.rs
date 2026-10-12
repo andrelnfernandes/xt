@@ -16,7 +16,8 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, M
 
 use crate::archive;
 use crate::config::Options;
-use crate::input::{self, Command, LineEvent, LineInput};
+use crate::input::{Command, LineEvent, LineInput};
+use crate::keymap::Keymap;
 use crate::model::compare::{self, CompareMode};
 use crate::model::filespec::Filespec;
 use crate::model::tree::{LogJob, NodeId, ROOT};
@@ -161,6 +162,7 @@ pub struct App {
     pub external: Option<External>,
     /// Opções do arquivo de configuração.
     pub options: Options,
+    pub keymap: Keymap,
     pub should_quit: bool,
     /// Ctrl/Alt pressionado agora (só em terminais que avisam isso).
     pub held: Option<MenuMode>,
@@ -199,6 +201,7 @@ impl App {
             history: HashMap::new(),
             external: None,
             options: Options::default(),
+            keymap: Keymap::default(),
             should_quit: false,
             held: None,
             sticky: MenuMode::Normal,
@@ -376,7 +379,7 @@ impl App {
             }
             _ => {}
         }
-        if let Some(cmd) = input::map_key(key, self.focus) {
+        if let Some(cmd) = self.keymap.lookup(key, self.focus) {
             self.apply(cmd);
         }
     }
@@ -418,6 +421,11 @@ impl App {
             Command::Back if in_files => self.back_to_tree(),
             Command::Back => self.close_archive(),
             Command::Open => self.open_archive(),
+            Command::Help => {
+                let text = self.keymap.help_text().into_bytes();
+                let size = text.len() as u64;
+                self.viewer = Some(Viewer::from_bytes("xt help".into(), size, text));
+            }
             Command::Edit => {
                 if let Some(f) = self.selected_file() {
                     self.external = Some(shell::editor(&self.file_path(f), &self.current_path()));
@@ -1804,5 +1812,15 @@ mod tests {
         press(&mut app, KeyCode::Char('q'));
         assert!(app.should_quit);
         assert!(app.confirm.is_none());
+    }
+
+    #[test]
+    fn f1_shows_help_in_viewer() {
+        let (_tmp, mut app) = sample();
+        press(&mut app, KeyCode::F(1));
+        let viewer = app.viewer.as_ref().expect("help open");
+        assert!(viewer.visible_lines(1)[0].starts_with("xt - keys in use"));
+        press(&mut app, KeyCode::Esc);
+        assert!(app.viewer.is_none());
     }
 }

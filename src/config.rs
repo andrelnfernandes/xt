@@ -8,6 +8,8 @@ use std::sync::OnceLock;
 use ratatui::style::Color;
 use serde::Deserialize;
 
+use crate::keymap::Keymap;
+
 /// Exemplo comentado, impresso por `xt --default-config`. Os valores são os
 /// padrões: um arquivo com só isto equivale a não ter arquivo.
 pub const DEFAULT_CONFIG: &str = r##"# Configuração do xt: ~/.config/xt/config.toml
@@ -29,6 +31,21 @@ confirm_quit = true
 [colors]
 # key = "yellow"
 # background = "#1e1e2e"
+
+# Teclas: "tecla" = "comando". Teclas: letras, "F1".."F12", "enter",
+# "esc", "tab", "space", "plus", "minus", setas ("up"...), "pageup"...,
+# com "ctrl+" e/ou "alt+" na frente. "none" desliga a tecla.
+# Comandos: veja a lista com F1 dentro do xt; os nomes são os do
+# arquivo-fonte keymap.rs (view, copy, copy_tagged, copy_tagged_paths,
+# move_tagged, relog, compare, execute...).
+[keys.any]
+# "ctrl+r" = "relog"
+# "f3" = "view"
+
+[keys.tree]
+
+[keys.files]
+# "enter" = "view"
 "##;
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -37,6 +54,17 @@ pub struct Config {
     pub theme: String,
     pub options: Options,
     pub colors: HashMap<String, String>,
+    pub keys: Keys,
+}
+
+/// Trocas de teclas: `[keys.any]` vale nas duas janelas, `[keys.tree]` e
+/// `[keys.files]` só numa delas (e têm prioridade).
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct Keys {
+    pub any: HashMap<String, String>,
+    pub tree: HashMap<String, String>,
+    pub files: HashMap<String, String>,
 }
 
 impl Default for Config {
@@ -45,6 +73,7 @@ impl Default for Config {
             theme: "classic".into(),
             options: Options::default(),
             colors: HashMap::new(),
+            keys: Keys::default(),
         }
     }
 }
@@ -73,6 +102,7 @@ impl Config {
     pub fn parse(text: &str) -> Result<Config, String> {
         let config: Config = toml::from_str(text).map_err(|e| e.message().to_string())?;
         Theme::from_config(&config)?;
+        Keymap::from_config(&config.keys)?;
         Ok(config)
     }
 
@@ -290,6 +320,8 @@ mod tests {
         );
         assert!(Config::parse("tema = \"dark\"").is_err(), "unknown field");
         assert!(Config::parse("theme = ").is_err(), "syntax");
+        let bad_key = Config::parse("[keys.any]\n\"f3\" = \"explode\"").unwrap_err();
+        assert!(bad_key.contains("unknown command"), "{bad_key}");
     }
 
     #[test]

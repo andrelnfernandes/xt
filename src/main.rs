@@ -6,6 +6,7 @@ mod app;
 mod archive;
 mod config;
 mod input;
+mod keymap;
 mod model;
 mod ops;
 mod pane;
@@ -79,6 +80,7 @@ fn main() -> anyhow::Result<()> {
     }
     let mut app = App::new(root);
     app.options = config.options;
+    app.keymap = keymap::Keymap::from_config(&config.keys).unwrap_or_default();
     app.message = config_error;
     // `init` também instala um panic hook que restaura o terminal.
     let mut terminal = ratatui::init();

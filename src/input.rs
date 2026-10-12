@@ -1,8 +1,7 @@
-//! Traduz teclas em comandos. Mais tarde o mapa virá do arquivo de configuração.
+//! Comandos e o campo de texto dos prompts. O mapa de teclas está em
+//! `keymap.rs`.
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-
-use crate::app::Focus;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Command {
@@ -32,6 +31,8 @@ pub enum Command {
     Edit,
     /// Executa um comando do shell.
     Execute,
+    /// F1: lista das teclas.
+    Help,
     Back,
     Filespec,
     Showall,
@@ -63,100 +64,6 @@ pub enum Command {
     Rename,
     MakeDir,
     Quit,
-}
-
-pub fn map_key(key: KeyEvent, focus: Focus) -> Option<Command> {
-    use Command::*;
-
-    // Ctrl+letra (ou Alt+letra) = versão "arquivos marcados" do comando.
-    // No Copy/Move, Ctrl copia tudo direto no destino e Alt recria os
-    // caminhos; F6 no prompt troca entre os dois.
-    if key
-        .modifiers
-        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
-    {
-        let KeyCode::Char(c) = key.code else {
-            return None;
-        };
-        let paths = key.modifiers.contains(KeyModifiers::ALT);
-        return match c.to_ascii_lowercase() {
-            't' => Some(TagAll),
-            'u' => Some(UntagAll),
-            'c' => Some(Copy {
-                tagged: true,
-                paths,
-            }),
-            'm' => Some(Move {
-                tagged: true,
-                paths,
-            }),
-            'd' => Some(Delete { tagged: true }),
-            'a' => Some(Attributes { tagged: true }),
-            _ => None,
-        };
-    }
-
-    let key = match key.code {
-        KeyCode::Char(c) => KeyCode::Char(c.to_ascii_lowercase()),
-        other => other,
-    };
-
-    let common = match key {
-        KeyCode::Up => Some(Up),
-        KeyCode::Down => Some(Down),
-        KeyCode::PageUp => Some(PageUp),
-        KeyCode::PageDown => Some(PageDown),
-        KeyCode::Home => Some(Home),
-        KeyCode::End => Some(End),
-        KeyCode::Enter => Some(SwitchWindow),
-        KeyCode::Tab => Some(SwitchPane),
-        KeyCode::F(8) => Some(Split),
-        KeyCode::F(2) => Some(Relog),
-        KeyCode::Char('f') => Some(Filespec),
-        KeyCode::Char('s') => Some(Showall),
-        KeyCode::Char('b') => Some(Branch),
-        KeyCode::Char('t') => Some(Tag),
-        KeyCode::Char('u') => Some(Untag),
-        KeyCode::Char('i') => Some(Invert),
-        KeyCode::Char('d') => Some(Delete { tagged: false }),
-        KeyCode::Char('r') => Some(Rename),
-        KeyCode::Char('x') => Some(Execute),
-        KeyCode::Char('q') | KeyCode::F(10) => Some(Quit),
-        _ => None,
-    };
-    if common.is_some() {
-        return common;
-    }
-
-    match focus {
-        Focus::Tree => match key {
-            KeyCode::Right | KeyCode::Char('+') => Some(Expand),
-            KeyCode::Left | KeyCode::Char('-') => Some(Collapse),
-            KeyCode::Char('*') => Some(ExpandAll),
-            KeyCode::Char('m') => Some(MakeDir),
-            KeyCode::Char('l') => Some(Log),
-            KeyCode::Char('c') => Some(Compare),
-            // Fecha o arquivo compactado aberto.
-            KeyCode::Esc => Some(Back),
-            _ => None,
-        },
-        Focus::Files => match key {
-            KeyCode::Esc | KeyCode::Left => Some(Back),
-            KeyCode::Char('v') => Some(View),
-            KeyCode::Char('o') => Some(Open),
-            KeyCode::Char('e') => Some(Edit),
-            KeyCode::Char('c') => Some(Copy {
-                tagged: false,
-                paths: false,
-            }),
-            KeyCode::Char('m') => Some(Move {
-                tagged: false,
-                paths: false,
-            }),
-            KeyCode::Char('a') => Some(Attributes { tagged: false }),
-            _ => None,
-        },
-    }
 }
 
 /// Resultado de uma tecla num campo de texto.
@@ -268,54 +175,6 @@ mod tests {
     fn type_keys(input: &mut LineInput, codes: &[KeyCode]) {
         for &code in codes {
             input.handle_key(KeyEvent::new(code, KeyModifiers::NONE));
-        }
-    }
-
-    fn map(code: KeyCode, mods: KeyModifiers, focus: Focus) -> Option<Command> {
-        map_key(KeyEvent::new(code, mods), focus)
-    }
-
-    #[test]
-    fn maps_letters_by_window() {
-        let none = KeyModifiers::NONE;
-        assert_eq!(
-            map(KeyCode::Char('m'), none, Focus::Tree),
-            Some(Command::MakeDir)
-        );
-        assert_eq!(
-            map(KeyCode::Char('M'), KeyModifiers::SHIFT, Focus::Files),
-            Some(Command::Move {
-                tagged: false,
-                paths: false
-            })
-        );
-        assert_eq!(
-            map(KeyCode::Char('c'), none, Focus::Tree),
-            Some(Command::Compare)
-        );
-    }
-
-    #[test]
-    fn ctrl_and_alt_mean_tagged() {
-        for (mods, paths) in [(KeyModifiers::CONTROL, false), (KeyModifiers::ALT, true)] {
-            assert_eq!(
-                map(KeyCode::Char('c'), mods, Focus::Files),
-                Some(Command::Copy {
-                    tagged: true,
-                    paths
-                })
-            );
-            assert_eq!(
-                map(KeyCode::Char('m'), mods, Focus::Tree),
-                Some(Command::Move {
-                    tagged: true,
-                    paths
-                })
-            );
-            assert_eq!(
-                map(KeyCode::Char('t'), mods, Focus::Tree),
-                Some(Command::TagAll)
-            );
         }
     }
 

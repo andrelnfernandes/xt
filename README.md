@@ -24,6 +24,10 @@ mkdir -p ~/.config/xt && xt --default-config > ~/.config/xt/config.toml
 - `[colors]`: troca cores individuais por cima do tema, com nomes
   (`"yellow"`), `"#rrggbb"` ou índices de 0 a 255.
 - `[options]`: `confirm_quit = false` sai sem perguntar.
+- `[keys.any]`, `[keys.tree]`, `[keys.files]`: troca teclas, nas duas
+  janelas ou só numa (esta tem prioridade). Ex.: `"f3" = "view"`,
+  `"ctrl+r" = "relog"`; `"none"` desliga uma tecla. **F1** dentro do xt
+  mostra as teclas em vigor, já com as suas trocas.
 
 Um erro no arquivo não impede o xt de abrir: ele usa os padrões e mostra o
 erro no rodapé.
@@ -52,6 +56,7 @@ erro no rodapé.
 | Tab | troca de janela (tela dividida) | idem |
 | Enter | abre a janela de arquivos | volta para a árvore |
 | Esc | | volta para a árvore (no diretório do arquivo) |
+| F1 | ajuda: lista das teclas em vigor | idem |
 | `Q` / F10 | sair (pede confirmação) | sair |
 
 ### Tags e operações
@@ -160,7 +165,8 @@ Na árvore, `+` no conector (`├─+`) indica um diretório recolhido que tem s
 - `src/model/` — árvore de diretórios em memória (arena), sem dependência da UI
 - `src/app.rs` — estado global (prompts, operações) e execução de comandos
 - `src/pane.rs` — uma janela: árvore, lista de arquivos, cursores e filespec
-- `src/input.rs` — mapeamento tecla → comando
+- `src/input.rs` — comandos e o campo de texto dos prompts
+- `src/keymap.rs` — teclas padrão, trocas da configuração e ajuda (F1)
 - `src/ui.rs` — desenho da tela (ratatui)
 - `src/viewer.rs` — visualizador texto/hex
 - `src/archive.rs` — leitura de ZIP/TAR
