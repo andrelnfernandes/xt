@@ -204,6 +204,29 @@ impl Pane {
         self.refresh_files();
     }
 
+    /// Relê `dirs` e atualiza a tela, mantendo o cursor no mesmo arquivo
+    /// (se ele ainda existir).
+    pub fn rescan_paths<P: AsRef<Path>>(&mut self, dirs: &[P]) {
+        // Guardado antes de reler: depois, as referências da lista não
+        // valem mais.
+        let selected = self.selected_file().and_then(|f| {
+            let entry = self.tree.node(f.dir).files.get(f.idx)?;
+            Some((f.dir, entry.name.clone()))
+        });
+        for dir in dirs {
+            self.rescan_path(dir.as_ref());
+        }
+        self.after_change();
+        if let Some((dir, name)) = selected
+            && let Some(i) = self
+                .files
+                .iter()
+                .position(|&f| f.dir == dir && self.file(f).name == name)
+        {
+            self.file_state.select(Some(i));
+        }
+    }
+
     /// Leva o cursor da árvore até `path`, lendo e expandindo o caminho.
     /// Para no último diretório existente; devolve se chegou ao destino.
     pub fn goto(&mut self, path: &Path) -> bool {
@@ -373,6 +396,26 @@ mod tests {
         assert_eq!(move_cursor(Command::PageUp, 4, 5, 3), 1);
         assert_eq!(move_cursor(Command::End, 0, 5, 3), 4);
         assert_eq!(move_cursor(Command::Down, 0, 0, 3), 0);
+    }
+
+    #[test]
+    fn after_change_keeps_cursor_on_same_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        for f in ["b", "d"] {
+            std::fs::write(tmp.path().join(f), "").unwrap();
+        }
+        let mut pane = Pane::new(tmp.path().to_path_buf());
+        pane.file_state.select(Some(1)); // "d"
+        std::fs::write(tmp.path().join("a"), "").unwrap();
+        std::fs::write(tmp.path().join("c"), "").unwrap();
+        pane.rescan_paths(&[tmp.path()]);
+        let name = &pane.file(pane.selected_file().unwrap()).name;
+        assert_eq!(name, "d");
+
+        // Se o arquivo sumiu, o cursor fica dentro da lista.
+        std::fs::remove_file(tmp.path().join("d")).unwrap();
+        pane.rescan_paths(&[tmp.path()]);
+        assert_eq!(pane.file_state.selected(), Some(2));
     }
 
     #[test]

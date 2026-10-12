@@ -5,6 +5,7 @@
 //! o visualizador. `App` dá acesso direto à janela ativa (`app.tree`,
 //! `app.files`...), via `Deref`.
 
+use std::collections::HashSet;
 use std::fs;
 use std::ops::{Deref, DerefMut};
 use std::os::unix::fs::PermissionsExt;
@@ -130,6 +131,8 @@ pub struct App {
     pub viewer: Option<Viewer>,
     /// Último destino digitado no Copy/Move.
     last_dest: Option<String>,
+    /// Diretórios que mudaram no disco e ainda não foram relidos.
+    pending_changes: HashSet<PathBuf>,
     pub should_quit: bool,
     /// Ctrl/Alt pressionado agora (só em terminais que avisam isso).
     pub held: Option<MenuMode>,
@@ -164,6 +167,7 @@ impl App {
             op: None,
             viewer: None,
             last_dest: None,
+            pending_changes: HashSet::new(),
             should_quit: false,
             held: None,
             sticky: MenuMode::Normal,
@@ -177,6 +181,29 @@ impl App {
     /// A outra janela, com a tela dividida.
     pub fn other(&self) -> Option<&Pane> {
         self.is_split().then(|| &self.panes[1 - self.active])
+    }
+
+    /// Diretórios a observar no disco: os atuais de cada janela (fora de
+    /// arquivos compactados).
+    pub fn watched_dirs(&self) -> HashSet<PathBuf> {
+        self.panes
+            .iter()
+            .filter(|p| p.archive.is_none())
+            .map(Pane::current_path)
+            .collect()
+    }
+
+    /// Avisos de mudanças no disco. São aplicados assim que nada estiver
+    /// em andamento (no fim de um Copy, os diretórios são relidos de
+    /// qualquer jeito). Devolve se a tela mudou.
+    pub fn fs_changed(&mut self, dirs: impl IntoIterator<Item = PathBuf>) -> bool {
+        self.pending_changes.extend(dirs);
+        if self.pending_changes.is_empty() || self.busy() || self.op.is_some() {
+            return false;
+        }
+        let dirs: Vec<PathBuf> = self.pending_changes.drain().collect();
+        self.rescan_everywhere(&dirs);
+        true
     }
 
     /// Há trabalho em andamento que não depende do usuário.
@@ -494,10 +521,7 @@ impl App {
     /// Relê `dirs` em todas as janelas (as duas podem mostrar o mesmo lugar).
     fn rescan_everywhere<P: AsRef<Path>>(&mut self, dirs: &[P]) {
         for pane in &mut self.panes {
-            for dir in dirs {
-                pane.rescan_path(dir.as_ref());
-            }
-            pane.after_change();
+            pane.rescan_paths(dirs);
         }
     }
 
@@ -1599,5 +1623,33 @@ mod tests {
                 .unwrap()
                 .starts_with("Not an archive")
         );
+    }
+
+    #[test]
+    fn fs_changes_refresh_now_or_after_operations() {
+        let (tmp, mut app) = sample();
+        assert_eq!(
+            app.watched_dirs(),
+            HashSet::from([tmp.path().to_path_buf()])
+        );
+        write(tmp.path().join("new.txt"), "").unwrap();
+        assert!(app.fs_changed([tmp.path().to_path_buf()]));
+        assert_eq!(names(&app), ["a.rs", "b.txt", "new.txt"]);
+
+        // Com uma operação parada num conflito, espera.
+        write(tmp.path().join("sub/b.txt"), "old").unwrap();
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Char('c'));
+        answer_prompt(&mut app, "sub");
+        assert!(app.op.is_some());
+        write(tmp.path().join("other.txt"), "").unwrap();
+        assert!(!app.fs_changed([tmp.path().to_path_buf()]));
+        assert_eq!(names(&app).len(), 3);
+
+        press(&mut app, KeyCode::Char('n'));
+        assert!(app.op.is_none());
+        assert!(app.fs_changed([]), "pending change applied");
+        assert_eq!(names(&app).len(), 4);
     }
 }

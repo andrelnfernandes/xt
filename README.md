@@ -85,6 +85,12 @@ dele, e Copy (inclusive Ctrl+C e Alt+C com caminhos) extrai os arquivos.
 entradas com `..` ou caminho absoluto são ignoradas, e links simbólicos
 dentro de arquivos compactados nunca são extraídos.
 
+**Atualização automática:** o xt observa (via inotify) o diretório atual de
+cada janela e relê sozinho quando outro programa cria, apaga, renomeia ou
+altera arquivos ali, mantendo o cursor no mesmo arquivo. As mudanças são
+agrupadas (no máximo uma releitura a cada meio segundo) e esperam o fim de
+uma operação em andamento. Outros diretórios continuam com `F2`.
+
 **Menus Ctrl/Alt:** como no ZTree, o rodapé mostra só os comandos de uma
 tecla. **F9** alterna para o menu de Ctrl, depois o de Alt, e volta. Com um
 desses menus aberto pelo F9, a próxima letra vale como Ctrl+letra ou
@@ -127,6 +133,7 @@ Na árvore, `+` no conector (`├─+`) indica um diretório recolhido que tem s
 - `src/ui.rs` — desenho da tela (ratatui)
 - `src/viewer.rs` — visualizador texto/hex
 - `src/archive.rs` — leitura de ZIP/TAR
+- `src/watch.rs` — avisos de mudanças no disco (inotify)
 - `src/model/compare.rs` — regras do Compare
 - `src/model/filespec.rs` — filtro de arquivos
 - `src/ops/` — copiar, mover e apagar, em passos (progresso, conflitos, cancelamento)

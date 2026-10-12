@@ -10,6 +10,7 @@ mod ops;
 mod pane;
 mod ui;
 mod viewer;
+mod watch;
 
 use std::io::stdout;
 use std::path::PathBuf;
@@ -122,13 +123,28 @@ fn run(
     app: &mut App,
     keyboard: &mut Keyboard,
 ) -> anyhow::Result<()> {
+    // Sem inotify (limite esgotado, sistema sem suporte), só não há
+    // atualização automática.
+    let mut watcher = watch::Watcher::new().ok();
     while !app.should_quit {
         keyboard.sync(app)?;
+        if let Some(w) = &mut watcher {
+            w.watch_only(app.watched_dirs());
+        }
         terminal.draw(|frame| ui::draw(frame, app))?;
         // Com trabalho em andamento (log, cópia...), não bloqueia esperando tecla:
         // processa um pedaço e redesenha o progresso.
         if app.busy() && !event::poll(Duration::ZERO)? {
             app.tick(Duration::from_millis(50));
+            continue;
+        }
+        // Parado, espera uma tecla por até meio segundo; nesse meio-tempo,
+        // aplica as mudanças vistas no disco (agrupadas, para uma cópia
+        // grande feita por outro programa não reler a cada arquivo).
+        if !event::poll(Duration::from_millis(500))? {
+            if let Some(w) = &watcher {
+                app.fs_changed(w.changed_dirs());
+            }
             continue;
         }
         // Pressionar, repetir e soltar: o App decide o que usar.
