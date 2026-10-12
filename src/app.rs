@@ -1,46 +1,30 @@
 //! Estado da aplicação e execução dos comandos.
+//!
+//! O estado de cada janela (árvore, cursores, filespec) fica em [`Pane`];
+//! aqui fica o que é global: prompts, perguntas, operações em andamento e
+//! o visualizador. `App` dá acesso direto à janela ativa (`app.tree`,
+//! `app.files`...), via `Deref`.
 
 use std::fs;
+use std::ops::{Deref, DerefMut};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, ModifierKeyCode};
-use ratatui::widgets::ListState;
 
 use crate::input::{self, Command, LineEvent, LineInput};
 use crate::model::filespec::Filespec;
-use crate::model::tree::{FileEntry, LogJob, NodeId, ROOT, Tree, VisibleRow};
+use crate::model::tree::{LogJob, NodeId, ROOT};
 use crate::ops::{self, Answer, OpKind, Operation, Source};
+pub use crate::pane::{FileView, Focus, Pane};
 use crate::viewer::Viewer;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Focus {
-    Tree,
-    Files,
-}
-
-/// O que a janela de arquivos está listando.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FileView {
-    /// Arquivos do diretório sob o cursor da árvore.
-    Dir,
-    /// Arquivos do ramo a partir deste diretório (tecla `B`).
-    Branch(NodeId),
-    /// Arquivos de tudo o que foi logado (tecla `S`).
-    Showall,
-}
-
-/// Referência a um arquivo dentro da árvore.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FileRef {
-    pub dir: NodeId,
-    pub idx: usize,
-}
 
 /// Leitura em andamento e o que fazer quando ela terminar.
 pub struct Job {
     pub log: LogJob,
+    /// Janela cuja árvore está sendo lida.
+    pane: usize,
     then: AfterLog,
 }
 
@@ -79,6 +63,7 @@ enum PromptKind {
     RenameDir(NodeId),
     MakeDir(NodeId),
     Chmod(Vec<PathBuf>),
+    Log,
 }
 
 impl Prompt {
@@ -111,16 +96,9 @@ enum ConfirmKind {
 }
 
 pub struct App {
-    pub tree: Tree,
-    /// Cache das linhas visíveis; recalculado quando a árvore muda.
-    pub rows: Vec<VisibleRow>,
-    pub tree_state: ListState,
-    pub focus: Focus,
-    pub view: FileView,
-    /// Arquivos listados na janela de arquivos, já filtrados.
-    pub files: Vec<FileRef>,
-    pub file_state: ListState,
-    pub filespec: Filespec,
+    /// Uma janela, ou duas com a tela dividida (F8).
+    pub panes: Vec<Pane>,
+    pub active: usize,
     pub prompt: Option<Prompt>,
     pub confirm: Option<Confirm>,
     /// Mensagem mostrada até a próxima tecla.
@@ -136,24 +114,28 @@ pub struct App {
     pub held: Option<MenuMode>,
     /// Menu escolhido com F9; a próxima letra recebe esse modificador.
     pub sticky: MenuMode,
-    /// Altura útil das listas no último desenho (para PgUp/PgDn).
-    pub tree_page: usize,
-    pub file_page: usize,
+}
+
+/// A janela ativa.
+impl Deref for App {
+    type Target = Pane;
+
+    fn deref(&self) -> &Pane {
+        &self.panes[self.active]
+    }
+}
+
+impl DerefMut for App {
+    fn deref_mut(&mut self) -> &mut Pane {
+        &mut self.panes[self.active]
+    }
 }
 
 impl App {
     pub fn new(root: PathBuf) -> Self {
-        let tree = Tree::new(root);
-        let rows = tree.visible_rows();
-        let mut app = App {
-            tree,
-            rows,
-            tree_state: ListState::default().with_selected(Some(0)),
-            focus: Focus::Tree,
-            view: FileView::Dir,
-            files: Vec::new(),
-            file_state: ListState::default().with_selected(Some(0)),
-            filespec: Filespec::default(),
+        App {
+            panes: vec![Pane::new(root)],
+            active: 0,
             prompt: None,
             confirm: None,
             message: None,
@@ -164,46 +146,16 @@ impl App {
             should_quit: false,
             held: None,
             sticky: MenuMode::Normal,
-            tree_page: 1,
-            file_page: 1,
-        };
-        app.refresh_files();
-        app
-    }
-
-    /// Diretório sob o cursor da árvore.
-    pub fn current(&self) -> NodeId {
-        self.rows[self.tree_state.selected().unwrap_or(0)].id
-    }
-
-    pub fn selected_file(&self) -> Option<FileRef> {
-        self.files.get(self.file_state.selected()?).copied()
-    }
-
-    pub fn file(&self, f: FileRef) -> &FileEntry {
-        &self.tree.node(f.dir).files[f.idx]
-    }
-
-    fn file_path(&self, f: FileRef) -> PathBuf {
-        self.tree.path(f.dir).join(&self.file(f).name)
-    }
-
-    /// Diretório mostrado no cabeçalho: no Showall/Branch, é o do arquivo
-    /// sob o cursor.
-    pub fn header_dir(&self) -> NodeId {
-        match (self.view, self.selected_file()) {
-            (FileView::Dir, _) | (_, None) => self.current(),
-            (_, Some(f)) => f.dir,
         }
     }
 
-    /// Diretório-raiz da lista atual: o diretório, o Branch ou a árvore.
-    fn view_root(&self) -> NodeId {
-        match self.view {
-            FileView::Dir => self.current(),
-            FileView::Branch(id) => id,
-            FileView::Showall => ROOT,
-        }
+    pub fn is_split(&self) -> bool {
+        self.panes.len() > 1
+    }
+
+    /// A outra janela, com a tela dividida.
+    pub fn other(&self) -> Option<&Pane> {
+        self.is_split().then(|| &self.panes[1 - self.active])
     }
 
     /// Há trabalho em andamento que não depende do usuário.
@@ -282,10 +234,11 @@ impl App {
             }
             return;
         }
-        if self.job.is_some() {
+        if let Some(job) = &self.job {
             if key.code == KeyCode::Esc {
+                let pane = &mut self.panes[job.pane];
+                pane.refresh_rows(pane.current());
                 self.job = None;
-                self.refresh_rows(self.current());
                 self.message = Some("Logging cancelled".into());
             }
             return;
@@ -349,6 +302,15 @@ impl App {
                 Focus::Tree => self.focus = Focus::Files,
                 Focus::Files => self.back_to_tree(),
             },
+            // Tab troca de janela com a tela dividida; sem ela, faz o mesmo
+            // que Enter.
+            Command::SwitchPane if self.is_split() => self.active = 1 - self.active,
+            Command::SwitchPane => self.apply(Command::SwitchWindow),
+            Command::Split => self.toggle_split(),
+            Command::Log => {
+                let current = self.current_path().to_string_lossy().into_owned();
+                self.open_prompt(PromptKind::Log, "LOG directory: ".into(), &current);
+            }
             Command::Back => self.back_to_tree(),
             Command::Filespec => {
                 let text = self.filespec.text().to_string();
@@ -377,7 +339,8 @@ impl App {
                         self.apply_files(Command::Down);
                     }
                 } else {
-                    self.set_tags(&self.files.clone(), |_| tag);
+                    let files = self.files.clone();
+                    self.set_tags(&files, |_| tag);
                 }
             }
             Command::TagAll | Command::UntagAll => {
@@ -389,7 +352,10 @@ impl App {
                 };
                 self.set_tags(&refs, |_| tag);
             }
-            Command::Invert => self.set_tags(&self.files.clone(), |t| !t),
+            Command::Invert => {
+                let files = self.files.clone();
+                self.set_tags(&files, |t| !t);
+            }
             Command::Copy { tagged, paths } => self.prompt_transfer(OpKind::Copy, tagged, paths),
             Command::Move { tagged, paths } => self.prompt_transfer(OpKind::Move, tagged, paths),
             Command::Delete { tagged: false } if !in_files => self.ask_delete_dir(),
@@ -439,20 +405,25 @@ impl App {
             return;
         }
         let Some(job) = &mut self.job else { return };
-        self.tree.run_job(&mut job.log, budget);
+        let pane = &mut self.panes[job.pane];
+        pane.tree.run_job(&mut job.log, budget);
         if !job.log.is_done() {
             return;
         }
-        let then = self.job.take().map(|j| j.then);
-        self.refresh_rows(self.current());
-        match then {
-            Some(AfterLog::OpenBranch(id)) => self.set_view(FileView::Branch(id)),
-            _ => self.refresh_files(),
+        pane.refresh_rows(pane.current());
+        match job.then {
+            AfterLog::OpenBranch(id) => pane.set_view(FileView::Branch(id)),
+            AfterLog::Refresh => pane.refresh_files(),
         }
+        self.job = None;
     }
 
     fn start_job(&mut self, log: LogJob, then: AfterLog) {
-        self.job = Some(Job { log, then });
+        self.job = Some(Job {
+            log,
+            pane: self.active,
+            then,
+        });
         // Ramos pequenos terminam na hora, sem piscar a mensagem de progresso.
         self.tick(Duration::from_millis(30));
     }
@@ -465,11 +436,46 @@ impl App {
     /// Fim (ou cancelamento) de uma operação: relê os diretórios afetados.
     fn finish_op(&mut self, prefix: &str) {
         let Some(op) = self.op.take() else { return };
-        for dir in op.touched_dirs() {
-            self.rescan_path(&dir);
-        }
-        self.after_change();
+        self.rescan_everywhere(&op.touched_dirs());
         self.message = Some(format!("{prefix}{}", op.summary()));
+    }
+
+    /// Relê `dirs` em todas as janelas (as duas podem mostrar o mesmo lugar).
+    fn rescan_everywhere<P: AsRef<Path>>(&mut self, dirs: &[P]) {
+        for pane in &mut self.panes {
+            for dir in dirs {
+                pane.rescan_path(dir.as_ref());
+            }
+            pane.after_change();
+        }
+    }
+
+    /// F8: divide a tela em duas janelas, ou volta a uma só. A nova janela
+    /// começa na mesma raiz e no mesmo diretório da atual.
+    fn toggle_split(&mut self) {
+        if self.is_split() {
+            let keep = self.panes.swap_remove(self.active);
+            self.panes = vec![keep];
+            self.active = 0;
+            return;
+        }
+        let mut pane = Pane::new(self.tree.path(ROOT));
+        pane.goto(&self.current_path());
+        self.panes.push(pane);
+    }
+
+    /// Log: abre `path` na janela ativa. Se ele está dentro da árvore atual,
+    /// só leva o cursor até lá; senão, a janela passa a ter `path` como raiz.
+    fn log(&mut self, text: &str) -> Result<(), String> {
+        let path = ops::resolve_path(text, &self.current_path());
+        let path = fs::canonicalize(&path).map_err(|e| format!("Cannot log {text}: {e}"))?;
+        if !path.is_dir() {
+            return Err(format!("{} is not a directory", path.display()));
+        }
+        if !self.goto(&path) {
+            *self.deref_mut() = Pane::new(path);
+        }
+        Ok(())
     }
 
     fn open_prompt(&mut self, kind: PromptKind, label: String, text: &str) {
@@ -490,6 +496,7 @@ impl App {
                 self.filespec = spec;
                 self.refresh_files();
             }),
+            PromptKind::Log => self.log(&text),
             PromptKind::Transfer {
                 kind,
                 sources,
@@ -526,34 +533,13 @@ impl App {
                         self.tree.rescan(parent);
                         self.refresh_rows(parent);
                         self.refresh_files();
+                        self.rescan_everywhere(&[&path]);
                         self.message = Some(format!("Deleted {}", path.display()));
                     }
                     Err(e) => self.message = Some(format!("Cannot delete directory: {e}")),
                 }
             }
         }
-    }
-
-    /// Arquivos sobre os quais uma operação age: os marcados da lista
-    /// atual ou o arquivo sob o cursor.
-    fn sources(&self, tagged: bool) -> Vec<Source> {
-        let refs: Vec<FileRef> = if tagged {
-            self.files
-                .iter()
-                .copied()
-                .filter(|&f| self.file(f).tagged)
-                .collect()
-        } else if self.focus == Focus::Files {
-            self.selected_file().into_iter().collect()
-        } else {
-            Vec::new()
-        };
-        refs.into_iter()
-            .map(|f| Source {
-                path: self.file_path(f),
-                size: self.file(f).size,
-            })
-            .collect()
     }
 
     /// `sources`, avisando quando não há nada para operar.
@@ -573,12 +559,14 @@ impl App {
             return;
         };
         let label = transfer_label(kind, &sources, tagged, paths);
-        let default = self.last_dest.clone().unwrap_or_else(|| {
-            self.tree
-                .path(self.current())
-                .to_string_lossy()
-                .into_owned()
-        });
+        // Com a tela dividida, o destino natural é a outra janela.
+        let default = match self.other() {
+            Some(other) => other.current_path().to_string_lossy().into_owned(),
+            None => self
+                .last_dest
+                .clone()
+                .unwrap_or_else(|| self.current_path().to_string_lossy().into_owned()),
+        };
         let prompt = PromptKind::Transfer {
             kind,
             sources,
@@ -630,9 +618,8 @@ impl App {
         }
         fs::rename(path, &new).map_err(|e| format!("Cannot rename: {e}"))?;
         if let Some(dir) = path.parent() {
-            self.rescan_path(dir);
+            self.rescan_everywhere(&[dir]);
         }
-        self.after_change();
         // Mantém o cursor no arquivo renomeado.
         if let Some(i) = self.files.iter().position(|&f| self.file_path(f) == new) {
             self.file_state.select(Some(i));
@@ -657,6 +644,9 @@ impl App {
         self.tree.scan(keep);
         self.refresh_rows(keep);
         self.refresh_files();
+        if let Some(dir) = path.parent() {
+            self.rescan_everywhere(&[dir]);
+        }
         Ok(())
     }
 
@@ -667,6 +657,7 @@ impl App {
         self.tree.rescan(id);
         self.tree.expand(id);
         self.refresh_rows(id);
+        self.rescan_everywhere(&[&path]);
         self.message = Some(format!("Created {}", path.display()));
         Ok(())
     }
@@ -687,104 +678,13 @@ impl App {
         }
         let mut dirs: Vec<&Path> = paths.iter().filter_map(|p| p.parent()).collect();
         dirs.dedup();
-        for dir in dirs {
-            self.rescan_path(dir);
-        }
-        self.after_change();
+        self.rescan_everywhere(&dirs);
         let mut msg = format!("Permissions set to {mode:03o} on {changed} files");
         if let Some(e) = errors.first() {
             msg.push_str(&format!(". {} errors, first: {e}", errors.len()));
         }
         self.message = Some(msg);
         Ok(())
-    }
-
-    fn set_tags(&mut self, refs: &[FileRef], f: impl Fn(bool) -> bool) {
-        for &r in refs {
-            let entry = self.tree.file_mut(r.dir, r.idx);
-            entry.tagged = f(entry.tagged);
-        }
-    }
-
-    /// Todos os arquivos logados que passam no filespec.
-    fn logged_matching_files(&self) -> Vec<FileRef> {
-        let mut refs = Vec::new();
-        for dir in self.tree.subtree(ROOT) {
-            for (idx, f) in self.tree.node(dir).files.iter().enumerate() {
-                if self.filespec.matches(&f.name) {
-                    refs.push(FileRef { dir, idx });
-                }
-            }
-        }
-        refs
-    }
-
-    /// Relê `dir`; se ele ainda não está na árvore (ex.: acabou de ser
-    /// criado), relê o ancestral mais próximo que está.
-    fn rescan_path(&mut self, dir: &Path) {
-        if let Some(id) = dir.ancestors().find_map(|d| self.tree.find(d)) {
-            self.tree.rescan(id);
-        }
-    }
-
-    /// Atualiza a árvore e a lista de arquivos depois de mudanças no disco.
-    fn after_change(&mut self) {
-        self.refresh_rows(self.current());
-        self.refresh_files();
-    }
-
-    fn apply_tree(&mut self, cmd: Command) {
-        let cur = self.current();
-        let pos = self.tree_state.selected().unwrap_or(0);
-        match cmd {
-            Command::Expand => {
-                self.tree.expand(cur);
-                self.refresh_rows(cur);
-            }
-            Command::Collapse => {
-                let node = self.tree.node(cur);
-                if node.expanded && self.tree.has_children(cur) {
-                    self.tree.collapse(cur);
-                    self.refresh_rows(cur);
-                } else if let Some(parent) = node.parent {
-                    self.select_node(parent);
-                }
-            }
-            _ => self.select_row(move_cursor(cmd, pos, self.rows.len(), self.tree_page)),
-        }
-    }
-
-    fn apply_files(&mut self, cmd: Command) {
-        let pos = self.file_state.selected().unwrap_or(0);
-        let target = move_cursor(cmd, pos, self.files.len(), self.file_page);
-        self.file_state.select(Some(target));
-    }
-
-    fn set_view(&mut self, view: FileView) {
-        self.view = view;
-        self.focus = Focus::Files;
-        self.file_state.select(Some(0));
-        self.refresh_files();
-    }
-
-    /// Volta para a árvore. Saindo do Showall/Branch, o cursor da árvore
-    /// vai para o diretório do arquivo que estava selecionado.
-    fn back_to_tree(&mut self) {
-        let target = (self.view != FileView::Dir)
-            .then(|| self.selected_file())
-            .flatten()
-            .map(|f| f.dir);
-        self.view = FileView::Dir;
-        self.focus = Focus::Tree;
-        match target {
-            Some(dir) => {
-                self.tree.reveal(dir);
-                self.refresh_rows(dir);
-                self.file_state.select(Some(0));
-                self.refresh_files();
-            }
-            None => self.refresh_files(),
-        }
     }
 
     fn open_viewer(&mut self) {
@@ -795,55 +695,6 @@ impl App {
             Ok(v) => self.viewer = Some(v),
             Err(e) => self.message = Some(format!("Cannot view file: {e}")),
         }
-    }
-
-    fn select_row(&mut self, index: usize) {
-        if Some(index) != self.tree_state.selected() {
-            self.tree_state.select(Some(index));
-            let id = self.current();
-            self.tree.scan(id);
-            self.file_state.select(Some(0));
-            self.refresh_files();
-        }
-    }
-
-    fn select_node(&mut self, id: NodeId) {
-        if let Some(i) = self.rows.iter().position(|r| r.id == id) {
-            self.select_row(i);
-        }
-    }
-
-    /// Recalcula as linhas visíveis mantendo o cursor em `keep`.
-    fn refresh_rows(&mut self, keep: NodeId) {
-        self.rows = self.tree.visible_rows();
-        let i = self.rows.iter().position(|r| r.id == keep).unwrap_or(0);
-        self.tree_state.select(Some(i));
-    }
-
-    /// Refaz a lista da janela de arquivos conforme a visão e o filespec.
-    fn refresh_files(&mut self) {
-        let dirs = match self.view {
-            FileView::Dir => vec![self.current()],
-            FileView::Branch(id) => self.tree.subtree(id),
-            FileView::Showall => self.tree.subtree(ROOT),
-        };
-        let mut files = Vec::new();
-        for dir in dirs {
-            for (idx, f) in self.tree.node(dir).files.iter().enumerate() {
-                if self.filespec.matches(&f.name) {
-                    files.push(FileRef { dir, idx });
-                }
-            }
-        }
-        if self.view != FileView::Dir {
-            // Ordenação estável: nomes iguais ficam na ordem da árvore.
-            files.sort_by_cached_key(|&f| self.file(f).name.to_string_lossy().to_lowercase());
-        }
-        self.files = files;
-
-        let last = self.files.len().saturating_sub(1);
-        let sel = self.file_state.selected().unwrap_or(0).min(last);
-        self.file_state.select(Some(sel));
     }
 }
 
@@ -857,24 +708,6 @@ fn describe(sources: &[Source]) -> String {
             .to_string_lossy()
             .into_owned(),
         many => format!("{} tagged files", many.len()),
-    }
-}
-
-/// Nova posição de um cursor numa lista de `len` itens.
-fn move_cursor(cmd: Command, pos: usize, len: usize, page: usize) -> usize {
-    if len == 0 {
-        return 0;
-    }
-    let last = len - 1;
-    let page = page.max(1);
-    match cmd {
-        Command::Up => pos.saturating_sub(1),
-        Command::Down => (pos + 1).min(last),
-        Command::PageUp => pos.saturating_sub(page),
-        Command::PageDown => (pos + page).min(last),
-        Command::Home => 0,
-        Command::End => last,
-        _ => pos,
     }
 }
 
@@ -912,16 +745,6 @@ mod tests {
 
     fn press(app: &mut App, code: KeyCode) {
         app.handle_key(KeyEvent::new(code, KeyModifiers::NONE));
-    }
-
-    #[test]
-    fn cursor_stays_in_bounds() {
-        assert_eq!(move_cursor(Command::Up, 0, 5, 3), 0);
-        assert_eq!(move_cursor(Command::Down, 4, 5, 3), 4);
-        assert_eq!(move_cursor(Command::PageDown, 1, 5, 3), 4);
-        assert_eq!(move_cursor(Command::PageUp, 4, 5, 3), 1);
-        assert_eq!(move_cursor(Command::End, 0, 5, 3), 4);
-        assert_eq!(move_cursor(Command::Down, 0, 0, 3), 0);
     }
 
     #[test]
@@ -1357,5 +1180,79 @@ mod tests {
         press(&mut app, KeyCode::Esc);
         assert_eq!(app.menu_mode(), MenuMode::Normal);
         assert_eq!(app.focus, Focus::Files);
+    }
+
+    #[test]
+    fn f8_splits_and_tab_switches_panes() {
+        let (tmp, mut app) = sample();
+        press(&mut app, KeyCode::Down); // sub
+        press(&mut app, KeyCode::F(8));
+        assert!(app.is_split());
+        assert_eq!(app.active, 0);
+        // A nova janela começa no mesmo diretório.
+        assert_eq!(app.panes[1].current_path(), tmp.path().join("sub"));
+
+        press(&mut app, KeyCode::Tab);
+        assert_eq!(app.active, 1);
+        press(&mut app, KeyCode::Up);
+        assert_eq!(app.current_path(), tmp.path());
+        assert_eq!(app.panes[0].current_path(), tmp.path().join("sub"));
+
+        // F8 de novo fica só com a janela ativa.
+        press(&mut app, KeyCode::F(8));
+        assert!(!app.is_split());
+        assert_eq!(app.current_path(), tmp.path());
+        // Sem divisão, Tab volta a alternar árvore/arquivos.
+        press(&mut app, KeyCode::Tab);
+        assert_eq!(app.focus, Focus::Files);
+    }
+
+    #[test]
+    fn copy_defaults_to_other_pane_and_refreshes_both() {
+        let (tmp, mut app) = sample();
+        press(&mut app, KeyCode::F(8));
+        press(&mut app, KeyCode::Tab);
+        press(&mut app, KeyCode::Down); // janela 2 em sub/
+        press(&mut app, KeyCode::Tab);
+
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Down); // b.txt
+        press(&mut app, KeyCode::Char('c'));
+        let prompt = app.prompt.as_ref().unwrap();
+        assert_eq!(prompt.input.text, tmp.path().join("sub").to_str().unwrap());
+        press(&mut app, KeyCode::Enter);
+        while app.busy() {
+            app.tick(Duration::from_millis(50));
+        }
+        assert!(tmp.path().join("sub/b.txt").exists());
+        // A outra janela já mostra o arquivo novo.
+        let other = &app.panes[1];
+        let names: Vec<_> = other
+            .files
+            .iter()
+            .map(|&f| other.file(f).name.clone())
+            .collect();
+        assert_eq!(names, ["b.txt", "c.rs"]);
+    }
+
+    #[test]
+    fn log_moves_cursor_or_opens_new_root() {
+        let (tmp, mut app) = sample();
+        // Dentro da árvore atual: só leva o cursor.
+        press(&mut app, KeyCode::Char('l'));
+        answer_prompt(&mut app, "sub/deep");
+        assert_eq!(app.current_path(), tmp.path().join("sub/deep"));
+        assert_eq!(app.tree.path(ROOT), tmp.path());
+
+        // Fora dela: a janela ganha uma nova raiz.
+        let other = tempfile::tempdir().unwrap();
+        press(&mut app, KeyCode::Char('l'));
+        answer_prompt(&mut app, other.path().to_str().unwrap());
+        let canonical = fs::canonicalize(other.path()).unwrap();
+        assert_eq!(app.tree.path(ROOT), canonical);
+
+        press(&mut app, KeyCode::Char('l'));
+        answer_prompt(&mut app, "/caminho/que/nao/existe");
+        assert!(app.message.as_deref().unwrap().starts_with("Cannot log"));
     }
 }

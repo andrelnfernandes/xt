@@ -1,0 +1,358 @@
+//! Uma janela do xt: árvore, lista de arquivos, filespec e cursores.
+//!
+//! Na tela normal há uma; com a janela dividida (F8), duas, cada uma com
+//! a sua árvore.
+
+use std::path::{Component, Path, PathBuf};
+
+use ratatui::widgets::ListState;
+
+use crate::input::Command;
+use crate::model::filespec::Filespec;
+use crate::model::tree::{FileEntry, NodeId, ROOT, Tree, VisibleRow};
+use crate::ops::Source;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Focus {
+    Tree,
+    Files,
+}
+
+/// O que a janela de arquivos está listando.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileView {
+    /// Arquivos do diretório sob o cursor da árvore.
+    Dir,
+    /// Arquivos do ramo a partir deste diretório (tecla `B`).
+    Branch(NodeId),
+    /// Arquivos de tudo o que foi logado (tecla `S`).
+    Showall,
+}
+
+/// Referência a um arquivo dentro da árvore.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FileRef {
+    pub dir: NodeId,
+    pub idx: usize,
+}
+
+pub struct Pane {
+    pub tree: Tree,
+    /// Cache das linhas visíveis; recalculado quando a árvore muda.
+    pub rows: Vec<VisibleRow>,
+    pub tree_state: ListState,
+    pub focus: Focus,
+    pub view: FileView,
+    /// Arquivos listados na janela de arquivos, já filtrados.
+    pub files: Vec<FileRef>,
+    pub file_state: ListState,
+    pub filespec: Filespec,
+    /// Altura útil das listas no último desenho (para PgUp/PgDn).
+    pub tree_page: usize,
+    pub file_page: usize,
+}
+
+impl Pane {
+    pub fn new(root: PathBuf) -> Self {
+        let tree = Tree::new(root);
+        let rows = tree.visible_rows();
+        let mut pane = Pane {
+            tree,
+            rows,
+            tree_state: ListState::default().with_selected(Some(0)),
+            focus: Focus::Tree,
+            view: FileView::Dir,
+            files: Vec::new(),
+            file_state: ListState::default().with_selected(Some(0)),
+            filespec: Filespec::default(),
+            tree_page: 1,
+            file_page: 1,
+        };
+        pane.refresh_files();
+        pane
+    }
+
+    /// Diretório sob o cursor da árvore.
+    pub fn current(&self) -> NodeId {
+        self.rows[self.tree_state.selected().unwrap_or(0)].id
+    }
+
+    pub fn current_path(&self) -> PathBuf {
+        self.tree.path(self.current())
+    }
+
+    pub fn selected_file(&self) -> Option<FileRef> {
+        self.files.get(self.file_state.selected()?).copied()
+    }
+
+    pub fn file(&self, f: FileRef) -> &FileEntry {
+        &self.tree.node(f.dir).files[f.idx]
+    }
+
+    pub fn file_path(&self, f: FileRef) -> PathBuf {
+        self.tree.path(f.dir).join(&self.file(f).name)
+    }
+
+    /// Diretório mostrado no cabeçalho: no Showall/Branch, é o do arquivo
+    /// sob o cursor.
+    pub fn header_dir(&self) -> NodeId {
+        match (self.view, self.selected_file()) {
+            (FileView::Dir, _) | (_, None) => self.current(),
+            (_, Some(f)) => f.dir,
+        }
+    }
+
+    /// Diretório-raiz da lista atual: o diretório, o Branch ou a árvore.
+    pub fn view_root(&self) -> NodeId {
+        match self.view {
+            FileView::Dir => self.current(),
+            FileView::Branch(id) => id,
+            FileView::Showall => ROOT,
+        }
+    }
+
+    /// Arquivos sobre os quais uma operação age: os marcados da lista
+    /// atual ou o arquivo sob o cursor.
+    pub fn sources(&self, tagged: bool) -> Vec<Source> {
+        let refs: Vec<FileRef> = if tagged {
+            self.files
+                .iter()
+                .copied()
+                .filter(|&f| self.file(f).tagged)
+                .collect()
+        } else if self.focus == Focus::Files {
+            self.selected_file().into_iter().collect()
+        } else {
+            Vec::new()
+        };
+        refs.into_iter()
+            .map(|f| Source {
+                path: self.file_path(f),
+                size: self.file(f).size,
+            })
+            .collect()
+    }
+
+    pub fn set_tags(&mut self, refs: &[FileRef], f: impl Fn(bool) -> bool) {
+        for &r in refs {
+            let entry = self.tree.file_mut(r.dir, r.idx);
+            entry.tagged = f(entry.tagged);
+        }
+    }
+
+    /// Todos os arquivos logados que passam no filespec.
+    pub fn logged_matching_files(&self) -> Vec<FileRef> {
+        let mut refs = Vec::new();
+        for dir in self.tree.subtree(ROOT) {
+            for (idx, f) in self.tree.node(dir).files.iter().enumerate() {
+                if self.filespec.matches(&f.name) {
+                    refs.push(FileRef { dir, idx });
+                }
+            }
+        }
+        refs
+    }
+
+    /// Relê `dir`; se ele ainda não está na árvore (ex.: acabou de ser
+    /// criado), relê o ancestral mais próximo que está.
+    pub fn rescan_path(&mut self, dir: &Path) {
+        if let Some(id) = dir.ancestors().find_map(|d| self.tree.find(d)) {
+            self.tree.rescan(id);
+        }
+    }
+
+    /// Atualiza a árvore e a lista de arquivos depois de mudanças no disco.
+    pub fn after_change(&mut self) {
+        self.refresh_rows(self.current());
+        self.refresh_files();
+    }
+
+    /// Leva o cursor da árvore até `path`, lendo e expandindo o caminho.
+    /// Para no último diretório existente; devolve se chegou ao destino.
+    pub fn goto(&mut self, path: &Path) -> bool {
+        let Ok(rel) = path.strip_prefix(self.tree.path(ROOT)) else {
+            return false;
+        };
+        let mut cur = ROOT;
+        let mut reached = true;
+        for comp in rel.components() {
+            let Component::Normal(name) = comp else {
+                continue;
+            };
+            self.tree.scan(cur);
+            let node = self.tree.node(cur);
+            match node
+                .children
+                .iter()
+                .find(|&&c| self.tree.node(c).name == name)
+            {
+                Some(&child) => cur = child,
+                None => {
+                    reached = false;
+                    break;
+                }
+            }
+        }
+        self.tree.reveal(cur);
+        self.tree.scan(cur);
+        self.refresh_rows(cur);
+        self.file_state.select(Some(0));
+        self.refresh_files();
+        reached
+    }
+
+    pub fn apply_tree(&mut self, cmd: Command) {
+        let cur = self.current();
+        let pos = self.tree_state.selected().unwrap_or(0);
+        match cmd {
+            Command::Expand => {
+                self.tree.expand(cur);
+                self.refresh_rows(cur);
+            }
+            Command::Collapse => {
+                let node = self.tree.node(cur);
+                if node.expanded && self.tree.has_children(cur) {
+                    self.tree.collapse(cur);
+                    self.refresh_rows(cur);
+                } else if let Some(parent) = node.parent {
+                    self.select_node(parent);
+                }
+            }
+            _ => self.select_row(move_cursor(cmd, pos, self.rows.len(), self.tree_page)),
+        }
+    }
+
+    pub fn apply_files(&mut self, cmd: Command) {
+        let pos = self.file_state.selected().unwrap_or(0);
+        let target = move_cursor(cmd, pos, self.files.len(), self.file_page);
+        self.file_state.select(Some(target));
+    }
+
+    pub fn set_view(&mut self, view: FileView) {
+        self.view = view;
+        self.focus = Focus::Files;
+        self.file_state.select(Some(0));
+        self.refresh_files();
+    }
+
+    /// Volta para a árvore. Saindo do Showall/Branch, o cursor da árvore
+    /// vai para o diretório do arquivo que estava selecionado.
+    pub fn back_to_tree(&mut self) {
+        let target = (self.view != FileView::Dir)
+            .then(|| self.selected_file())
+            .flatten()
+            .map(|f| f.dir);
+        self.view = FileView::Dir;
+        self.focus = Focus::Tree;
+        match target {
+            Some(dir) => {
+                self.tree.reveal(dir);
+                self.refresh_rows(dir);
+                self.file_state.select(Some(0));
+                self.refresh_files();
+            }
+            None => self.refresh_files(),
+        }
+    }
+
+    pub fn select_row(&mut self, index: usize) {
+        if Some(index) != self.tree_state.selected() {
+            self.tree_state.select(Some(index));
+            let id = self.current();
+            self.tree.scan(id);
+            self.file_state.select(Some(0));
+            self.refresh_files();
+        }
+    }
+
+    pub fn select_node(&mut self, id: NodeId) {
+        if let Some(i) = self.rows.iter().position(|r| r.id == id) {
+            self.select_row(i);
+        }
+    }
+
+    /// Recalcula as linhas visíveis mantendo o cursor em `keep`.
+    pub fn refresh_rows(&mut self, keep: NodeId) {
+        self.rows = self.tree.visible_rows();
+        let i = self.rows.iter().position(|r| r.id == keep).unwrap_or(0);
+        self.tree_state.select(Some(i));
+    }
+
+    /// Refaz a lista da janela de arquivos conforme a visão e o filespec.
+    pub fn refresh_files(&mut self) {
+        let dirs = match self.view {
+            FileView::Dir => vec![self.current()],
+            FileView::Branch(id) => self.tree.subtree(id),
+            FileView::Showall => self.tree.subtree(ROOT),
+        };
+        let mut files = Vec::new();
+        for dir in dirs {
+            for (idx, f) in self.tree.node(dir).files.iter().enumerate() {
+                if self.filespec.matches(&f.name) {
+                    files.push(FileRef { dir, idx });
+                }
+            }
+        }
+        if self.view != FileView::Dir {
+            // Ordenação estável: nomes iguais ficam na ordem da árvore.
+            files.sort_by_cached_key(|&f| self.file(f).name.to_string_lossy().to_lowercase());
+        }
+        self.files = files;
+
+        let last = self.files.len().saturating_sub(1);
+        let sel = self.file_state.selected().unwrap_or(0).min(last);
+        self.file_state.select(Some(sel));
+    }
+}
+
+/// Nova posição de um cursor numa lista de `len` itens.
+pub fn move_cursor(cmd: Command, pos: usize, len: usize, page: usize) -> usize {
+    if len == 0 {
+        return 0;
+    }
+    let last = len - 1;
+    let page = page.max(1);
+    match cmd {
+        Command::Up => pos.saturating_sub(1),
+        Command::Down => (pos + 1).min(last),
+        Command::PageUp => pos.saturating_sub(page),
+        Command::PageDown => (pos + page).min(last),
+        Command::Home => 0,
+        Command::End => last,
+        _ => pos,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::create_dir_all;
+
+    #[test]
+    fn cursor_stays_in_bounds() {
+        assert_eq!(move_cursor(Command::Up, 0, 5, 3), 0);
+        assert_eq!(move_cursor(Command::Down, 4, 5, 3), 4);
+        assert_eq!(move_cursor(Command::PageDown, 1, 5, 3), 4);
+        assert_eq!(move_cursor(Command::PageUp, 4, 5, 3), 1);
+        assert_eq!(move_cursor(Command::End, 0, 5, 3), 4);
+        assert_eq!(move_cursor(Command::Down, 0, 0, 3), 0);
+    }
+
+    #[test]
+    fn goto_opens_the_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        create_dir_all(tmp.path().join("a/b/c")).unwrap();
+        let mut pane = Pane::new(tmp.path().to_path_buf());
+
+        assert!(pane.goto(&tmp.path().join("a/b/c")));
+        assert_eq!(pane.current_path(), tmp.path().join("a/b/c"));
+        assert!(pane.rows.iter().any(|r| r.id == pane.current()));
+
+        // Caminho que não existe: para no último diretório que existe.
+        assert!(!pane.goto(&tmp.path().join("a/x/y")));
+        assert_eq!(pane.current_path(), tmp.path().join("a"));
+        // Fora da árvore: não se mexe.
+        assert!(!pane.goto(Path::new("/elsewhere")));
+        assert_eq!(pane.current_path(), tmp.path().join("a"));
+    }
+}

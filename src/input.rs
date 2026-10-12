@@ -18,6 +18,12 @@ pub enum Command {
     ExpandAll,
     /// Alterna entre a árvore e a janela de arquivos.
     SwitchWindow,
+    /// Tab: troca de janela com a tela dividida.
+    SwitchPane,
+    /// F8: divide a tela em duas janelas (ou volta a uma).
+    Split,
+    /// Abre outro diretório na janela.
+    Log,
     Back,
     Filespec,
     Showall,
@@ -94,7 +100,9 @@ pub fn map_key(key: KeyEvent, focus: Focus) -> Option<Command> {
         KeyCode::PageDown => Some(PageDown),
         KeyCode::Home => Some(Home),
         KeyCode::End => Some(End),
-        KeyCode::Enter | KeyCode::Tab => Some(SwitchWindow),
+        KeyCode::Enter => Some(SwitchWindow),
+        KeyCode::Tab => Some(SwitchPane),
+        KeyCode::F(8) => Some(Split),
         KeyCode::F(2) => Some(Relog),
         KeyCode::Char('f') => Some(Filespec),
         KeyCode::Char('s') => Some(Showall),
@@ -117,6 +125,7 @@ pub fn map_key(key: KeyEvent, focus: Focus) -> Option<Command> {
             KeyCode::Left | KeyCode::Char('-') => Some(Collapse),
             KeyCode::Char('*') => Some(ExpandAll),
             KeyCode::Char('m') => Some(MakeDir),
+            KeyCode::Char('l') => Some(Log),
             _ => None,
         },
         Focus::Files => match key {

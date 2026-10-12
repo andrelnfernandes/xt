@@ -6,6 +6,7 @@ mod app;
 mod input;
 mod model;
 mod ops;
+mod pane;
 mod ui;
 mod viewer;
 

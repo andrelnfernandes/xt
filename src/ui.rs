@@ -19,7 +19,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, List, ListItem, ListState, Paragraph};
 
-use crate::app::{App, FileView, Focus, MenuMode};
+use crate::app::{App, FileView, Focus, MenuMode, Pane};
 use crate::model::tree::{FileEntry, FileKind};
 use crate::ops::Operation;
 use crate::viewer::{self, ViewMode};
@@ -49,22 +49,47 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     ])
     .areas(frame.area());
 
-    let [left, stats] =
-        Layout::horizontal([Constraint::Min(20), Constraint::Length(STATS_WIDTH)]).areas(main);
-
     draw_header(frame, app, header);
-    draw_stats(frame, app, stats);
     draw_menu(frame, app, menu);
 
-    match app.focus {
+    if app.is_split() {
+        // Duas janelas lado a lado; o painel de estatísticas sai para dar espaço.
+        let halves: [Rect; 2] =
+            Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .areas(main);
+        let active = app.active;
+        for (i, (pane, area)) in app.panes.iter_mut().zip(halves).enumerate() {
+            draw_pane(frame, pane, i == active, true, area);
+        }
+    } else {
+        let [left, stats] =
+            Layout::horizontal([Constraint::Min(20), Constraint::Length(STATS_WIDTH)]).areas(main);
+        draw_stats(frame, app, stats);
+        draw_pane(frame, &mut app.panes[0], true, false, left);
+    }
+}
+
+/// Uma janela: árvore em cima e arquivos embaixo, ou só os arquivos.
+/// Com a tela dividida, o título da árvore mostra o diretório atual.
+fn draw_pane(frame: &mut Frame, pane: &mut Pane, active: bool, split: bool, area: Rect) {
+    match pane.focus {
         Focus::Tree => {
             let [tree, files] =
                 Layout::vertical([Constraint::Min(3), Constraint::Length(SMALL_FILE_WINDOW)])
-                    .areas(left);
-            draw_tree(frame, app, tree);
-            draw_files(frame, app, files);
+                    .areas(area);
+            let title = if split {
+                let width = tree.width.saturating_sub(4) as usize;
+                format!(
+                    " {} ",
+                    fit_tail(&pane.current_path().to_string_lossy(), width)
+                )
+            } else {
+                " Tree ".to_string()
+            };
+            draw_tree(frame, pane, active, title, tree);
+            draw_files(frame, pane, false, files);
         }
-        Focus::Files => draw_files(frame, app, left),
+        Focus::Files => draw_files(frame, pane, active, area),
     }
 }
 
@@ -100,15 +125,14 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(Line::from(clock), right);
 }
 
-fn draw_tree(frame: &mut Frame, app: &mut App, area: Rect) {
-    let active = app.focus == Focus::Tree;
-    app.tree_page = area.height.saturating_sub(2) as usize;
+fn draw_tree(frame: &mut Frame, pane: &mut Pane, active: bool, title: String, area: Rect) {
+    pane.tree_page = area.height.saturating_sub(2) as usize;
 
-    let (range, mut state) = visible_window(&mut app.tree_state, app.rows.len(), app.tree_page);
-    let items: Vec<ListItem> = app.rows[range]
+    let (range, mut state) = visible_window(&mut pane.tree_state, pane.rows.len(), pane.tree_page);
+    let items: Vec<ListItem> = pane.rows[range]
         .iter()
         .map(|row| {
-            let node = app.tree.node(row.id);
+            let node = pane.tree.node(row.id);
             let name = node.name.to_string_lossy().into_owned();
             let name_style = if node.error.is_some() {
                 Style::new().fg(Color::LightRed)
@@ -123,47 +147,46 @@ fn draw_tree(frame: &mut Frame, app: &mut App, area: Rect) {
         .collect();
 
     let list = List::new(items)
-        .block(panel(" Tree ", active))
+        .block(panel(title, active))
         .highlight_style(highlight(active));
     frame.render_stateful_widget(list, area, &mut state);
 }
 
-fn draw_files(frame: &mut Frame, app: &mut App, area: Rect) {
-    let active = app.focus == Focus::Files;
-    app.file_page = area.height.saturating_sub(2) as usize;
+fn draw_files(frame: &mut Frame, pane: &mut Pane, active: bool, area: Rect) {
+    pane.file_page = area.height.saturating_sub(2) as usize;
 
     let width = area.width.saturating_sub(2) as usize;
-    let error = match app.view {
-        FileView::Dir => app.tree.node(app.current()).error.as_ref(),
+    let (range, mut state) = visible_window(&mut pane.file_state, pane.files.len(), pane.file_page);
+    let error = match pane.view {
+        FileView::Dir => pane.tree.node(pane.current()).error.as_ref(),
         _ => None,
     };
-    let (range, mut state) = visible_window(&mut app.file_state, app.files.len(), app.file_page);
     let items: Vec<ListItem> = if let Some(err) = error {
         vec![ListItem::new(Span::styled(
             format!("Cannot read directory: {err}"),
             Style::new().fg(Color::LightRed),
         ))]
-    } else if app.files.is_empty() {
+    } else if pane.files.is_empty() {
         vec![ListItem::new(Span::styled(
             "No matching files",
             Style::new().fg(DIM),
         ))]
     } else {
-        app.files[range]
+        pane.files[range]
             .iter()
-            .map(|&f| file_line(app.file(f), width))
+            .map(|&f| file_line(pane.file(f), width))
             .collect()
     };
 
-    let kind = match app.view {
+    let kind = match pane.view {
         FileView::Dir => "Files",
         FileView::Branch(_) => "Branch",
         FileView::Showall => "Showall",
     };
     let title = format!(
         " {kind}: {} ({}) ",
-        app.filespec.text(),
-        fmt_num(app.files.len() as u64)
+        pane.filespec.text(),
+        fmt_num(pane.files.len() as u64)
     );
     let list = List::new(items)
         .block(panel(title, active))
@@ -196,7 +219,14 @@ fn file_line(f: &FileEntry, width: usize) -> ListItem<'static> {
     let size = fmt_num(f.size);
     let date = f.modified.map(fmt_time).unwrap_or_default();
     let mode = fmt_mode(f.mode, f.kind);
-    let details = format!(" {size:>15} {date:16} {mode}");
+    // Em janelas estreitas (tela dividida), as colunas menos úteis saem.
+    let details = if width >= 72 {
+        format!(" {size:>15} {date:16} {mode}")
+    } else if width >= 50 {
+        format!(" {size:>13} {date:16}")
+    } else {
+        format!(" {size:>13}")
+    };
 
     // 2 colunas para a marca de tag.
     let name_width = width.saturating_sub(details.chars().count() + 2).max(8);
@@ -351,8 +381,8 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
             menu_words(
                 "DIR",
                 &[
-                    "Branch", "Delete", "Filespec", "Invert", "Makedir", "Rename", "Showall",
-                    "Tag", "Untag", "Quit",
+                    "Branch", "Delete", "Filespec", "Invert", "Log", "Makedir", "Rename",
+                    "Showall", "Tag", "Untag", "Quit",
                 ],
             ),
             menu_line(
@@ -362,6 +392,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                     ("*", "log branch"),
                     ("F2", "relog"),
                     ("Enter", "files"),
+                    ("F8", "split"),
                     ("F9", "Ctrl/Alt menus"),
                 ],
             ),
@@ -387,7 +418,12 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
             ),
             menu_line(
                 "",
-                &[("F2", "relog"), ("Esc", "tree"), ("F9", "Ctrl/Alt menus")],
+                &[
+                    ("F2", "relog"),
+                    ("Esc", "tree"),
+                    ("F8", "split"),
+                    ("F9", "Ctrl/Alt menus"),
+                ],
             ),
         ),
         MenuMode::Ctrl => (
@@ -595,6 +631,16 @@ fn fit(s: &str, width: usize) -> String {
     }
 }
 
+/// Como `fit`, mas guarda o fim do texto: "…/projetos/xt".
+fn fit_tail(s: &str, width: usize) -> String {
+    let len = s.chars().count();
+    if len <= width {
+        return s.to_string();
+    }
+    let tail: String = s.chars().skip(len + 1 - width.max(1)).collect();
+    format!("…{tail}")
+}
+
 /// 1234567 -> "1,234,567"
 fn fmt_num(n: u64) -> String {
     let digits = n.to_string();
@@ -656,6 +702,12 @@ mod tests {
     }
 
     #[test]
+    fn fits_tails() {
+        assert_eq!(fit_tail("/a/b", 10), "/a/b");
+        assert_eq!(fit_tail("/home/andre/xt", 6), "…re/xt");
+    }
+
+    #[test]
     fn window_follows_selection() {
         let mut state = ListState::default().with_selected(Some(0));
         let (range, local) = visible_window(&mut state, 100, 10);
@@ -692,6 +744,24 @@ mod tests {
         app.held = None;
         app.sticky = MenuMode::Alt;
         assert!(footer(&mut app).starts_with("ALT "));
+    }
+
+    #[test]
+    fn renders_split_panes() {
+        use ratatui::{Terminal, backend::TestBackend};
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(tmp.path().join("left-dir")).unwrap();
+        let mut app = App::new(tmp.path().to_path_buf());
+        app.apply(crate::input::Command::Split);
+        for (w, h) in [(120, 30), (30, 10)] {
+            let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+            term.draw(|f| draw(f, &mut app)).unwrap();
+        }
+        let mut term = Terminal::new(TestBackend::new(120, 30)).unwrap();
+        term.draw(|f| draw(f, &mut app)).unwrap();
+        let screen = format!("{:?}", term.backend().buffer());
+        assert_eq!(screen.matches("left-dir").count(), 2, "one per pane");
+        assert!(!screen.contains("LOGGED"), "no stats panel when split");
     }
 
     #[test]

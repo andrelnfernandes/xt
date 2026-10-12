@@ -25,7 +25,10 @@ Sem argumento, abre o diretório atual.
 | `F` | Filespec: filtro de arquivos | idem |
 | `F2` | relê o diretório do disco | idem |
 | `V` | | visualiza o arquivo (texto/hex) |
-| Enter / Tab | abre a janela de arquivos | volta para a árvore |
+| `L` | Log: abre outro diretório na janela | |
+| F8 | divide a tela em duas janelas (ou volta a uma) | idem |
+| Tab | troca de janela (tela dividida) | idem |
+| Enter | abre a janela de arquivos | volta para a árvore |
 | Esc | | volta para a árvore (no diretório do arquivo) |
 | `Q` / F10 | sair (pede confirmação) | sair |
 
@@ -53,6 +56,12 @@ relativos à raiz da lista (o diretório atual, a raiz do Branch, ou a raiz da
 árvore no Showall): `proj/src/model/tree.rs` → `destino/src/model/tree.rs`.
 No prompt do destino, **F6** troca entre os dois modos, e o modo atual aparece
 no próprio prompt. Alt+D e Alt+A funcionam como Ctrl+D e Ctrl+A.
+
+**Tela dividida:** F8 abre uma segunda janela, começando no mesmo diretório;
+Tab alterna entre elas (sem a divisão, Tab faz o mesmo que Enter). Cada janela
+tem a sua árvore, cursor e filespec; use `L` para abrir outro diretório nela.
+Com a tela dividida, o Copy/Move sugere como destino o diretório da outra
+janela, e as duas são atualizadas depois de qualquer operação.
 
 **Menus Ctrl/Alt:** como no ZTree, o rodapé mostra só os comandos de uma
 tecla. **F9** alterna para o menu de Ctrl, depois o de Alt, e volta. Com um
@@ -90,7 +99,8 @@ Na árvore, `+` no conector (`├─+`) indica um diretório recolhido que tem s
 ## Estrutura
 
 - `src/model/` — árvore de diretórios em memória (arena), sem dependência da UI
-- `src/app.rs` — estado e execução de comandos
+- `src/app.rs` — estado global (prompts, operações) e execução de comandos
+- `src/pane.rs` — uma janela: árvore, lista de arquivos, cursores e filespec
 - `src/input.rs` — mapeamento tecla → comando
 - `src/ui.rs` — desenho da tela (ratatui)
 - `src/viewer.rs` — visualizador texto/hex
