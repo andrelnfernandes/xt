@@ -20,7 +20,7 @@ use crate::config::{self, Config, DateFormat, Options, PruneConfirm, Theme};
 use crate::input::{Command, LineEvent, LineInput};
 use crate::keymap::Keymap;
 use crate::model::compare::{self, CompareMode};
-use crate::model::filespec::{DateOrder, Filespec};
+use crate::model::filespec::{self, DateOrder, Filespec};
 use crate::model::sort::{Sort, SortKey};
 use crate::model::tree::{LogJob, NodeId, ROOT};
 use crate::ops::{self, Answer, OpKind, Operation, Source};
@@ -95,6 +95,8 @@ enum PromptKind {
     Treespec {
         origin: NodeId,
     },
+    /// New date: data e hora para estes caminhos.
+    NewDate(Vec<PathBuf>),
     /// Confirmação de um Prune: o texto digitado tem de ser `word`.
     Prune {
         root: PathBuf,
@@ -112,6 +114,7 @@ impl PromptKind {
             PromptKind::Transfer { .. } => "destination",
             PromptKind::Log => "log",
             PromptKind::Treespec { .. } => "treespec",
+            PromptKind::NewDate(_) => "date",
             PromptKind::Execute => "execute",
             PromptKind::MakeDir(_) => "mkdir",
             PromptKind::SearchTagged { .. } | PromptKind::ViewerSearch { .. } => "search",
@@ -678,6 +681,7 @@ impl App {
                 | Command::Edit
                 | Command::Execute
                 | Command::Prune
+                | Command::NewDate { .. }
         );
         if writes && self.archive.is_some() {
             self.message = Some("Archives are read-only (use Copy to extract)".into());
@@ -740,6 +744,7 @@ impl App {
             Command::ViewTagged => self.view_tagged(),
             Command::Treespec => self.start_treespec(),
             Command::FileDisplay => self.cycle_display(),
+            Command::NewDate { tagged } => self.prompt_new_date(tagged),
             Command::Autoview => {
                 // Abre na janela de arquivos, com um visualizador vazio que
                 // `sync_autoview` troca pelo arquivo selecionado.
@@ -1214,6 +1219,71 @@ impl App {
         }
     }
 
+    /// N: pede a nova data, já com a atual (do arquivo ou do diretório).
+    fn prompt_new_date(&mut self, tagged: bool) {
+        let paths: Vec<PathBuf> = if self.focus == Focus::Tree && !tagged {
+            vec![self.current_path()]
+        } else {
+            match self.sources_or_warn(tagged) {
+                Some(s) => s.into_iter().map(|s| s.path).collect(),
+                None => return,
+            }
+        };
+        let modified = fs::metadata(&paths[0]).and_then(|m| m.modified()).ok();
+        let pattern = self.options.date_format.pattern();
+        let current = modified
+            .map(|t| {
+                chrono::DateTime::<chrono::Local>::from(t)
+                    .format(pattern)
+                    .to_string()
+            })
+            .unwrap_or_default();
+        let what = match paths.as_slice() {
+            [one] => fit_name(one),
+            many => format!("{} tagged files", many.len()),
+        };
+        let label = format!("NEW DATE for {what} (date [HH:MM], now, today): ");
+        self.open_prompt(PromptKind::NewDate(paths), label, &current);
+    }
+
+    /// Aplica a data digitada. Sem hora, cada arquivo mantém a sua.
+    fn new_date(&mut self, paths: &[PathBuf], text: &str) -> Result<(), String> {
+        let (date, time) = filespec::parse_date_time(text, self.date_order())
+            .ok_or_else(|| format!("Invalid date: {text}"))?;
+        let mut errors = Vec::new();
+        let mut changed = 0;
+        for path in paths {
+            let result = (|| -> Result<(), String> {
+                let meta = fs::symlink_metadata(path).map_err(|e| e.to_string())?;
+                if meta.is_symlink() {
+                    return Err("symbolic link skipped (the date would change its target)".into());
+                }
+                let old = chrono::DateTime::<chrono::Local>::from(
+                    meta.modified().map_err(|e| e.to_string())?,
+                );
+                let when = date
+                    .and_time(time.unwrap_or(old.time()))
+                    .and_local_timezone(chrono::Local)
+                    .earliest()
+                    .ok_or("time does not exist (daylight saving change)")?;
+                let file = fs::File::open(path).map_err(|e| e.to_string())?;
+                file.set_modified(when.into()).map_err(|e| e.to_string())
+            })();
+            match result {
+                Ok(()) => changed += 1,
+                Err(e) => errors.push(format!("{}: {e}", path.display())),
+            }
+        }
+        let dirs: Vec<&Path> = paths.iter().filter_map(|p| p.parent()).collect();
+        self.rescan_everywhere(&dirs);
+        let mut msg = format!("New date set on {changed} of {}", paths.len());
+        if let Some(e) = errors.first() {
+            msg.push_str(&format!(". Error: {e}"));
+        }
+        self.message = Some(msg);
+        Ok(())
+    }
+
     /// `O`: abre o arquivo (ou os marcados) no programa padrão do sistema.
     /// Dentro de um arquivo compactado, extrai antes para uma pasta
     /// temporária (apagada ao sair do xt).
@@ -1345,6 +1415,7 @@ impl App {
                 self.refresh_files();
             }),
             PromptKind::Log => self.log(&text),
+            PromptKind::NewDate(paths) => self.new_date(&paths, &text),
             // A navegação já aconteceu enquanto digitava; fora da árvore,
             // vira um Log.
             PromptKind::Treespec { .. } => match self.treespec_target(&text) {
@@ -3307,5 +3378,59 @@ mod tests {
         press(&mut app, KeyCode::F(7));
         assert!(app.autoview.is_none());
         assert_eq!(app.focus, Focus::Files);
+    }
+
+    #[test]
+    fn n_sets_new_dates() {
+        use chrono::{Datelike, Timelike};
+        let (tmp, mut app) = sample();
+        app.options.date_format = DateFormat::Dmy;
+        let mtime = |p: &str| {
+            chrono::DateTime::<chrono::Local>::from(
+                fs::metadata(tmp.path().join(p))
+                    .unwrap()
+                    .modified()
+                    .unwrap(),
+            )
+        };
+        let before = mtime("a.rs");
+
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Char('n'));
+        let prompt = app.prompt.as_ref().unwrap();
+        assert!(prompt.label.starts_with("NEW DATE for a.rs"));
+        assert_eq!(
+            prompt.input.text,
+            before.format("%d/%m/%Y %H:%M").to_string()
+        );
+        answer_prompt(&mut app, "01/02/2020 13:45");
+        let after = mtime("a.rs");
+        assert_eq!((after.year(), after.month(), after.day()), (2020, 2, 1));
+        assert_eq!((after.hour(), after.minute()), (13, 45));
+
+        // Marcados, só a data: cada um mantém a hora.
+        ctrl(&mut app, 't');
+        let b_time = mtime("b.txt").time();
+        ctrl(&mut app, 'n');
+        answer_prompt(&mut app, "2019-03-04");
+        assert_eq!(mtime("b.txt").date_naive().to_string(), "2019-03-04");
+        assert_eq!(mtime("b.txt").time().minute(), b_time.minute());
+        assert!(
+            app.message
+                .as_deref()
+                .unwrap()
+                .starts_with("New date set on 2 of 2")
+        );
+
+        press(&mut app, KeyCode::Char('n'));
+        answer_prompt(&mut app, "ontem");
+        assert!(app.message.as_deref().unwrap().starts_with("Invalid date"));
+
+        // Na árvore, a data do diretório.
+        press(&mut app, KeyCode::Esc);
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Char('n'));
+        answer_prompt(&mut app, "2018-01-01");
+        assert_eq!(mtime("sub").date_naive().to_string(), "2018-01-01");
     }
 }

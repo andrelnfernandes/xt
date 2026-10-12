@@ -66,6 +66,11 @@ pub enum Command {
     InvertBranch,
     /// F7: a lista de arquivos com o conteúdo do selecionado ao lado.
     Autoview,
+    /// N: muda a data de modificação (do arquivo, dos marcados ou do
+    /// diretório, na árvore).
+    NewDate {
+        tagged: bool,
+    },
     /// ← e → na janela de arquivos: arquivo anterior/próximo em colunas,
     /// página acima/abaixo numa coluna só.
     Left,

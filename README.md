@@ -138,6 +138,7 @@ corrigido, para não apagar o que você escreveu).
 | Alt+P | Prune: apaga o diretório com tudo dentro | |
 | `R` | renomeia o diretório | renomeia o arquivo |
 | `A` | | permissões (octal, ex.: `644`) |
+| `N` | muda a data do diretório | muda a data do arquivo (Ctrl+N: dos marcados) |
 | Ctrl + `C` `M` `D` `A` | idem, nos arquivos marcados | idem, nos arquivos marcados |
 | Alt+C | Compare do ramo inteiro | copia os marcados **recriando os caminhos** |
 | Alt+M | | move os marcados **recriando os caminhos** |
@@ -279,6 +280,11 @@ só substitui o destino no fim: cancelar (`Esc`) ou um erro nunca deixa um
 arquivo pela metade. Permissões e data de modificação são preservadas, e links
 simbólicos são copiados como links. Mover entre discos copia e depois apaga.
 
+**New date (`N`):** muda a data de modificação. O prompt já vem com a data
+atual no seu formato; aceita também `now` e `today`. Só com a data (sem
+`HH:MM`), cada arquivo mantém a sua hora. Links simbólicos são pulados (a
+data mudaria a do arquivo para onde apontam).
+
 **Delete** apaga de verdade (não vai para a lixeira) e sempre pede confirmação.
 
 **Prune (Alt+P na árvore):** loga o ramo inteiro, mostra quantos arquivos,
@@ -415,8 +421,7 @@ Todas as teclas podem ser trocadas em `[keys]` no `config.toml`.
   Treespec em modo de edição (F5, curingas) e pastas especiais (F6), busca
   ao digitar com prompt (`|`) e modo ativo, janela de
   estatísticas (`?`), troca de drive (`<` e `>`).
-- **Arquivos:** Open em nova janela de terminal (Alt+O), New date (N),
-  Batch (Ctrl+B/Alt+B), JFC (J, comparar o conteúdo de dois arquivos), ZAAP
+- **Arquivos:** Open em nova janela de terminal (Alt+O), Batch (Ctrl+B/Alt+B), JFC (J, comparar o conteúdo de dois arquivos), ZAAP
   (Y), sHortcut (H), Print (P), Rename com máscara, localizar e trocar e mudança de maiúsculas,
   dono/grupo (chown), Megaview (Ctrl+F7 na janela de arquivos), juntar marcados entre as
   janelas (Ctrl+F6), Partial Untag (Ctrl+F8), copiar caminho para a área de

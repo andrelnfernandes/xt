@@ -211,6 +211,16 @@ const COMMANDS: &[(&str, Command, &str)] = &[
         Command::Autoview,
         "file list with the selected file's contents beside it",
     ),
+    (
+        "new_date",
+        Command::NewDate { tagged: false },
+        "change the modification date (in the tree: of the directory)",
+    ),
+    (
+        "new_date_tagged",
+        Command::NewDate { tagged: true },
+        "change the modification date of the tagged files",
+    ),
     ("help", Command::Help, "this help"),
     (
         "file_display",
@@ -269,6 +279,8 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("backspace", Any, "parent"),
     ("f8", Any, "split"),
     ("f7", Any, "autoview"),
+    ("n", Any, "new_date"),
+    ("ctrl+n", Files, "new_date_tagged"),
     ("f10", Any, "quit"),
     ("f12", Any, "settings"),
     ("alt+f10", Any, "settings"),

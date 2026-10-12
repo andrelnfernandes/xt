@@ -337,6 +337,39 @@ fn parse_date(s: &str, order: DateOrder) -> Option<i64> {
     Some(day_number(date))
 }
 
+/// Uma data e hora digitada (New date): `now`, `today`, ou a data na ordem
+/// configurada seguida, opcionalmente, de `HH:MM` ou `HH:MM:SS`. Devolve a
+/// data e, se veio, a hora.
+pub fn parse_date_time(
+    text: &str,
+    order: DateOrder,
+) -> Option<(NaiveDate, Option<chrono::NaiveTime>)> {
+    let text = text.trim();
+    let now = Local::now().naive_local();
+    match text.to_ascii_lowercase().as_str() {
+        "now" => return Some((now.date(), Some(now.time()))),
+        "today" => return Some((now.date(), None)),
+        _ => {}
+    }
+    let mut parts = text.split_whitespace();
+    let date_part = parts.next()?;
+    let day = parse_date(date_part, order)?;
+    let date = NaiveDate::default().checked_add_signed(chrono::Duration::days(day))?;
+    let time = match parts.next() {
+        None => None,
+        Some(t) => {
+            let t = chrono::NaiveTime::parse_from_str(t, "%H:%M:%S")
+                .or_else(|_| chrono::NaiveTime::parse_from_str(t, "%H:%M"))
+                .ok()?;
+            Some(t)
+        }
+    };
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((date, time))
+}
+
 fn day_number(d: NaiveDate) -> i64 {
     d.signed_duration_since(NaiveDate::default()).num_days()
 }
@@ -459,6 +492,29 @@ mod tests {
         assert!(me("*.txt,=TODAY,<s100", &now));
         assert!(!me("*.rs,=TODAY", &now));
         assert!(!me("*.txt,=TODAY,>s100", &now));
+    }
+
+    #[test]
+    fn parses_date_and_time_for_new_date() {
+        let d = |y, m, dd| NaiveDate::from_ymd_opt(y, m, dd).unwrap();
+        let t = |h, m| chrono::NaiveTime::from_hms_opt(h, m, 0);
+        assert_eq!(
+            parse_date_time("12/10/2026 14:30", DateOrder::Dmy),
+            Some((d(2026, 10, 12), t(14, 30)))
+        );
+        assert_eq!(
+            parse_date_time("2026-10-12", DateOrder::Dmy),
+            Some((d(2026, 10, 12), None))
+        );
+        assert!(parse_date_time("now", DateOrder::Ymd).unwrap().1.is_some());
+        assert!(
+            parse_date_time("TODAY", DateOrder::Ymd)
+                .unwrap()
+                .1
+                .is_none()
+        );
+        assert_eq!(parse_date_time("12/10/2026 25:00", DateOrder::Dmy), None);
+        assert_eq!(parse_date_time("ontem", DateOrder::Dmy), None);
     }
 
     #[test]
