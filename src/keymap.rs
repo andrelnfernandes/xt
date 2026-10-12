@@ -358,6 +358,9 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("ctrl+o", Files, "open_tagged"),
     ("ctrl+s", Files, "search_tagged"),
     ("\\", Any, "treespec"),
+    // Not in ZTreeWin (there "/" is the same as "?"), but "/" is how
+    // searching starts in less, vim and most Linux tools.
+    ("/", Any, "treespec"),
     ("ctrl+v", Files, "view_tagged"),
     ("alt+c", Tree, "compare_branch"),
     ("a", Files, "attributes"),

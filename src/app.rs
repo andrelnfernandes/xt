@@ -3817,4 +3817,17 @@ mod tests {
         let text = app.viewer.as_ref().unwrap().visible_lines(20).join("\n");
         assert!(text.contains("Logged") && text.contains("Tagged"), "{text}");
     }
+
+    #[test]
+    fn slash_also_opens_treespec() {
+        let (_tmp, mut app, root) = treespec_setup();
+        press(&mut app, KeyCode::Char('/'));
+        assert_eq!(app.prompt.as_ref().unwrap().input.text, format!("{root}/"));
+        type_text(&mut app, "dow");
+        assert_eq!(current_name(&app), "downloads");
+        press(&mut app, KeyCode::Esc);
+        // "?" still shows the statistics ("/" in the viewer still searches text).
+        press(&mut app, KeyCode::Char('?'));
+        assert!(app.viewer.is_some(), "? still shows statistics");
+    }
 }

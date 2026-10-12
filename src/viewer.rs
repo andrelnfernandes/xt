@@ -700,7 +700,7 @@ mod tests {
                 .any(|(t, c, _)| t.contains("let") && c.is_some())
         );
 
-        // C desliga as cores; o texto não muda.
+        // C turns colors off; the text stays the same.
         press(&mut v, KeyCode::Char('c'));
         assert_eq!(v.language(), None);
         assert!(v.styled(5)[1].iter().all(|(_, c, _)| c.is_none()));

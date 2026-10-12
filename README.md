@@ -119,7 +119,7 @@ fixed, so it doesn't erase what you wrote).
 | Backspace | parent directory | shows the files of the parent directory |
 | Space | down one line | same |
 | `*` | logs and expands the whole branch | |
-| `\` | Treespec: go to a directory by typing the path | same (in Branch/Showall: goes to the file's directory) |
+| `\` or `/` | Treespec: go to a directory by typing the path | same (in Branch/Showall: goes to the file's directory) |
 | Shift+letter, 0–9 | next directory starting with it | next file starting with it |
 | Alt+K | shows the size or file count of each directory in the tree | same |
 | `B` | Branch: files of the whole branch (logs first) | same |
@@ -206,7 +206,7 @@ Branch/Showall. The current order appears in the file window's title (e.g.
 `Size↓`) and the cursor stays on the same file. The initial order comes from `sort` and
 `sort_descending` in the configuration; new windows (F8, Log) inherit the current one.
 
-**Treespec (`\`):** opens a prompt with the current path; as you type,
+**Treespec (`\` or `/`):** opens a prompt with the current path; as you type,
 the tree cursor goes to the first directory starting with what you have
 typed (case-insensitive). `/` or `\` complete the name and go down
 one level; Tab and Shift+Tab complete and then move to the next/previous
@@ -465,6 +465,7 @@ The keys follow ZTreeWin's. The exceptions:
 | F2 | (nothing) | rereads the directory, same as F3 |
 | F9 | applications menu (not implemented) | Ctrl/Alt menus |
 | F12 | macros (not implemented) | configuration |
+| `/` | same as `?` (statistics) | Treespec, like `\` (`?` still shows the statistics) |
 | Ctrl+C, Ctrl+M in the tree | (nothing) | Copy/Move of the current directory's tagged files |
 
 All keys can be rebound under `[keys]` in `config.toml`.

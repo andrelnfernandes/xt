@@ -119,7 +119,7 @@ corrigido, para não apagar o que você escreveu).
 | Backspace | diretório pai | mostra os arquivos do diretório pai |
 | Espaço | desce uma linha | idem |
 | `*` | loga e expande o ramo inteiro | |
-| `\` | Treespec: vai a um diretório digitando o caminho | idem (no Branch/Showall: vai ao diretório do arquivo) |
+| `\` ou `/` | Treespec: vai a um diretório digitando o caminho | idem (no Branch/Showall: vai ao diretório do arquivo) |
 | Shift+letra, 0–9 | próximo diretório que começa com ela | próximo arquivo que começa com ela |
 | Alt+K | mostra o tamanho ou o nº de arquivos de cada diretório na árvore | idem |
 | `B` | Branch: arquivos do ramo inteiro (loga antes) | idem |
@@ -206,7 +206,7 @@ Branch/Showall. A ordem atual aparece no título da janela de arquivos (ex.:
 `Size↓`) e o cursor fica no mesmo arquivo. A ordem inicial vem de `sort` e
 `sort_descending` na configuração; novas janelas (F8, Log) herdam a atual.
 
-**Treespec (`\`):** abre um prompt com o caminho atual; enquanto você digita,
+**Treespec (`\` ou `/`):** abre um prompt com o caminho atual; enquanto você digita,
 o cursor da árvore vai para o primeiro diretório que começa com o que foi
 digitado (sem diferenciar maiúsculas). `/` ou `\` completam o nome e descem
 um nível; Tab e Shift+Tab completam e depois passam para o próximo/anterior
@@ -466,6 +466,7 @@ As teclas seguem as do ZTreeWin. As exceções:
 | F2 | (nada) | relê o diretório, igual ao F3 |
 | F9 | menu de aplicativos (não implementado) | menus de Ctrl/Alt |
 | F12 | macros (não implementadas) | configuração |
+| `/` | o mesmo que `?` (estatísticas) | Treespec, como `\` (`?` continua mostrando as estatísticas) |
 | Ctrl+C, Ctrl+M na árvore | (nada) | Copy/Move dos marcados do diretório atual |
 
 Todas as teclas podem ser trocadas em `[keys]` no `config.toml`.
