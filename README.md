@@ -480,3 +480,7 @@ All keys can be rebound under `[keys]` in `config.toml`.
   loading the log (Zlist, Ctrl/Alt+Z), recycle bin, colors by name and attribute
   (ZCOLORS.INI), mouse, ZTreeWin command-line options, video
   commands (Alt+F6–F9).
+
+## License
+
+xt is released under the [MIT License](LICENSE).

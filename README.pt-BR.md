@@ -480,3 +480,7 @@ Todas as teclas podem ser trocadas em `[keys]` no `config.toml`.
   carregar o log (Zlist, Ctrl/Alt+Z), lixeira, cores por nome e atributo
   (ZCOLORS.INI), mouse, opções de linha de comando do ZTreeWin, comandos de
   vídeo (Alt+F6–F9).
+
+## Licença
+
+O xt é distribuído sob a [licença MIT](LICENSE).
