@@ -80,6 +80,7 @@ fn main() -> anyhow::Result<()> {
         config::set_theme(theme);
     }
     let mut app = App::new(root);
+    app.set_sort(config.options.initial_sort());
     app.options = config.options;
     app.keymap = keymap::Keymap::from_config(&config.keys).unwrap_or_default();
     app.message = config_error;

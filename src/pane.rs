@@ -10,6 +10,7 @@ use ratatui::widgets::ListState;
 use crate::archive::{self, EntryKind};
 use crate::input::Command;
 use crate::model::filespec::Filespec;
+use crate::model::sort::{self, Sort};
 use crate::model::tree::{FileEntry, FileKind, NodeId, ROOT, Tree, VisibleRow};
 use crate::ops::Source;
 
@@ -48,6 +49,7 @@ pub struct Pane {
     pub files: Vec<FileRef>,
     pub file_state: ListState,
     pub filespec: Filespec,
+    pub sort: Sort,
     /// Altura útil das listas no último desenho (para PgUp/PgDn).
     pub tree_page: usize,
     pub file_page: usize,
@@ -100,6 +102,7 @@ impl Pane {
             files: Vec::new(),
             file_state: ListState::default().with_selected(Some(0)),
             filespec: Filespec::default(),
+            sort: Sort::default(),
             tree_page: 1,
             file_page: 1,
             archive: None,
@@ -207,15 +210,28 @@ impl Pane {
     /// Relê `dirs` e atualiza a tela, mantendo o cursor no mesmo arquivo
     /// (se ele ainda existir).
     pub fn rescan_paths<P: AsRef<Path>>(&mut self, dirs: &[P]) {
-        // Guardado antes de reler: depois, as referências da lista não
-        // valem mais.
+        self.keeping_cursor(|pane| {
+            for dir in dirs {
+                pane.rescan_path(dir.as_ref());
+            }
+        });
+    }
+
+    /// Troca a ordenação, mantendo o cursor no mesmo arquivo.
+    pub fn set_sort(&mut self, sort: Sort) {
+        self.keeping_cursor(|pane| pane.sort = sort);
+    }
+
+    /// Faz `change` e atualiza a tela com o cursor no mesmo arquivo de
+    /// antes (se ele ainda existir).
+    fn keeping_cursor(&mut self, change: impl FnOnce(&mut Self)) {
+        // Guardado antes da mudança: depois, as referências da lista podem
+        // não valer mais.
         let selected = self.selected_file().and_then(|f| {
             let entry = self.tree.node(f.dir).files.get(f.idx)?;
             Some((f.dir, entry.name.clone()))
         });
-        for dir in dirs {
-            self.rescan_path(dir.as_ref());
-        }
+        change(self);
         self.after_change();
         if let Some((dir, name)) = selected
             && let Some(i) = self
@@ -346,18 +362,18 @@ impl Pane {
             FileView::Showall => self.tree.subtree(ROOT),
         };
         let mut files = Vec::new();
-        for dir in dirs {
+        for (rank, dir) in dirs.into_iter().enumerate() {
             for (idx, f) in self.tree.node(dir).files.iter().enumerate() {
                 if self.filespec.matches(&f.name) {
-                    files.push(FileRef { dir, idx });
+                    files.push((FileRef { dir, idx }, rank));
                 }
             }
         }
-        if self.view != FileView::Dir {
-            // Ordenação estável: nomes iguais ficam na ordem da árvore.
-            files.sort_by_cached_key(|&f| self.file(f).name.to_string_lossy().to_lowercase());
-        }
-        self.files = files;
+        let sort = self.sort;
+        sort::sort_by(&mut files, &sort, |&(f, rank)| {
+            sort.key_for(self.file(f), rank)
+        });
+        self.files = files.into_iter().map(|(f, _)| f).collect();
 
         let last = self.files.len().saturating_sub(1);
         let sel = self.file_state.selected().unwrap_or(0).min(last);

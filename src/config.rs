@@ -9,6 +9,7 @@ use ratatui::style::Color;
 use serde::Deserialize;
 
 use crate::keymap::Keymap;
+use crate::model::sort::{Sort, SortKey};
 
 /// Exemplo comentado, impresso por `xt --default-config`. Os valores são os
 /// padrões: um arquivo com só isto equivale a não ter arquivo.
@@ -22,6 +23,10 @@ theme = "classic"
 [options]
 # Perguntar antes de sair.
 confirm_quit = true
+# Ordenação inicial dos arquivos: "name", "ext", "date" ou "size"
+# (Alt+S muda durante o uso).
+sort = "name"
+sort_descending = false
 
 # Cores individuais, por cima do tema. Valores: nomes ("yellow",
 # "lightblue", "darkgray"...), "#rrggbb" ou um índice de 0 a 255.
@@ -82,11 +87,28 @@ impl Default for Config {
 #[serde(default, deny_unknown_fields)]
 pub struct Options {
     pub confirm_quit: bool,
+    /// Ordenação inicial dos arquivos.
+    pub sort: SortKey,
+    pub sort_descending: bool,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { confirm_quit: true }
+        Options {
+            confirm_quit: true,
+            sort: SortKey::Name,
+            sort_descending: false,
+        }
+    }
+}
+
+impl Options {
+    pub fn initial_sort(&self) -> Sort {
+        Sort {
+            key: self.sort,
+            descending: self.sort_descending,
+            path_first: false,
+        }
     }
 }
 
@@ -295,6 +317,9 @@ mod tests {
         )
         .unwrap();
         assert!(!c.options.confirm_quit);
+        let sorted = Config::parse("[options]\nsort = \"size\"\nsort_descending = true").unwrap();
+        assert_eq!(sorted.options.initial_sort().label(), "Size↓");
+        assert!(Config::parse("[options]\nsort = \"color\"").is_err());
         let t = Theme::from_config(&c).unwrap();
         assert_eq!(t.key, Color::Rgb(0xff, 0x88, 0x00));
         assert_eq!(t.border, Color::Indexed(240));

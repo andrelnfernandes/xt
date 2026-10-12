@@ -33,6 +33,8 @@ pub enum Command {
     Execute,
     /// F1: lista das teclas.
     Help,
+    /// Alt+S: escolhe a ordenação dos arquivos.
+    Sort,
     Back,
     Filespec,
     Showall,

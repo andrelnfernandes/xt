@@ -20,6 +20,7 @@ use crate::input::{Command, LineEvent, LineInput};
 use crate::keymap::Keymap;
 use crate::model::compare::{self, CompareMode};
 use crate::model::filespec::Filespec;
+use crate::model::sort::{Sort, SortKey};
 use crate::model::tree::{LogJob, NodeId, ROOT};
 use crate::ops::{self, Answer, OpKind, Operation, Source};
 pub use crate::pane::{FileView, Focus, Pane};
@@ -138,7 +139,11 @@ enum ConfirmKind {
     Compare {
         branch: bool,
     },
+    /// Ordenação sendo escolhida (Order e Path first mudam esta cópia).
+    Sort(Sort),
 }
+
+const SORT_OPTIONS: &[&str] = &["Name", "Ext", "Date", "Size", "Order", "Path first"];
 
 pub struct App {
     /// Uma janela, ou duas com a tela dividida (F8).
@@ -418,6 +423,10 @@ impl App {
             Command::SwitchPane => self.apply(Command::SwitchWindow),
             Command::Split => self.toggle_split(),
             Command::Compare => self.ask_compare(false),
+            Command::Sort => {
+                let sort = self.sort;
+                self.ask_sort(sort);
+            }
             Command::Log => {
                 let current = self.current_path().to_string_lossy().into_owned();
                 self.open_prompt(PromptKind::Log, "LOG directory: ".into(), &current);
@@ -580,6 +589,17 @@ impl App {
         }
     }
 
+    fn ask_sort(&mut self, sort: Sort) {
+        let order = if sort.descending {
+            "descending"
+        } else {
+            "ascending"
+        };
+        let path = if sort.path_first { ", path first" } else { "" };
+        let q = format!("SORT files ({order}{path}) by:");
+        self.ask_options(ConfirmKind::Sort(sort), q, SORT_OPTIONS);
+    }
+
     fn ask_compare(&mut self, branch: bool) {
         let Some(other) = self.other() else {
             self.message = Some("Compare needs the split window (F8)".into());
@@ -638,6 +658,7 @@ impl App {
         // Dentro de um arquivo compactado, a nova janela mostra o disco.
         let base = self.outer.as_deref().unwrap_or(self);
         let mut pane = Pane::new(base.tree.path(ROOT));
+        pane.sort = self.sort;
         pane.goto(&base.current_path());
         self.panes.push(pane);
     }
@@ -683,7 +704,9 @@ impl App {
             return Err(format!("{} is not a directory", path.display()));
         }
         if !self.goto(&path) {
+            let sort = self.sort;
             *self.deref_mut() = Pane::new(path);
+            self.set_sort(sort);
         }
         Ok(())
     }
@@ -810,6 +833,23 @@ impl App {
                 }
                 Some(mode) => self.compare(mode),
             },
+            ConfirmKind::Sort(mut sort) => {
+                sort.key = match choice {
+                    'o' => {
+                        sort.descending = !sort.descending;
+                        return self.ask_sort(sort);
+                    }
+                    'p' => {
+                        sort.path_first = !sort.path_first;
+                        return self.ask_sort(sort);
+                    }
+                    'n' => SortKey::Name,
+                    'e' => SortKey::Ext,
+                    'd' => SortKey::Date,
+                    _ => SortKey::Size,
+                };
+                self.set_sort(sort);
+            }
             _ if !yes => {}
             ConfirmKind::Quit => self.should_quit = true,
             ConfirmKind::DeleteFiles(sources) => self.start_op(Operation::delete(sources)),
@@ -1848,5 +1888,35 @@ mod tests {
         press(&mut again, KeyCode::Char('f'));
         press(&mut again, KeyCode::Up);
         assert_eq!(again.prompt.as_ref().unwrap().input.text, "*.rs");
+    }
+
+    #[test]
+    fn alt_s_sorts_keeping_the_cursor() {
+        let (tmp, mut app) = sample();
+        write(tmp.path().join("big.bin"), vec![0u8; 100]).unwrap();
+        app.apply(Command::Relog);
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(names(&app), ["a.rs", "b.txt", "big.bin"]);
+        press(&mut app, KeyCode::Down); // b.txt
+        let selected = |app: &App| app.file(app.selected_file().unwrap()).name.clone();
+        let before = selected(&app);
+
+        alt(&mut app, 's');
+        press(&mut app, KeyCode::Char('o')); // decrescente: pergunta de novo
+        assert!(
+            app.confirm
+                .as_ref()
+                .unwrap()
+                .question
+                .contains("descending")
+        );
+        press(&mut app, KeyCode::Char('s'));
+        assert_eq!(app.sort.label(), "Size↓");
+        assert_eq!(names(&app), ["big.bin", "a.rs", "b.txt"]);
+        assert_eq!(selected(&app), before, "cursor stays on the same file");
+
+        // A nova janela do F8 herda a ordenação.
+        press(&mut app, KeyCode::F(8));
+        assert_eq!(app.panes[1].sort, app.panes[0].sort);
     }
 }

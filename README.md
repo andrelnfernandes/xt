@@ -57,6 +57,7 @@ erro no rodapé.
 | `B` | Branch: arquivos do ramo inteiro (loga antes) | idem |
 | `S` | Showall: arquivos de tudo o que foi logado | idem |
 | `F` | Filespec: filtro de arquivos | idem |
+| Alt+S | ordena os arquivos: nome, extensão, data, tamanho; ordem | idem |
 | `F2` | relê o diretório do disco | idem |
 | `V` | | visualiza o arquivo (texto/hex) |
 | `O` | | abre um ZIP/TAR como diretório |
@@ -113,6 +114,12 @@ Datas com até 2 segundos de diferença contam como iguais (FAT/exFAT).
 
 Para sincronizar: `C` `B` `A` e depois Alt+C (copiar com caminhos), que já
 sugere a outra janela como destino.
+
+**Ordenação (Alt+S):** **N**ame, **E**xt, **D**ate ou **S**ize; **O**rder
+alterna crescente/decrescente e **P**ath first agrupa por diretório no
+Branch/Showall. A ordem atual aparece no título da janela de arquivos (ex.:
+`Size↓`) e o cursor fica no mesmo arquivo. A ordem inicial vem de `sort` e
+`sort_descending` na configuração; novas janelas (F8, Log) herdam a atual.
 
 **Edit e eXecute:** `E` abre o arquivo no editor (`$VISUAL`, `$EDITOR`, o
 `editor` do Debian/Ubuntu ou `vi`). `X` pede uma linha de comando e a roda com

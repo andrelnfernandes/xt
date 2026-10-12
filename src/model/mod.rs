@@ -2,4 +2,5 @@
 
 pub mod compare;
 pub mod filespec;
+pub mod sort;
 pub mod tree;

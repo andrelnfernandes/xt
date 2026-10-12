@@ -190,9 +190,10 @@ fn draw_files(frame: &mut Frame, pane: &mut Pane, active: bool, area: Rect) {
         FileView::Showall => "Showall",
     };
     let title = format!(
-        " {kind}: {} ({}) ",
+        " {kind}: {} ({}) {} ",
         pane.filespec.text(),
-        fmt_num(pane.files.len() as u64)
+        fmt_num(pane.files.len() as u64),
+        pane.sort.label()
     );
     let list = List::new(items)
         .block(panel(title, active))

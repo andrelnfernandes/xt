@@ -151,6 +151,11 @@ const COMMANDS: &[(&str, Command, &str)] = &[
     ("open", Command::Open, "open a zip/tar archive"),
     ("edit", Command::Edit, "edit file"),
     ("execute", Command::Execute, "execute a shell command"),
+    (
+        "sort",
+        Command::Sort,
+        "sort files (name, ext, date, size; order)",
+    ),
     ("help", Command::Help, "this help"),
     ("quit", Command::Quit, "quit"),
 ];
@@ -201,6 +206,7 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("alt+m", Any, "move_tagged_paths"),
     ("alt+t", Any, "tag_all"),
     ("alt+u", Any, "untag_all"),
+    ("alt+s", Any, "sort"),
     ("right", Tree, "expand"),
     ("plus", Tree, "expand"),
     ("left", Tree, "collapse"),
