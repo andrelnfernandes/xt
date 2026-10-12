@@ -153,7 +153,27 @@ const COMMANDS: &[(&str, Command, &str)] = &[
         Command::Compare,
         "compare with the other pane and tag",
     ),
-    ("open", Command::Open, "open a zip/tar archive"),
+    (
+        "open",
+        Command::OpenWith { tagged: false },
+        "open file with its default program",
+    ),
+    (
+        "open_tagged",
+        Command::OpenWith { tagged: true },
+        "open tagged files with their default programs",
+    ),
+    (
+        "open_archive",
+        Command::OpenArchive,
+        "open a zip/tar archive as a directory",
+    ),
+    (
+        "compare_branch",
+        Command::CompareBranch,
+        "compare the branch with the other pane",
+    ),
+    ("parent", Command::Parent, "go to the parent directory"),
     ("edit", Command::Edit, "edit file"),
     ("execute", Command::Execute, "execute a shell command"),
     (
@@ -191,7 +211,10 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("enter", Any, "switch_window"),
     ("tab", Any, "switch_pane"),
     ("f1", Any, "help"),
+    ("f3", Any, "relog"),
     ("f2", Any, "relog"),
+    ("space", Any, "down"),
+    ("backspace", Any, "parent"),
     ("f8", Any, "split"),
     ("f10", Any, "quit"),
     ("f12", Any, "settings"),
@@ -213,9 +236,7 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("ctrl+t", Any, "tag_all"),
     ("ctrl+u", Any, "untag_all"),
     ("alt+a", Any, "attributes_tagged"),
-    ("alt+c", Any, "copy_tagged_paths"),
     ("alt+d", Any, "delete_tagged"),
-    ("alt+m", Any, "move_tagged_paths"),
     ("alt+t", Any, "tag_all"),
     ("alt+u", Any, "untag_all"),
     ("alt+s", Any, "sort"),
@@ -230,7 +251,13 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("m", Tree, "make_dir"),
     ("alt+p", Tree, "prune"),
     ("esc", Files, "back"),
-    ("left", Files, "back"),
+    ("left", Files, "page_up"),
+    ("right", Files, "page_down"),
+    ("alt+c", Files, "copy_tagged_paths"),
+    ("alt+m", Files, "move_tagged_paths"),
+    ("alt+f5", Files, "open_archive"),
+    ("ctrl+o", Files, "open_tagged"),
+    ("alt+c", Tree, "compare_branch"),
     ("a", Files, "attributes"),
     ("c", Files, "copy"),
     ("e", Files, "edit"),
@@ -492,7 +519,7 @@ mod tests {
                 })
             );
             assert_eq!(
-                map(KeyCode::Char('m'), mods, Focus::Tree),
+                map(KeyCode::Char('m'), mods, Focus::Files),
                 Some(Command::Move {
                     tagged: true,
                     paths
@@ -503,6 +530,57 @@ mod tests {
                 Some(Command::TagAll)
             );
         }
+    }
+
+    #[test]
+    fn keys_follow_ztreewin() {
+        let none = KeyModifiers::NONE;
+        assert_eq!(map(KeyCode::F(3), none, Focus::Tree), Some(Command::Relog));
+        assert_eq!(
+            map(KeyCode::Char('c'), KeyModifiers::ALT, Focus::Tree),
+            Some(Command::CompareBranch)
+        );
+        assert_eq!(
+            map(KeyCode::Char('m'), KeyModifiers::ALT, Focus::Tree),
+            None,
+            "Mirror"
+        );
+        assert_eq!(
+            map(KeyCode::F(5), KeyModifiers::ALT, Focus::Files),
+            Some(Command::OpenArchive)
+        );
+        assert_eq!(
+            map(
+                KeyCode::F(5),
+                KeyModifiers::ALT | KeyModifiers::SHIFT,
+                Focus::Files
+            ),
+            Some(Command::OpenArchive)
+        );
+        assert_eq!(
+            map(KeyCode::Char('o'), none, Focus::Files),
+            Some(Command::OpenWith { tagged: false })
+        );
+        assert_eq!(
+            map(KeyCode::Char('o'), KeyModifiers::CONTROL, Focus::Files),
+            Some(Command::OpenWith { tagged: true })
+        );
+        assert_eq!(
+            map(KeyCode::Left, none, Focus::Files),
+            Some(Command::PageUp)
+        );
+        assert_eq!(
+            map(KeyCode::Right, none, Focus::Files),
+            Some(Command::PageDown)
+        );
+        assert_eq!(
+            map(KeyCode::Backspace, none, Focus::Tree),
+            Some(Command::Parent)
+        );
+        assert_eq!(
+            map(KeyCode::Char(' '), none, Focus::Files),
+            Some(Command::Down)
+        );
     }
 
     #[test]

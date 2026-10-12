@@ -524,7 +524,18 @@ impl App {
             }
             Command::Back if in_files => self.back_to_tree(),
             Command::Back => self.close_archive(),
-            Command::Open => self.open_archive(),
+            Command::OpenArchive => self.open_archive(),
+            Command::OpenWith { tagged } => self.open_with(tagged),
+            Command::CompareBranch => self.ask_compare(true),
+            Command::Parent => {
+                let cur = self.current();
+                if self.view == FileView::Dir
+                    && let Some(parent) = self.tree.node(cur).parent
+                {
+                    // Na janela de arquivos, continua nela, mostrando o pai.
+                    self.select_node(parent);
+                }
+            }
             Command::Settings => {
                 self.settings = Some(Settings::new(
                     self.config.clone(),
@@ -864,6 +875,37 @@ impl App {
                 Err(e) => self.message = Some(format!("Cannot open archive: {e}")),
             }
         }
+    }
+
+    /// `O`: abre o arquivo (ou os marcados) no programa padrão do sistema.
+    /// Dentro de um arquivo compactado, extrai antes para uma pasta
+    /// temporária (apagada ao sair do xt).
+    fn open_with(&mut self, tagged: bool) {
+        let Some(sources) = self.sources_or_warn(tagged) else {
+            return;
+        };
+        let mut errors = Vec::new();
+        let mut opened = 0;
+        for source in sources {
+            let path = match &self.archive {
+                Some(root) => match extract_for_opening(root, &source.path) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        errors.push(format!("{}: {e}", source.path.display()));
+                        continue;
+                    }
+                },
+                None => source.path,
+            };
+            match shell::open_detached(&path, &self.options.opener) {
+                Ok(()) => opened += 1,
+                Err(e) => errors.push(format!("{}: {e}", path.display())),
+            }
+        }
+        self.message = Some(match errors.first() {
+            None => format!("Opened {opened} file(s)"),
+            Some(e) => format!("Opened {opened} file(s). Error: {e}"),
+        });
     }
 
     /// Esc na árvore de um arquivo compactado: volta para onde estava.
@@ -1239,6 +1281,23 @@ impl App {
             Err(e) => self.message = Some(format!("Cannot view file: {e}")),
         }
     }
+}
+
+/// Pasta temporária do xt para abrir arquivos de dentro de ZIP/TAR.
+pub fn temp_dir() -> PathBuf {
+    std::env::temp_dir().join(format!("xt-{}", std::process::id()))
+}
+
+/// Extrai uma entrada de `archive` (caminho virtual `entry`) para a pasta
+/// temporária, para um programa externo poder abri-la.
+fn extract_for_opening(archive: &Path, entry: &Path) -> std::io::Result<PathBuf> {
+    let rel = entry.strip_prefix(archive).unwrap_or(entry);
+    let dir = temp_dir();
+    fs::create_dir_all(&dir)?;
+    let out = dir.join(rel.file_name().unwrap_or_default());
+    let mut file = fs::File::create(&out)?;
+    archive::Reader::open(archive)?.extract(rel, &mut file, u64::MAX)?;
+    Ok(out)
 }
 
 /// Último componente de um caminho, para mensagens curtas.
@@ -1909,10 +1968,14 @@ mod tests {
         (tmp, app)
     }
 
+    fn alt_f5(app: &mut App) {
+        app.handle_key(KeyEvent::new(KeyCode::F(5), KeyModifiers::ALT));
+    }
+
     #[test]
     fn opens_browses_and_closes_archives() {
         let (tmp, mut app) = archive_setup();
-        press(&mut app, KeyCode::Char('o'));
+        alt_f5(&mut app);
         assert_eq!(
             app.archive.as_deref(),
             Some(tmp.path().join("p.zip").as_path())
@@ -1941,7 +2004,7 @@ mod tests {
     #[test]
     fn copies_out_of_archives() {
         let (tmp, mut app) = archive_setup();
-        press(&mut app, KeyCode::Char('o'));
+        alt_f5(&mut app);
         app.apply(Command::Branch);
         ctrl(&mut app, 't');
         alt(&mut app, 'c');
@@ -1960,7 +2023,7 @@ mod tests {
     fn open_rejects_non_archives() {
         let (_tmp, mut app) = sample();
         press(&mut app, KeyCode::Enter);
-        press(&mut app, KeyCode::Char('o'));
+        alt_f5(&mut app);
         assert!(app.archive.is_none());
         assert!(
             app.message
@@ -2240,5 +2303,71 @@ mod tests {
         press(&mut app, KeyCode::Esc);
         assert!(app.settings.is_none());
         assert_eq!(app.options, Options::default());
+    }
+
+    /// Um "programa padrão" falso que copia o arquivo recebido para `out/`.
+    fn fake_opener(tmp: &Path) -> (String, PathBuf) {
+        let out = tmp.join("opened");
+        fs::create_dir_all(&out).unwrap();
+        (format!("cp -t {}", out.display()), out)
+    }
+
+    fn wait_for(path: &Path) -> bool {
+        (0..100).any(|_| {
+            std::thread::sleep(Duration::from_millis(20));
+            path.exists()
+        })
+    }
+
+    #[test]
+    fn o_opens_with_the_default_program() {
+        let (tmp, mut app) = sample();
+        let (opener, out) = fake_opener(tmp.path());
+        app.options.opener = opener;
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Char('o'));
+        assert_eq!(app.message.as_deref(), Some("Opened 1 file(s)"));
+        assert!(wait_for(&out.join("a.rs")));
+
+        ctrl(&mut app, 't');
+        ctrl(&mut app, 'o');
+        assert_eq!(app.message.as_deref(), Some("Opened 2 file(s)"));
+        assert!(wait_for(&out.join("b.txt")));
+    }
+
+    #[test]
+    fn o_inside_archive_extracts_first() {
+        let (tmp, mut app) = archive_setup();
+        let (opener, out) = fake_opener(tmp.path());
+        app.options.opener = opener;
+        alt_f5(&mut app);
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Char('o'));
+        assert!(wait_for(&out.join("README")));
+        assert_eq!(fs::read_to_string(out.join("README")).unwrap(), "leia-me");
+    }
+
+    #[test]
+    fn alt_c_in_tree_compares_the_branch() {
+        let (_tmp, mut app) = compare_setup();
+        alt(&mut app, 'c');
+        let q = &app.confirm.as_ref().expect("compare question").question;
+        assert!(q.starts_with("COMPARE branch"), "{q}");
+    }
+
+    #[test]
+    fn backspace_goes_to_parent_in_both_windows() {
+        let (tmp, mut app) = sample();
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Backspace);
+        assert_eq!(app.current(), ROOT);
+
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(app.current_path(), tmp.path().join("sub"));
+        press(&mut app, KeyCode::Backspace);
+        assert_eq!(app.current(), ROOT);
+        assert_eq!(app.focus, Focus::Files);
+        assert_eq!(names(&app), ["a.rs", "b.txt"]);
     }
 }

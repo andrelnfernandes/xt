@@ -94,6 +94,8 @@ fn main() -> anyhow::Result<()> {
     let result = run(&mut terminal, &mut app, &mut keyboard);
     keyboard.restore();
     ratatui::restore();
+    // Arquivos extraídos de ZIP/TAR para abrir com O.
+    let _ = std::fs::remove_dir_all(app::temp_dir());
     result
 }
 

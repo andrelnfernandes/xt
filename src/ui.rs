@@ -420,7 +420,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                 &[
                     ("←→", "close/open"),
                     ("*", "log branch"),
-                    ("F2", "relog"),
+                    ("F3", "relog"),
                     ("Enter", "files"),
                     ("F8", "split"),
                     ("F9", "Ctrl/Alt menus"),
@@ -452,7 +452,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
             menu_line(
                 "",
                 &[
-                    ("F2", "relog"),
+                    ("F3", "relog"),
                     ("Esc", "tree"),
                     ("F8", "split"),
                     ("F9", "Ctrl/Alt menus"),
@@ -462,7 +462,19 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
         MenuMode::Ctrl => (
             menu_words(
                 "CTRL",
-                &["Attributes", "Copy", "Delete", "Move", "Tag", "Untag"],
+                if tree {
+                    &["Attributes", "Copy", "Delete", "Move", "Tag", "Untag"]
+                } else {
+                    &[
+                        "Attributes",
+                        "Copy",
+                        "Delete",
+                        "Move",
+                        "Open",
+                        "Tag",
+                        "Untag",
+                    ]
+                },
             ),
             menu_line(
                 "",
@@ -483,14 +495,21 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
             menu_words(
                 "ALT",
                 if tree {
-                    &["Attributes", "Copy", "Delete", "Move", "Prune", "Sort"]
+                    &["Attributes", "Compare branch", "Delete", "Prune", "Sort"]
                 } else {
                     &["Attributes", "Copy", "Delete", "Move", "Sort"]
                 },
             ),
             menu_line(
                 "",
-                &[("", "tagged files · Copy/Move recreate the paths"), hint],
+                &[
+                    if tree {
+                        ("", "Attributes/Delete: tagged files here")
+                    } else {
+                        ("F5", "open archive · Copy/Move: tagged with paths")
+                    },
+                    hint,
+                ],
             ),
         ),
     }
@@ -662,8 +681,11 @@ fn draw_settings(frame: &mut Frame, s: &Settings) {
         );
     }
 
-    let lines = if let Some(input) = &s.editing {
-        let label = "Editor: ";
+    let lines = if let Some((opt, input)) = &s.editing {
+        let label = match opt {
+            settings::Opt::Opener => "Open with: ",
+            _ => "Editor: ",
+        };
         let col = menu.x + (label.len() + input.cursor) as u16;
         frame.set_cursor_position((col.min(menu.right().saturating_sub(1)), menu.y));
         vec![

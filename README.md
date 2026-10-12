@@ -69,15 +69,20 @@ corrigido, para não apagar o que você escreveu).
 |---|---|---|
 | ↑ ↓ PgUp PgDn Home End | move o cursor | move o cursor |
 | → / `+` | expande o diretório | |
-| ← / `-` | recolhe (ou vai para o pai) | volta para a árvore |
+| ← / `-` | recolhe (ou vai para o pai) | página acima |
+| → | expande | página abaixo |
+| Backspace | diretório pai | mostra os arquivos do diretório pai |
+| Espaço | desce uma linha | idem |
 | `*` | loga e expande o ramo inteiro | |
 | `B` | Branch: arquivos do ramo inteiro (loga antes) | idem |
 | `S` | Showall: arquivos de tudo o que foi logado | idem |
 | `F` | Filespec: filtro de arquivos | idem |
 | Alt+S | ordena os arquivos: nome, extensão, data, tamanho; ordem | idem |
-| `F2` | relê o diretório do disco | idem |
+| F3 (ou F2) | relê o diretório do disco | idem |
 | `V` | | visualiza o arquivo (texto/hex) |
-| `O` | | abre um ZIP/TAR como diretório |
+| `O` | | abre o arquivo no programa padrão (`xdg-open`) |
+| Ctrl+O | | abre os arquivos marcados no programa padrão |
+| Alt+F5 | | abre um ZIP/TAR como diretório |
 | `E` | | abre o arquivo no editor |
 | `X` | executa um comando do shell | idem |
 | `L` | Log: abre outro diretório na janela | |
@@ -104,7 +109,8 @@ corrigido, para não apagar o que você escreveu).
 | `R` | renomeia o diretório | renomeia o arquivo |
 | `A` | | permissões (octal, ex.: `644`) |
 | Ctrl + `C` `M` `D` `A` | idem, nos arquivos marcados | idem, nos arquivos marcados |
-| Alt + `C` `M` | copia / move os marcados **recriando os caminhos** | idem |
+| Alt+C | Compare do ramo inteiro | copia os marcados **recriando os caminhos** |
+| Alt+M | | move os marcados **recriando os caminhos** |
 
 As operações em grupo agem sobre os arquivos marcados **da lista atual**
 (o diretório, ou o Branch/Showall aberto).
@@ -126,7 +132,8 @@ janela, e as duas são atualizadas depois de qualquer operação.
 diretório atual com os do diretório da outra janela e marca, à escolha:
 **U**nique (não existem do outro lado), **N**ewer, **O**lder, **I**dentical
 (mesmo tamanho e data), **D**ifferent, ou **A**ll new (únicos + mais novos:
-o que falta copiar para atualizar o outro lado). **B** troca o escopo para o
+o que falta copiar para atualizar o outro lado). **B** (ou Alt+C na árvore,
+como no ZTreeWin) troca o escopo para o
 ramo inteiro: o xt loga o ramo, compara seguindo os caminhos relativos
 (`src/a.rs` ↔ `<outro>/src/a.rs`) e abre o Branch com os arquivos marcados.
 Datas com até 2 segundos de diferença contam como iguais (FAT/exFAT).
@@ -152,7 +159,14 @@ prompt (Filespec, destino do Copy/Move, Log, eXecute...) tem o seu histórico,
 guardado em `~/.local/state/xt/history.toml` (ou `$XDG_STATE_HOME/xt/`), com
 permissão só para você, já que pode conter comandos digitados.
 
-**Arquivos compactados:** `O` na janela de arquivos abre `.zip`, `.jar`,
+**Open (`O`):** abre o arquivo no programa padrão do sistema (`xdg-open`:
+imagens no visualizador de imagens, PDFs no leitor de PDF etc.), em
+segundo plano, sem sair do xt. Ctrl+O abre todos os marcados. Dentro de um
+arquivo compactado, a entrada é extraída antes para uma pasta temporária,
+apagada ao sair do xt. Outro programa pode ser escolhido em `opener` (ou na
+tela de configuração).
+
+**Arquivos compactados:** Alt+F5 na janela de arquivos abre `.zip`, `.jar`,
 `.war`, `.apk`, `.tar`, `.tar.gz` ou `.tgz` como uma árvore, somente leitura:
 navegação, Filespec, Branch, Showall, tags, View e Compare funcionam dentro
 dele, e Copy (inclusive Ctrl+C e Alt+C com caminhos) extrai os arquivos.
@@ -164,7 +178,7 @@ dentro de arquivos compactados nunca são extraídos.
 cada janela e relê sozinho quando outro programa cria, apaga, renomeia ou
 altera arquivos ali, mantendo o cursor no mesmo arquivo. As mudanças são
 agrupadas (no máximo uma releitura a cada meio segundo) e esperam o fim de
-uma operação em andamento. Outros diretórios continuam com `F2`.
+uma operação em andamento. Outros diretórios continuam com F3.
 
 **Menus Ctrl/Alt:** como no ZTree, o rodapé mostra só os comandos de uma
 tecla. **F9** alterna para o menu de Ctrl, depois o de Alt, e volta. Com um
@@ -255,7 +269,7 @@ novas do ZTreeWin podem ter mudado detalhes.
 Showall, tags (T, U, I, Ctrl+T/U), Copy/Move/Delete/Rename com as versões
 Ctrl (marcados) e Alt (marcados com caminhos), Make dir, Delete dir, Prune,
 Attributes, View, Edit, eXecute, Compare (diretório e ramo), Sort, Log,
-janela dividida (F8 e Tab), relog (F2), atualização automática, navegação e
+janela dividida (F8 e Tab), relog (F3), Open (`O`), atualização automática, navegação e
 extração de arquivos compactados, histórico nos prompts, ajuda (F1) e tela de
 configuração (Alt+F10).
 
@@ -285,19 +299,17 @@ janela, atalhos (.lnk). As demais dependem de recursos ainda não feitos
 
 ### Teclas diferentes
 
+As teclas seguem as do ZTreeWin. As exceções:
+
 | Função | ZTreeWin | xt |
 |---|---|---|
-| Reler o diretório | F3 | F2 |
-| Configuração | Alt+F10 | F12 ou Alt+F10 (no GNOME, Alt+F10 maximiza a janela) |
-| Abrir arquivo compactado | Alt+F5 | `O` |
-| Compare do ramo | Alt+C na árvore | `C` e depois `B` |
-| Alt+C na árvore | Compare do ramo | Copy dos marcados com caminhos |
-| Alt+M na árvore | Mirror | Move dos marcados com caminhos |
-| Mover marcados | Ctrl+M | Ctrl+M (terminais com o protocolo do kitty), `F9` `M`, ou Alt+M e F6 |
+| Configuração | Alt+F10 | F12 ou Alt+F10 (no GNOME, Alt+F10 maximiza a janela e não chega ao xt) |
+| Mover marcados | Ctrl+M | Ctrl+M em terminais com o protocolo do kitty; nos outros, `F9` `M` (ou Alt+M e F6) |
 | `-` na árvore | descarrega o ramo da memória | só recolhe (continua logado) |
-| ← na janela de arquivos | página acima | volta para a árvore |
-| F9 | menu de aplicativos | menus de Ctrl/Alt |
-| F12 | macros | configuração |
+| F2 | (nada) | relê o diretório, igual ao F3 |
+| F9 | menu de aplicativos (não implementado) | menus de Ctrl/Alt |
+| F12 | macros (não implementadas) | configuração |
+| Ctrl+C, Ctrl+M na árvore | (nada) | Copy/Move dos marcados do diretório atual |
 
 Todas as teclas podem ser trocadas em `[keys]` no `config.toml`.
 
@@ -310,8 +322,7 @@ Todas as teclas podem ser trocadas em `[keys]` no `config.toml`.
   marcar/desmarcar o ramo (Ctrl+F7/F8), marcar por atributo (Alt+T/U),
   navegação por Treespec (`\`), busca ao digitar (spell search), janela de
   estatísticas (`?`), troca de drive (`<` e `>`).
-- **Arquivos:** Open com o programa associado (O; no Linux seria
-  `xdg-open`), New date (N), Batch (Ctrl+B/Alt+B), busca no conteúdo dos
+- **Arquivos:** Open em nova janela de terminal (Alt+O), New date (N), Batch (Ctrl+B/Alt+B), busca no conteúdo dos
   marcados (Ctrl+S), JFC (J, comparar o conteúdo de dois arquivos), ZAAP
   (Y), sHortcut (H), Print (P), modos de exibição (Alt+F: várias colunas,
   só nomes), Rename com máscara, localizar e trocar e mudança de maiúsculas,

@@ -27,6 +27,8 @@ theme = "classic"
 [options]
 # Editor da tecla E. Vazio: $VISUAL, $EDITOR, editor ou vi.
 editor = ""
+# Programa da tecla O (abrir com o programa padrão). Vazio: xdg-open.
+opener = ""
 # Datas: "yyyy-mm-dd", "dd/mm/yyyy" ou "mm/dd/yyyy".
 date_format = "yyyy-mm-dd"
 # Números: "1,234", "1.234", "1 234" ou "1234".
@@ -114,6 +116,8 @@ impl Default for Config {
 pub struct Options {
     /// Editor da tecla E; vazio usa as variáveis de ambiente.
     pub editor: String,
+    /// Programa da tecla O; vazio usa o xdg-open.
+    pub opener: String,
     pub date_format: DateFormat,
     pub number_format: NumberFormat,
     pub show_hidden: bool,
@@ -134,6 +138,7 @@ impl Default for Options {
     fn default() -> Self {
         Options {
             editor: String::new(),
+            opener: String::new(),
             date_format: DateFormat::Iso,
             number_format: NumberFormat::Comma,
             show_hidden: true,
@@ -165,6 +170,7 @@ impl Options {
         let s = |v: &str| Value::from(v);
         vec![
             ("editor", s(&self.editor)),
+            ("opener", s(&self.opener)),
             ("date_format", s(self.date_format.as_str())),
             ("number_format", s(self.number_format.as_str())),
             ("show_hidden", Value::from(self.show_hidden)),

@@ -25,8 +25,16 @@ pub enum Command {
     Log,
     /// Compara com o diretório da outra janela e marca arquivos.
     Compare,
-    /// Abre um ZIP/TAR como se fosse um diretório.
-    Open,
+    /// Abre um ZIP/TAR como se fosse um diretório (Alt+F5).
+    OpenArchive,
+    /// Abre o arquivo (ou os marcados) no programa padrão do sistema.
+    OpenWith {
+        tagged: bool,
+    },
+    /// Alt+C na árvore: Compare do ramo inteiro.
+    CompareBranch,
+    /// Backspace: diretório pai.
+    Parent,
     /// Abre o arquivo no editor.
     Edit,
     /// Executa um comando do shell.

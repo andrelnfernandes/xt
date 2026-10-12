@@ -40,6 +40,30 @@ pub fn editor(file: &Path, cwd: &Path, configured: &str) -> External {
     }
 }
 
+/// Abre `file` no programa padrão do sistema (`xdg-open`, ou `opener`),
+/// sem entregar o terminal: o programa roda em segundo plano, separado.
+pub fn open_detached(file: &Path, opener: &str) -> std::io::Result<()> {
+    use std::process::{Command, Stdio};
+    let opener = match opener.trim() {
+        // Nos testes, nunca abre programas de verdade na área de trabalho.
+        "" if cfg!(test) => "true",
+        "" => "xdg-open",
+        other => other,
+    };
+    let mut child = Command::new("sh")
+        .arg("-c")
+        .arg(format!("{opener} \"$1\""))
+        .arg("sh")
+        .arg(file)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+    // Recolhe o processo quando terminar, sem travar o xt.
+    std::thread::spawn(move || child.wait());
+    Ok(())
+}
+
 /// Roda uma linha de comando do usuário.
 pub fn command(line: OsString, cwd: &Path) -> External {
     External {
@@ -156,6 +180,23 @@ mod tests {
             .map(|p| p.as_os_str().as_bytes().to_vec())
             .collect();
         assert_eq!(seen, expected);
+    }
+
+    #[test]
+    fn opens_detached_with_configured_program() {
+        let tmp = tempfile::tempdir().unwrap();
+        let marker = tmp.path().join("opened");
+        let opener = format!("cp {} -- ", tmp.path().join("src").display());
+        std::fs::write(tmp.path().join("src"), "x").unwrap();
+        // "cp src -- <arquivo>": prova que o programa recebeu o caminho.
+        open_detached(&marker, &opener).unwrap();
+        for _ in 0..100 {
+            if marker.exists() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        panic!("opener did not run");
     }
 
     #[test]

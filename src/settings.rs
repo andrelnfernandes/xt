@@ -10,6 +10,7 @@ use crate::input::{LineEvent, LineInput};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Opt {
     Editor,
+    Opener,
     DateFormat,
     NumberFormat,
     ShowHidden,
@@ -31,8 +32,9 @@ pub const PAGES: &[Page] = &[
         "Programs and formats",
         &[
             ('A', "Editor (empty: $VISUAL, $EDITOR, vi)", Opt::Editor),
-            ('B', "Date format", Opt::DateFormat),
-            ('C', "Number format", Opt::NumberFormat),
+            ('B', "Open with (empty: xdg-open)", Opt::Opener),
+            ('C', "Date format", Opt::DateFormat),
+            ('D', "Number format", Opt::NumberFormat),
         ],
     ),
     (
@@ -84,6 +86,8 @@ impl Opt {
         match self {
             Opt::Editor if o.editor.is_empty() => "(default)".into(),
             Opt::Editor => o.editor.clone(),
+            Opt::Opener if o.opener.is_empty() => "(default)".into(),
+            Opt::Opener => o.opener.clone(),
             Opt::DateFormat => o.date_format.as_str().into(),
             Opt::NumberFormat => o.number_format.as_str().into(),
             Opt::ShowHidden => yes_no(o.show_hidden),
@@ -118,7 +122,7 @@ impl Opt {
     fn cycle(self, c: &mut Config) -> bool {
         let o = &mut c.options;
         match self {
-            Opt::Editor => return false,
+            Opt::Editor | Opt::Opener => return false,
             Opt::DateFormat => o.date_format = o.date_format.next(),
             Opt::NumberFormat => o.number_format = o.number_format.next(),
             Opt::ShowHidden => o.show_hidden = !o.show_hidden,
@@ -155,8 +159,8 @@ pub struct Settings {
     original: Config,
     pub page: usize,
     pub selected: usize,
-    /// Editando o texto do editor.
-    pub editing: Option<LineInput>,
+    /// Editando uma opção de texto (editor, programa do Open).
+    pub editing: Option<(Opt, LineInput)>,
     pub picker: Option<ThemePicker>,
     /// Esc com mudanças: o próximo Esc descarta.
     pub confirm_discard: bool,
@@ -193,10 +197,14 @@ impl Settings {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> Outcome {
-        if let Some(input) = &mut self.editing {
+        if let Some((opt, input)) = &mut self.editing {
             match input.handle_key(key) {
                 LineEvent::Submit => {
-                    self.config.options.editor = input.text.trim().to_string();
+                    let text = input.text.trim().to_string();
+                    match opt {
+                        Opt::Opener => self.config.options.opener = text,
+                        _ => self.config.options.editor = text,
+                    }
                     self.editing = None;
                 }
                 LineEvent::Cancel => self.editing = None,
@@ -262,7 +270,11 @@ impl Settings {
     fn change(&mut self, i: usize) {
         let opt = self.items()[i].2;
         if !opt.cycle(&mut self.config) {
-            self.editing = Some(LineInput::new(&self.config.options.editor));
+            let current = match opt {
+                Opt::Opener => &self.config.options.opener,
+                _ => &self.config.options.editor,
+            };
+            self.editing = Some((opt, LineInput::new(current)));
         }
     }
 
@@ -312,9 +324,9 @@ mod tests {
     #[test]
     fn letters_and_enter_change_options() {
         let mut s = Settings::new(Config::default(), None);
-        press(&mut s, KeyCode::Char('b'));
+        press(&mut s, KeyCode::Char('c'));
         assert_eq!(s.config.options.date_format.as_str(), "dd/mm/yyyy");
-        assert_eq!(s.selected, 1);
+        assert_eq!(s.selected, 2);
         press(&mut s, KeyCode::Down);
         press(&mut s, KeyCode::Enter);
         assert_eq!(s.config.options.number_format.as_str(), "1.234");
@@ -341,6 +353,14 @@ mod tests {
         press(&mut s, KeyCode::Enter);
         assert_eq!(s.config.options.editor, "nvim");
         assert_eq!(Opt::Editor.value(&s.config), "nvim");
+
+        press(&mut s, KeyCode::Char('b'));
+        for c in "gio open".chars() {
+            press(&mut s, KeyCode::Char(c));
+        }
+        press(&mut s, KeyCode::Enter);
+        assert_eq!(s.config.options.opener, "gio open");
+        assert_eq!(s.config.options.editor, "nvim");
     }
 
     #[test]
