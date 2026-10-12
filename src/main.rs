@@ -5,6 +5,7 @@
 mod app;
 mod input;
 mod model;
+mod ops;
 mod ui;
 mod viewer;
 
@@ -39,9 +40,9 @@ fn main() -> anyhow::Result<()> {
 fn run(terminal: &mut DefaultTerminal, app: &mut App) -> anyhow::Result<()> {
     while !app.should_quit {
         terminal.draw(|frame| ui::draw(frame, app))?;
-        // Com uma leitura em andamento, não bloqueia esperando tecla:
+        // Com trabalho em andamento (log, cópia...), não bloqueia esperando tecla:
         // processa um pedaço e redesenha o progresso.
-        if app.job.is_some() && !event::poll(Duration::ZERO)? {
+        if app.busy() && !event::poll(Duration::ZERO)? {
             app.tick(Duration::from_millis(50));
             continue;
         }

@@ -4,6 +4,7 @@
 //! o que evita ponteiros e mantém a estrutura compacta mesmo com milhões
 //! de diretórios logados.
 
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -28,6 +29,8 @@ pub struct FileEntry {
     pub modified: Option<SystemTime>,
     pub mode: u32,
     pub kind: FileKind,
+    /// Marcado com `T` para as operações em grupo.
+    pub tagged: bool,
 }
 
 #[derive(Debug)]
@@ -137,19 +140,89 @@ impl Tree {
         };
 
         for name in dirs {
-            let child = self.nodes.len();
-            self.nodes.push(DirNode {
-                name,
-                parent: Some(id),
-                children: Vec::new(),
-                files: Vec::new(),
-                expanded: false,
-                scanned: false,
-                error: None,
-            });
+            let child = self.add_node(name, id);
             self.nodes[id].children.push(child);
         }
         self.nodes[id].files = files;
+    }
+
+    fn add_node(&mut self, name: OsString, parent: NodeId) -> NodeId {
+        self.nodes.push(DirNode {
+            name,
+            parent: Some(parent),
+            children: Vec::new(),
+            files: Vec::new(),
+            expanded: false,
+            scanned: false,
+            error: None,
+        });
+        self.nodes.len() - 1
+    }
+
+    /// Relê um diretório já logado (re-log). Subdiretórios que continuam
+    /// existindo mantêm o que já foi lido abaixo deles; arquivos mantêm a tag.
+    pub fn rescan(&mut self, id: NodeId) {
+        if !self.nodes[id].scanned {
+            return;
+        }
+        let path = self.path(id);
+        let (dirs, mut files) = match read_dir_entries(&path) {
+            Ok(r) => r,
+            Err(e) => {
+                let node = &mut self.nodes[id];
+                node.error = Some(e.to_string());
+                node.files.clear();
+                node.children.clear();
+                return;
+            }
+        };
+
+        let tagged: HashSet<&OsString> = self.nodes[id]
+            .files
+            .iter()
+            .filter(|f| f.tagged)
+            .map(|f| &f.name)
+            .collect();
+        for f in &mut files {
+            f.tagged = tagged.contains(&f.name);
+        }
+
+        let mut old: HashMap<OsString, NodeId> = self.nodes[id]
+            .children
+            .iter()
+            .map(|&c| (self.nodes[c].name.clone(), c))
+            .collect();
+        // Os que sumiram ficam soltos na arena, fora da árvore.
+        let children = dirs
+            .into_iter()
+            .map(|name| match old.remove(&name) {
+                Some(c) => c,
+                None => self.add_node(name, id),
+            })
+            .collect();
+
+        let node = &mut self.nodes[id];
+        node.children = children;
+        node.files = files;
+        node.error = None;
+    }
+
+    /// Nó do diretório `path`, se ele estiver na árvore.
+    pub fn find(&self, path: &Path) -> Option<NodeId> {
+        let rel = path.strip_prefix(&self.nodes[ROOT].name).ok()?;
+        let mut cur = ROOT;
+        for comp in rel.components() {
+            let name = comp.as_os_str();
+            cur = *self.nodes[cur]
+                .children
+                .iter()
+                .find(|&&c| self.nodes[c].name == name)?;
+        }
+        Some(cur)
+    }
+
+    pub fn file_mut(&mut self, dir: NodeId, idx: usize) -> &mut FileEntry {
+        &mut self.nodes[dir].files[idx]
     }
 
     /// Expande um nó. Os filhos também são lidos para sabermos se
@@ -254,7 +327,10 @@ impl Tree {
     /// Totais de tudo o que já foi logado.
     pub fn logged_totals(&self) -> Totals {
         let mut t = Totals::default();
-        for n in self.nodes.iter().filter(|n| n.scanned) {
+        for n in self.subtree(ROOT).into_iter().map(|id| &self.nodes[id]) {
+            if !n.scanned {
+                continue;
+            }
             t.dirs += 1;
             t.files += n.files.len() as u64;
             t.bytes += n.files.iter().map(|f| f.size).sum::<u64>();
@@ -280,6 +356,7 @@ fn read_dir_entries(path: &Path) -> std::io::Result<(Vec<OsString>, Vec<FileEntr
                 modified: None,
                 mode: 0,
                 kind: FileKind::Other,
+                tagged: false,
             });
             continue;
         };
@@ -301,6 +378,7 @@ fn read_dir_entries(path: &Path) -> std::io::Result<(Vec<OsString>, Vec<FileEntr
             modified: meta.modified().ok(),
             mode: meta.permissions().mode(),
             kind,
+            tagged: false,
         });
     }
 
@@ -418,6 +496,46 @@ mod tests {
         tree.collapse(b);
         tree.reveal(deeper);
         assert!(tree.visible_rows().iter().any(|r| r.id == deeper));
+    }
+
+    #[test]
+    fn rescan_keeps_subtrees_and_tags() {
+        let (tmp, mut tree) = sample();
+        tree.expand_all(ROOT);
+        tree.file_mut(ROOT, 1).tagged = true; // z.txt
+        let b = tree.node(ROOT).children[1];
+
+        std::fs::remove_dir(tmp.path().join("a")).unwrap();
+        create_dir_all(tmp.path().join("c")).unwrap();
+        write(tmp.path().join("new.txt"), "").unwrap();
+        tree.rescan(ROOT);
+
+        let root = tree.node(ROOT);
+        assert_eq!(names(&tree, &root.children), ["b", "c"]);
+        assert_eq!(root.children[0], b, "b keeps its node");
+        assert_eq!(names(&tree, &tree.subtree(b)), ["b", "deep", "deeper"]);
+        let tags: Vec<_> = root
+            .files
+            .iter()
+            .map(|f| (f.name.to_str().unwrap(), f.tagged))
+            .collect();
+        assert_eq!(
+            tags,
+            [("A.txt", false), ("new.txt", false), ("z.txt", true)]
+        );
+        // "a" sumiu da árvore e dos totais.
+        assert_eq!(tree.logged_totals().dirs, 4);
+    }
+
+    #[test]
+    fn finds_nodes_by_path() {
+        let (tmp, mut tree) = sample();
+        tree.expand_all(ROOT);
+        assert_eq!(tree.find(tmp.path()), Some(ROOT));
+        let deep = tree.find(&tmp.path().join("b/deep")).unwrap();
+        assert_eq!(tree.path(deep), tmp.path().join("b/deep"));
+        assert_eq!(tree.find(&tmp.path().join("nope")), None);
+        assert_eq!(tree.find(Path::new("/elsewhere")), None);
     }
 
     #[test]

@@ -1,6 +1,8 @@
 //! Estado da aplicação e execução dos comandos.
 
-use std::path::PathBuf;
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
@@ -9,6 +11,7 @@ use ratatui::widgets::ListState;
 use crate::input::{self, Command, LineEvent, LineInput};
 use crate::model::filespec::Filespec;
 use crate::model::tree::{FileEntry, LogJob, NodeId, ROOT, Tree, VisibleRow};
+use crate::ops::{self, Answer, OpKind, Operation, Source};
 use crate::viewer::Viewer;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,6 +49,34 @@ enum AfterLog {
     OpenBranch(NodeId),
 }
 
+/// Campo de texto aberto no rodapé.
+pub struct Prompt {
+    pub label: String,
+    pub input: LineInput,
+    kind: PromptKind,
+}
+
+enum PromptKind {
+    Filespec,
+    Transfer(OpKind, Vec<Source>),
+    RenameFile(PathBuf),
+    RenameDir(NodeId),
+    MakeDir(NodeId),
+    Chmod(Vec<PathBuf>),
+}
+
+/// Pergunta Sim/Não no rodapé.
+pub struct Confirm {
+    pub question: String,
+    kind: ConfirmKind,
+}
+
+enum ConfirmKind {
+    Quit,
+    DeleteFiles(Vec<Source>),
+    DeleteDir(NodeId),
+}
+
 pub struct App {
     pub tree: Tree,
     /// Cache das linhas visíveis; recalculado quando a árvore muda.
@@ -57,14 +88,16 @@ pub struct App {
     pub files: Vec<FileRef>,
     pub file_state: ListState,
     pub filespec: Filespec,
-    /// Prompt do Filespec aberto.
-    pub prompt: Option<LineInput>,
-    /// Mensagem (de erro) mostrada até a próxima tecla.
+    pub prompt: Option<Prompt>,
+    pub confirm: Option<Confirm>,
+    /// Mensagem mostrada até a próxima tecla.
     pub message: Option<String>,
     pub job: Option<Job>,
+    /// Copy/Move/Delete em andamento.
+    pub op: Option<Operation>,
     pub viewer: Option<Viewer>,
-    /// Mostrando a pergunta "Quit xt? (Y/N)".
-    pub confirm_quit: bool,
+    /// Último destino digitado no Copy/Move.
+    last_dest: Option<String>,
     pub should_quit: bool,
     /// Altura útil das listas no último desenho (para PgUp/PgDn).
     pub tree_page: usize,
@@ -85,10 +118,12 @@ impl App {
             file_state: ListState::default().with_selected(Some(0)),
             filespec: Filespec::default(),
             prompt: None,
+            confirm: None,
             message: None,
             job: None,
+            op: None,
             viewer: None,
-            confirm_quit: false,
+            last_dest: None,
             should_quit: false,
             tree_page: 1,
             file_page: 1,
@@ -110,6 +145,10 @@ impl App {
         &self.tree.node(f.dir).files[f.idx]
     }
 
+    fn file_path(&self, f: FileRef) -> PathBuf {
+        self.tree.path(f.dir).join(&self.file(f).name)
+    }
+
     /// Diretório mostrado no cabeçalho: no Showall/Branch, é o do arquivo
     /// sob o cursor.
     pub fn header_dir(&self) -> NodeId {
@@ -119,19 +158,44 @@ impl App {
         }
     }
 
+    /// Há trabalho em andamento que não depende do usuário.
+    pub fn busy(&self) -> bool {
+        self.job.is_some() || self.op.as_ref().is_some_and(|op| op.conflict.is_none())
+    }
+
     pub fn handle_key(&mut self, key: KeyEvent) {
         self.message = None;
 
-        if self.confirm_quit {
-            match key.code {
-                KeyCode::Char('y' | 'Y') | KeyCode::Enter => self.should_quit = true,
-                _ => self.confirm_quit = false,
+        if let Some(confirm) = self.confirm.take() {
+            if matches!(key.code, KeyCode::Char('y' | 'Y')) {
+                self.confirmed(confirm.kind);
             }
             return;
         }
         if let Some(viewer) = &mut self.viewer {
             if !viewer.handle_key(key) {
                 self.viewer = None;
+            }
+            return;
+        }
+        if let Some(op) = &mut self.op {
+            if op.conflict.is_some() {
+                let answer = match key.code {
+                    KeyCode::Char('y' | 'Y') => Some(Answer::Yes),
+                    KeyCode::Char('n' | 'N') => Some(Answer::No),
+                    KeyCode::Char('a' | 'A') => Some(Answer::All),
+                    KeyCode::Char('s' | 'S') => Some(Answer::SkipAll),
+                    _ => None,
+                };
+                if let Some(answer) = answer {
+                    op.answer(answer);
+                    self.tick(Duration::from_millis(30));
+                    return;
+                }
+            }
+            if key.code == KeyCode::Esc {
+                op.cancel();
+                self.finish_op("Cancelled. ");
             }
             return;
         }
@@ -144,16 +208,10 @@ impl App {
             return;
         }
         if let Some(prompt) = &mut self.prompt {
-            match prompt.handle_key(key) {
+            match prompt.input.handle_key(key) {
                 LineEvent::Submit => {
-                    match Filespec::parse(&prompt.text) {
-                        Ok(spec) => {
-                            self.filespec = spec;
-                            self.refresh_files();
-                        }
-                        Err(e) => self.message = Some(e),
-                    }
-                    self.prompt = None;
+                    let prompt = self.prompt.take().unwrap();
+                    self.submit(prompt.kind, prompt.input.text);
                 }
                 LineEvent::Cancel => self.prompt = None,
                 LineEvent::Editing => {}
@@ -166,14 +224,18 @@ impl App {
     }
 
     pub fn apply(&mut self, cmd: Command) {
+        let in_files = self.focus == Focus::Files;
         match cmd {
-            Command::Quit => self.confirm_quit = true,
+            Command::Quit => self.ask(ConfirmKind::Quit, "Quit xt?".into()),
             Command::SwitchWindow => match self.focus {
                 Focus::Tree => self.focus = Focus::Files,
                 Focus::Files => self.back_to_tree(),
             },
             Command::Back => self.back_to_tree(),
-            Command::Filespec => self.prompt = Some(LineInput::new(self.filespec.text())),
+            Command::Filespec => {
+                let text = self.filespec.text().to_string();
+                self.open_prompt(PromptKind::Filespec, "FILESPEC: ".into(), &text);
+            }
             Command::Showall => self.set_view(FileView::Showall),
             Command::Branch => {
                 let id = match self.view {
@@ -187,6 +249,65 @@ impl App {
                 self.start_job(LogJob::new(self.current(), true), AfterLog::Refresh);
             }
             Command::View => self.open_viewer(),
+            Command::Relog => {
+                let id = self.header_dir();
+                self.tree.rescan(id);
+                self.after_change();
+                self.message = Some(format!("Relogged {}", self.tree.path(id).display()));
+            }
+            Command::Tag | Command::Untag => {
+                let tag = cmd == Command::Tag;
+                if in_files {
+                    if let Some(f) = self.selected_file() {
+                        self.set_tags(&[f], |_| tag);
+                        self.apply_files(Command::Down);
+                    }
+                } else {
+                    self.set_tags(&self.files.clone(), |_| tag);
+                }
+            }
+            Command::TagAll | Command::UntagAll => {
+                let tag = cmd == Command::TagAll;
+                let refs = if in_files {
+                    self.files.clone()
+                } else {
+                    self.logged_matching_files()
+                };
+                self.set_tags(&refs, |_| tag);
+            }
+            Command::Invert => self.set_tags(&self.files.clone(), |t| !t),
+            Command::Copy { tagged } => self.prompt_transfer(OpKind::Copy, tagged),
+            Command::Move { tagged } => self.prompt_transfer(OpKind::Move, tagged),
+            Command::Delete { tagged: false } if !in_files => self.ask_delete_dir(),
+            Command::Delete { tagged } => {
+                if let Some(sources) = self.sources_or_warn(tagged) {
+                    let q = format!("DELETE {}? This cannot be undone.", describe(&sources));
+                    self.ask(ConfirmKind::DeleteFiles(sources), q);
+                }
+            }
+            Command::Attributes { tagged } => self.prompt_chmod(tagged),
+            Command::Rename if in_files => {
+                if let Some(f) = self.selected_file() {
+                    let name = self.file(f).name.to_string_lossy().into_owned();
+                    let label = format!("RENAME {name} to: ");
+                    self.open_prompt(PromptKind::RenameFile(self.file_path(f)), label, &name);
+                }
+            }
+            Command::Rename => {
+                let id = self.current();
+                if id == ROOT {
+                    self.message = Some("Cannot rename the root directory".into());
+                } else {
+                    let name = self.tree.node(id).name.to_string_lossy().into_owned();
+                    let label = format!("RENAME directory {name} to: ");
+                    self.open_prompt(PromptKind::RenameDir(id), label, &name);
+                }
+            }
+            Command::MakeDir => {
+                let id = self.current();
+                let label = format!("MAKE DIRECTORY in {}: ", self.tree.path(id).display());
+                self.open_prompt(PromptKind::MakeDir(id), label, "");
+            }
             _ => match self.focus {
                 Focus::Tree => self.apply_tree(cmd),
                 Focus::Files => self.apply_files(cmd),
@@ -194,8 +315,15 @@ impl App {
         }
     }
 
-    /// Avança a leitura em andamento por no máximo `budget`.
+    /// Avança o trabalho em andamento por no máximo `budget`.
     pub fn tick(&mut self, budget: Duration) {
+        if let Some(op) = &mut self.op {
+            op.step(budget);
+            if op.is_done() {
+                self.finish_op("");
+            }
+            return;
+        }
         let Some(job) = &mut self.job else { return };
         self.tree.run_job(&mut job.log, budget);
         if !job.log.is_done() {
@@ -213,6 +341,266 @@ impl App {
         self.job = Some(Job { log, then });
         // Ramos pequenos terminam na hora, sem piscar a mensagem de progresso.
         self.tick(Duration::from_millis(30));
+    }
+
+    fn start_op(&mut self, op: Operation) {
+        self.op = Some(op);
+        self.tick(Duration::from_millis(30));
+    }
+
+    /// Fim (ou cancelamento) de uma operação: relê os diretórios afetados.
+    fn finish_op(&mut self, prefix: &str) {
+        let Some(op) = self.op.take() else { return };
+        for dir in op.touched_dirs() {
+            self.rescan_path(&dir);
+        }
+        self.after_change();
+        self.message = Some(format!("{prefix}{}", op.summary()));
+    }
+
+    fn open_prompt(&mut self, kind: PromptKind, label: String, text: &str) {
+        self.prompt = Some(Prompt {
+            label,
+            input: LineInput::new(text),
+            kind,
+        });
+    }
+
+    fn ask(&mut self, kind: ConfirmKind, question: String) {
+        self.confirm = Some(Confirm { question, kind });
+    }
+
+    fn submit(&mut self, kind: PromptKind, text: String) {
+        let result = match kind {
+            PromptKind::Filespec => Filespec::parse(&text).map(|spec| {
+                self.filespec = spec;
+                self.refresh_files();
+            }),
+            PromptKind::Transfer(op_kind, sources) => {
+                let base = self.tree.path(self.header_dir());
+                let dest = ops::resolve_path(&text, &base);
+                self.last_dest = Some(text);
+                Operation::transfer(op_kind, sources, &dest).map(|op| self.start_op(op))
+            }
+            PromptKind::RenameFile(path) => self.rename_file(&path, &text),
+            PromptKind::RenameDir(id) => self.rename_dir(id, &text),
+            PromptKind::MakeDir(id) => self.make_dir(id, &text),
+            PromptKind::Chmod(paths) => self.chmod(&paths, &text),
+        };
+        if let Err(e) = result {
+            self.message = Some(e);
+        }
+    }
+
+    fn confirmed(&mut self, kind: ConfirmKind) {
+        match kind {
+            ConfirmKind::Quit => self.should_quit = true,
+            ConfirmKind::DeleteFiles(sources) => self.start_op(Operation::delete(sources)),
+            ConfirmKind::DeleteDir(id) => {
+                let path = self.tree.path(id);
+                let parent = self.tree.node(id).parent.unwrap_or(ROOT);
+                match fs::remove_dir(&path) {
+                    Ok(()) => {
+                        self.tree.rescan(parent);
+                        self.refresh_rows(parent);
+                        self.refresh_files();
+                        self.message = Some(format!("Deleted {}", path.display()));
+                    }
+                    Err(e) => self.message = Some(format!("Cannot delete directory: {e}")),
+                }
+            }
+        }
+    }
+
+    /// Arquivos sobre os quais uma operação age: os marcados da lista
+    /// atual ou o arquivo sob o cursor.
+    fn sources(&self, tagged: bool) -> Vec<Source> {
+        let refs: Vec<FileRef> = if tagged {
+            self.files
+                .iter()
+                .copied()
+                .filter(|&f| self.file(f).tagged)
+                .collect()
+        } else if self.focus == Focus::Files {
+            self.selected_file().into_iter().collect()
+        } else {
+            Vec::new()
+        };
+        refs.into_iter()
+            .map(|f| Source {
+                path: self.file_path(f),
+                size: self.file(f).size,
+            })
+            .collect()
+    }
+
+    /// `sources`, avisando quando não há nada para operar.
+    fn sources_or_warn(&mut self, tagged: bool) -> Option<Vec<Source>> {
+        let sources = self.sources(tagged);
+        if sources.is_empty() {
+            if tagged {
+                self.message = Some("No tagged files".into());
+            }
+            return None;
+        }
+        Some(sources)
+    }
+
+    fn prompt_transfer(&mut self, kind: OpKind, tagged: bool) {
+        let Some(sources) = self.sources_or_warn(tagged) else {
+            return;
+        };
+        let verb = if kind == OpKind::Copy { "COPY" } else { "MOVE" };
+        let label = format!("{verb} {} to: ", describe(&sources));
+        let default = self.last_dest.clone().unwrap_or_else(|| {
+            self.tree
+                .path(self.header_dir())
+                .to_string_lossy()
+                .into_owned()
+        });
+        self.open_prompt(PromptKind::Transfer(kind, sources), label, &default);
+    }
+
+    fn prompt_chmod(&mut self, tagged: bool) {
+        let Some(sources) = self.sources_or_warn(tagged) else {
+            return;
+        };
+        let mode = fs::metadata(&sources[0].path)
+            .map(|m| format!("{:03o}", m.permissions().mode() & 0o7777))
+            .unwrap_or_default();
+        let label = format!("PERMISSIONS for {} (octal): ", describe(&sources));
+        let paths = sources.into_iter().map(|s| s.path).collect();
+        self.open_prompt(PromptKind::Chmod(paths), label, &mode);
+    }
+
+    fn ask_delete_dir(&mut self) {
+        let id = self.current();
+        if id == ROOT {
+            self.message = Some("Cannot delete the root directory".into());
+            return;
+        }
+        self.tree.scan(id);
+        self.tree.rescan(id);
+        let node = self.tree.node(id);
+        if !node.files.is_empty() || !node.children.is_empty() {
+            self.message = Some("Directory is not empty".into());
+            self.after_change();
+            return;
+        }
+        let q = format!("DELETE directory {}?", node.name.to_string_lossy());
+        self.ask(ConfirmKind::DeleteDir(id), q);
+    }
+
+    fn rename_file(&mut self, path: &Path, name: &str) -> Result<(), String> {
+        ops::check_name(name)?;
+        let new = path.with_file_name(name);
+        if new == path {
+            return Ok(());
+        }
+        if fs::symlink_metadata(&new).is_ok() {
+            return Err(format!("{name} already exists"));
+        }
+        fs::rename(path, &new).map_err(|e| format!("Cannot rename: {e}"))?;
+        if let Some(dir) = path.parent() {
+            self.rescan_path(dir);
+        }
+        self.after_change();
+        // Mantém o cursor no arquivo renomeado.
+        if let Some(i) = self.files.iter().position(|&f| self.file_path(f) == new) {
+            self.file_state.select(Some(i));
+        }
+        Ok(())
+    }
+
+    fn rename_dir(&mut self, id: NodeId, name: &str) -> Result<(), String> {
+        ops::check_name(name)?;
+        let path = self.tree.path(id);
+        let new = path.with_file_name(name);
+        if new == path {
+            return Ok(());
+        }
+        if fs::symlink_metadata(&new).is_ok() {
+            return Err(format!("{name} already exists"));
+        }
+        fs::rename(&path, &new).map_err(|e| format!("Cannot rename: {e}"))?;
+        let parent = self.tree.node(id).parent.unwrap_or(ROOT);
+        self.tree.rescan(parent);
+        let keep = self.tree.find(&new).unwrap_or(parent);
+        self.tree.scan(keep);
+        self.refresh_rows(keep);
+        self.refresh_files();
+        Ok(())
+    }
+
+    fn make_dir(&mut self, id: NodeId, name: &str) -> Result<(), String> {
+        ops::check_name(name)?;
+        let path = self.tree.path(id).join(name);
+        fs::create_dir(&path).map_err(|e| format!("Cannot create directory: {e}"))?;
+        self.tree.rescan(id);
+        self.tree.expand(id);
+        self.refresh_rows(id);
+        self.message = Some(format!("Created {}", path.display()));
+        Ok(())
+    }
+
+    fn chmod(&mut self, paths: &[PathBuf], text: &str) -> Result<(), String> {
+        let mode = ops::parse_mode(text)?;
+        let mut errors = Vec::new();
+        let mut changed = 0;
+        for path in paths {
+            // Links simbólicos não têm permissões próprias no Linux.
+            if fs::symlink_metadata(path).is_ok_and(|m| m.is_symlink()) {
+                continue;
+            }
+            match fs::set_permissions(path, fs::Permissions::from_mode(mode)) {
+                Ok(()) => changed += 1,
+                Err(e) => errors.push(format!("{}: {e}", path.display())),
+            }
+        }
+        let mut dirs: Vec<&Path> = paths.iter().filter_map(|p| p.parent()).collect();
+        dirs.dedup();
+        for dir in dirs {
+            self.rescan_path(dir);
+        }
+        self.after_change();
+        let mut msg = format!("Permissions set to {mode:03o} on {changed} files");
+        if let Some(e) = errors.first() {
+            msg.push_str(&format!(". {} errors, first: {e}", errors.len()));
+        }
+        self.message = Some(msg);
+        Ok(())
+    }
+
+    fn set_tags(&mut self, refs: &[FileRef], f: impl Fn(bool) -> bool) {
+        for &r in refs {
+            let entry = self.tree.file_mut(r.dir, r.idx);
+            entry.tagged = f(entry.tagged);
+        }
+    }
+
+    /// Todos os arquivos logados que passam no filespec.
+    fn logged_matching_files(&self) -> Vec<FileRef> {
+        let mut refs = Vec::new();
+        for dir in self.tree.subtree(ROOT) {
+            for (idx, f) in self.tree.node(dir).files.iter().enumerate() {
+                if self.filespec.matches(&f.name) {
+                    refs.push(FileRef { dir, idx });
+                }
+            }
+        }
+        refs
+    }
+
+    fn rescan_path(&mut self, dir: &Path) {
+        if let Some(id) = self.tree.find(dir) {
+            self.tree.rescan(id);
+        }
+    }
+
+    /// Atualiza a árvore e a lista de arquivos depois de mudanças no disco.
+    fn after_change(&mut self) {
+        self.refresh_rows(self.current());
+        self.refresh_files();
     }
 
     fn apply_tree(&mut self, cmd: Command) {
@@ -273,8 +661,7 @@ impl App {
         let Some(f) = self.selected_file() else {
             return;
         };
-        let path = self.tree.path(f.dir).join(&self.file(f).name);
-        match Viewer::open(path) {
+        match Viewer::open(self.file_path(f)) {
             Ok(v) => self.viewer = Some(v),
             Err(e) => self.message = Some(format!("Cannot view file: {e}")),
         }
@@ -327,6 +714,19 @@ impl App {
         let last = self.files.len().saturating_sub(1);
         let sel = self.file_state.selected().unwrap_or(0).min(last);
         self.file_state.select(Some(sel));
+    }
+}
+
+/// "arquivo.txt" ou "3 tagged files".
+fn describe(sources: &[Source]) -> String {
+    match sources {
+        [one] => one
+            .path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned(),
+        many => format!("{} tagged files", many.len()),
     }
 }
 
@@ -476,5 +876,196 @@ mod tests {
         press(&mut app, KeyCode::Esc);
         assert!(app.viewer.is_none());
         assert_eq!(app.focus, Focus::Files);
+    }
+
+    fn ctrl(app: &mut App, c: char) {
+        app.handle_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL));
+    }
+
+    /// Responde a um prompt aberto, trocando o texto sugerido.
+    fn answer_prompt(app: &mut App, text: &str) {
+        assert!(app.prompt.is_some(), "prompt should be open");
+        ctrl(app, 'u');
+        type_text(app, text);
+        press(app, KeyCode::Enter);
+        // Termina a operação, se houver.
+        while app.busy() {
+            app.tick(Duration::from_millis(50));
+        }
+    }
+
+    fn tagged(app: &App) -> Vec<String> {
+        app.files
+            .iter()
+            .filter(|&&f| app.file(f).tagged)
+            .map(|&f| app.file(f).name.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    #[test]
+    fn tag_untag_and_invert() {
+        let (_tmp, mut app) = sample();
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Char('t'));
+        assert_eq!(tagged(&app), ["a.rs"]);
+        assert_eq!(app.file_state.selected(), Some(1), "cursor moves down");
+        press(&mut app, KeyCode::Char('i'));
+        assert_eq!(tagged(&app), ["b.txt"]);
+        ctrl(&mut app, 't');
+        assert_eq!(tagged(&app).len(), 2);
+        ctrl(&mut app, 'u');
+        assert!(tagged(&app).is_empty());
+
+        // Na árvore, T marca o diretório atual inteiro.
+        press(&mut app, KeyCode::Esc);
+        press(&mut app, KeyCode::Char('t'));
+        assert_eq!(tagged(&app).len(), 2);
+    }
+
+    #[test]
+    fn ctrl_t_in_tree_tags_all_logged_matching_files() {
+        let (_tmp, mut app) = sample();
+        app.filespec = Filespec::parse("*.rs").unwrap();
+        ctrl(&mut app, 't');
+        app.apply(Command::Showall);
+        app.filespec = Filespec::default();
+        app.refresh_files();
+        assert_eq!(tagged(&app), ["a.rs", "c.rs"]);
+    }
+
+    #[test]
+    fn copy_tagged_files_to_directory() {
+        let (tmp, mut app) = sample();
+        press(&mut app, KeyCode::Enter);
+        ctrl(&mut app, 't');
+        ctrl(&mut app, 'c');
+        let dest = tmp.path().join("sub");
+        answer_prompt(&mut app, dest.to_str().unwrap());
+
+        assert!(dest.join("a.rs").exists() && dest.join("b.txt").exists());
+        assert!(app.message.as_deref().unwrap().starts_with("Copied 2 of 2"));
+        // A árvore já mostra os arquivos novos em sub/.
+        let sub = app.tree.find(&dest).unwrap();
+        assert_eq!(app.tree.node(sub).files.len(), 3);
+        // Tags continuam na origem.
+        assert_eq!(tagged(&app).len(), 2);
+    }
+
+    #[test]
+    fn move_with_conflict_prompt() {
+        let (tmp, mut app) = sample();
+        write(tmp.path().join("sub/b.txt"), "old").unwrap();
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Char('m'));
+        answer_prompt(&mut app, "sub"); // relativo ao diretório atual
+        assert!(app.op.as_ref().unwrap().conflict.is_some());
+
+        press(&mut app, KeyCode::Char('y'));
+        assert!(app.op.is_none());
+        assert_eq!(
+            std::fs::read_to_string(tmp.path().join("sub/b.txt")).unwrap(),
+            "b"
+        );
+        assert_eq!(names(&app), ["a.rs"]);
+    }
+
+    #[test]
+    fn delete_asks_for_confirmation() {
+        let (tmp, mut app) = sample();
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Char('d'));
+        assert!(app.confirm.is_some());
+        press(&mut app, KeyCode::Char('n'));
+        assert!(tmp.path().join("a.rs").exists());
+
+        press(&mut app, KeyCode::Char('d'));
+        press(&mut app, KeyCode::Char('y'));
+        while app.busy() {
+            app.tick(Duration::from_millis(50));
+        }
+        assert!(!tmp.path().join("a.rs").exists());
+        assert_eq!(names(&app), ["b.txt"]);
+    }
+
+    #[test]
+    fn tagged_ops_without_tags_warn() {
+        let (_tmp, mut app) = sample();
+        ctrl(&mut app, 'd');
+        assert!(app.confirm.is_none());
+        assert_eq!(app.message.as_deref(), Some("No tagged files"));
+    }
+
+    #[test]
+    fn rename_file_keeps_cursor_on_it() {
+        let (tmp, mut app) = sample();
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Char('r'));
+        answer_prompt(&mut app, "z.rs");
+        assert!(tmp.path().join("z.rs").exists());
+        assert_eq!(names(&app), ["b.txt", "z.rs"]);
+        assert_eq!(app.file_state.selected(), Some(1));
+
+        press(&mut app, KeyCode::Char('r'));
+        answer_prompt(&mut app, "b.txt");
+        assert_eq!(app.message.as_deref(), Some("b.txt already exists"));
+    }
+
+    #[test]
+    fn make_rename_and_delete_directory() {
+        let (tmp, mut app) = sample();
+        press(&mut app, KeyCode::Char('m'));
+        answer_prompt(&mut app, "new");
+        assert!(tmp.path().join("new").is_dir());
+        assert!(app.rows.iter().any(|r| app.tree.node(r.id).name == "new"));
+
+        // Cursor no "new" (ordem: new, sub).
+        press(&mut app, KeyCode::Down);
+        assert_eq!(app.tree.node(app.current()).name, "new");
+        press(&mut app, KeyCode::Char('r'));
+        answer_prompt(&mut app, "renamed");
+        assert!(tmp.path().join("renamed").is_dir());
+        assert_eq!(app.tree.node(app.current()).name, "renamed");
+
+        press(&mut app, KeyCode::Char('d'));
+        press(&mut app, KeyCode::Char('y'));
+        assert!(!tmp.path().join("renamed").exists());
+        assert_eq!(app.current(), ROOT);
+
+        // Diretório com conteúdo não é apagado.
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Char('d'));
+        assert!(app.confirm.is_none());
+        assert_eq!(app.message.as_deref(), Some("Directory is not empty"));
+    }
+
+    #[test]
+    fn chmod_tagged_files() {
+        let (tmp, mut app) = sample();
+        press(&mut app, KeyCode::Enter);
+        ctrl(&mut app, 't');
+        ctrl(&mut app, 'a');
+        answer_prompt(&mut app, "600");
+        for f in ["a.rs", "b.txt"] {
+            let mode = std::fs::metadata(tmp.path().join(f))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+        assert_eq!(app.file(app.files[0]).mode & 0o777, 0o600);
+
+        ctrl(&mut app, 'a');
+        answer_prompt(&mut app, "999");
+        assert!(app.message.as_deref().unwrap().contains("octal"));
+    }
+
+    #[test]
+    fn relog_picks_up_external_changes() {
+        let (tmp, mut app) = sample();
+        write(tmp.path().join("new.txt"), "").unwrap();
+        assert_eq!(names(&app).len(), 2);
+        press(&mut app, KeyCode::F(2));
+        assert_eq!(names(&app), ["a.rs", "b.txt", "new.txt"]);
     }
 }

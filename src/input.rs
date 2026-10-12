@@ -23,17 +23,60 @@ pub enum Command {
     Showall,
     Branch,
     View,
+    /// Relê o diretório atual do disco.
+    Relog,
+    Tag,
+    Untag,
+    TagAll,
+    UntagAll,
+    Invert,
+    // `tagged`: age sobre os arquivos marcados em vez do arquivo atual.
+    Copy {
+        tagged: bool,
+    },
+    Move {
+        tagged: bool,
+    },
+    Delete {
+        tagged: bool,
+    },
+    Attributes {
+        tagged: bool,
+    },
+    Rename,
+    MakeDir,
     Quit,
 }
 
 pub fn map_key(key: KeyEvent, focus: Focus) -> Option<Command> {
     use Command::*;
 
-    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
-        return Some(Quit);
+    // Ctrl+letra (ou Alt+letra) = versão "arquivos marcados" do comando.
+    // Alt existe porque Ctrl+M chega ao programa igual a Enter.
+    if key
+        .modifiers
+        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+    {
+        let KeyCode::Char(c) = key.code else {
+            return None;
+        };
+        return match c.to_ascii_lowercase() {
+            't' => Some(TagAll),
+            'u' => Some(UntagAll),
+            'c' => Some(Copy { tagged: true }),
+            'm' => Some(Move { tagged: true }),
+            'd' => Some(Delete { tagged: true }),
+            'a' => Some(Attributes { tagged: true }),
+            _ => None,
+        };
     }
 
-    let common = match key.code {
+    let key = match key.code {
+        KeyCode::Char(c) => KeyCode::Char(c.to_ascii_lowercase()),
+        other => other,
+    };
+
+    let common = match key {
         KeyCode::Up => Some(Up),
         KeyCode::Down => Some(Down),
         KeyCode::PageUp => Some(PageUp),
@@ -41,10 +84,16 @@ pub fn map_key(key: KeyEvent, focus: Focus) -> Option<Command> {
         KeyCode::Home => Some(Home),
         KeyCode::End => Some(End),
         KeyCode::Enter | KeyCode::Tab => Some(SwitchWindow),
-        KeyCode::Char('f' | 'F') => Some(Filespec),
-        KeyCode::Char('s' | 'S') => Some(Showall),
-        KeyCode::Char('b' | 'B') => Some(Branch),
-        KeyCode::Char('q' | 'Q') | KeyCode::F(10) => Some(Quit),
+        KeyCode::F(2) => Some(Relog),
+        KeyCode::Char('f') => Some(Filespec),
+        KeyCode::Char('s') => Some(Showall),
+        KeyCode::Char('b') => Some(Branch),
+        KeyCode::Char('t') => Some(Tag),
+        KeyCode::Char('u') => Some(Untag),
+        KeyCode::Char('i') => Some(Invert),
+        KeyCode::Char('d') => Some(Delete { tagged: false }),
+        KeyCode::Char('r') => Some(Rename),
+        KeyCode::Char('q') | KeyCode::F(10) => Some(Quit),
         _ => None,
     };
     if common.is_some() {
@@ -52,15 +101,19 @@ pub fn map_key(key: KeyEvent, focus: Focus) -> Option<Command> {
     }
 
     match focus {
-        Focus::Tree => match key.code {
+        Focus::Tree => match key {
             KeyCode::Right | KeyCode::Char('+') => Some(Expand),
             KeyCode::Left | KeyCode::Char('-') => Some(Collapse),
             KeyCode::Char('*') => Some(ExpandAll),
+            KeyCode::Char('m') => Some(MakeDir),
             _ => None,
         },
-        Focus::Files => match key.code {
+        Focus::Files => match key {
             KeyCode::Esc | KeyCode::Left => Some(Back),
-            KeyCode::Char('v' | 'V') => Some(View),
+            KeyCode::Char('v') => Some(View),
+            KeyCode::Char('c') => Some(Copy { tagged: false }),
+            KeyCode::Char('m') => Some(Move { tagged: false }),
+            KeyCode::Char('a') => Some(Attributes { tagged: false }),
             _ => None,
         },
     }
@@ -133,6 +186,42 @@ mod tests {
     fn type_keys(input: &mut LineInput, codes: &[KeyCode]) {
         for &code in codes {
             input.handle_key(KeyEvent::new(code, KeyModifiers::NONE));
+        }
+    }
+
+    fn map(code: KeyCode, mods: KeyModifiers, focus: Focus) -> Option<Command> {
+        map_key(KeyEvent::new(code, mods), focus)
+    }
+
+    #[test]
+    fn maps_letters_by_window() {
+        let none = KeyModifiers::NONE;
+        assert_eq!(
+            map(KeyCode::Char('m'), none, Focus::Tree),
+            Some(Command::MakeDir)
+        );
+        assert_eq!(
+            map(KeyCode::Char('M'), KeyModifiers::SHIFT, Focus::Files),
+            Some(Command::Move { tagged: false })
+        );
+        assert_eq!(map(KeyCode::Char('c'), none, Focus::Tree), None);
+    }
+
+    #[test]
+    fn ctrl_and_alt_mean_tagged() {
+        for mods in [KeyModifiers::CONTROL, KeyModifiers::ALT] {
+            assert_eq!(
+                map(KeyCode::Char('c'), mods, Focus::Files),
+                Some(Command::Copy { tagged: true })
+            );
+            assert_eq!(
+                map(KeyCode::Char('m'), mods, Focus::Tree),
+                Some(Command::Move { tagged: true })
+            );
+            assert_eq!(
+                map(KeyCode::Char('t'), mods, Focus::Tree),
+                Some(Command::TagAll)
+            );
         }
     }
 

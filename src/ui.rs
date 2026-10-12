@@ -21,6 +21,7 @@ use ratatui::widgets::{Block, BorderType, List, ListItem, ListState, Paragraph};
 
 use crate::app::{App, FileView, Focus};
 use crate::model::tree::{FileEntry, FileKind};
+use crate::ops::Operation;
 use crate::viewer::{self, ViewMode};
 
 const BG: Color = Color::Blue;
@@ -197,7 +198,8 @@ fn file_line(f: &FileEntry, width: usize) -> ListItem<'static> {
     let mode = fmt_mode(f.mode, f.kind);
     let details = format!(" {size:>15} {date:16} {mode}");
 
-    let name_width = width.saturating_sub(details.chars().count()).max(8);
+    // 2 colunas para a marca de tag.
+    let name_width = width.saturating_sub(details.chars().count() + 2).max(8);
     let mut name: String = f.name.to_string_lossy().into_owned();
     if f.kind == FileKind::Symlink {
         name.push('@');
@@ -205,12 +207,15 @@ fn file_line(f: &FileEntry, width: usize) -> ListItem<'static> {
     let name = fit(&name, name_width);
 
     let style = match f.kind {
+        _ if f.tagged => Style::new().fg(KEY).add_modifier(Modifier::BOLD),
         FileKind::Symlink => Style::new().fg(Color::LightCyan),
         FileKind::Other => Style::new().fg(Color::LightMagenta),
         FileKind::File if f.mode & 0o111 != 0 => Style::new().fg(Color::LightGreen),
         FileKind::File => Style::new(),
     };
+    let mark = if f.tagged { "■ " } else { "  " };
     ListItem::new(Line::from(vec![
+        Span::styled(mark, Style::new().fg(KEY)),
         Span::styled(name, style),
         Span::styled(details, Style::new().fg(DIM)),
     ]))
@@ -220,6 +225,12 @@ fn draw_stats(frame: &mut Frame, app: &App, area: Rect) {
     let id = app.header_dir();
     let logged = app.tree.logged_totals();
     let matching_bytes: u64 = app.files.iter().map(|&f| app.file(f).size).sum();
+    let (tagged, tagged_bytes) = app
+        .files
+        .iter()
+        .map(|&f| app.file(f))
+        .filter(|f| f.tagged)
+        .fold((0u64, 0u64), |(n, b), f| (n + 1, b + f.size));
     let section = match app.view {
         FileView::Dir => "DIRECTORY",
         FileView::Branch(_) => "BRANCH",
@@ -258,6 +269,10 @@ fn draw_stats(frame: &mut Frame, app: &App, area: Rect) {
         label(section),
         value("Match", fmt_num(app.files.len() as u64)),
         value("Bytes", fmt_num(matching_bytes)),
+        Line::default(),
+        label("TAGGED"),
+        value("Files", fmt_num(tagged)),
+        value("Bytes", fmt_num(tagged_bytes)),
     ]);
 
     frame.render_widget(Paragraph::new(lines).block(panel(" xt ", false)), area);
@@ -266,24 +281,32 @@ fn draw_stats(frame: &mut Frame, app: &App, area: Rect) {
 fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
     let bold = Style::new().add_modifier(Modifier::BOLD);
     let lines = if let Some(prompt) = &app.prompt {
-        let label = "FILESPEC: ";
-        let col = area.x + (label.len() + prompt.cursor) as u16;
+        let col = area.x + (prompt.label.chars().count() + prompt.input.cursor) as u16;
         frame.set_cursor_position((col.min(area.right().saturating_sub(1)), area.y));
+        let mut help = vec![("Enter", "accept"), ("Esc", "cancel"), ("Ctrl+U", "clear")];
+        if prompt.label.starts_with("FILESPEC") {
+            help.push(("e.g.", "*.rs *.toml -*.bak"));
+        }
         vec![
             Line::from(vec![
-                Span::styled(label, bold),
-                Span::raw(prompt.text.clone()),
+                Span::styled(prompt.label.clone(), bold),
+                Span::raw(prompt.input.text.clone()),
             ]),
-            menu_line(
-                "",
-                &[
-                    ("Enter", "accept"),
-                    ("Esc", "cancel"),
-                    ("Ctrl+U", "clear"),
-                    ("e.g.", "*.rs *.toml -*.bak"),
-                ],
-            ),
+            menu_line("", &help),
         ]
+    } else if let Some(confirm) = &app.confirm {
+        vec![
+            Line::from(vec![
+                Span::styled(format!("{} ", confirm.question), bold),
+                key("Y"),
+                Span::raw("es / "),
+                key("N"),
+                Span::raw("o"),
+            ]),
+            Line::default(),
+        ]
+    } else if let Some(op) = &app.op {
+        op_lines(op)
     } else if let Some(job) = &app.job {
         vec![
             Line::from(vec![
@@ -292,63 +315,145 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
             ]),
             menu_line("", &[("Esc", "cancel")]),
         ]
-    } else if app.confirm_quit {
-        vec![
-            Line::from(vec![
-                Span::styled("Quit xt? ", Style::new().add_modifier(Modifier::BOLD)),
-                key("Y"),
-                Span::raw("es / "),
-                key("N"),
-                Span::raw("o"),
-            ]),
-            Line::default(),
-        ]
     } else {
-        let first = match app.focus {
-            Focus::Tree => menu_line(
-                "DIR",
-                &[
-                    ("←→", "collapse/expand"),
-                    ("*", "log branch"),
-                    ("B", "branch"),
-                    ("F", "filespec"),
-                    ("S", "showall"),
-                    ("Q", "quit"),
-                ],
+        let (first, second) = match app.focus {
+            Focus::Tree => (
+                menu_words(
+                    "DIR",
+                    &[
+                        "Branch", "Delete", "Filespec", "Invert", "Makedir", "Rename", "Showall",
+                        "Tag", "Untag", "Quit",
+                    ],
+                ),
+                menu_line(
+                    "",
+                    &[
+                        ("←→", "close/open"),
+                        ("*", "log branch"),
+                        ("F2", "relog"),
+                        ("Ctrl+T/U", "all logged"),
+                        ("Enter", "files"),
+                    ],
+                ),
             ),
-            Focus::Files => menu_line(
-                "FILE",
-                &[
-                    ("V", "view"),
-                    ("B", "branch"),
-                    ("F", "filespec"),
-                    ("S", "showall"),
-                    ("Esc", "back to tree"),
-                    ("Q", "quit"),
-                ],
+            Focus::Files => (
+                menu_words(
+                    "FILE",
+                    &[
+                        "Attributes",
+                        "Branch",
+                        "Copy",
+                        "Delete",
+                        "Filespec",
+                        "Invert",
+                        "Move",
+                        "Rename",
+                        "Showall",
+                        "Tag",
+                        "Untag",
+                        "View",
+                        "Quit",
+                    ],
+                ),
+                menu_line(
+                    "",
+                    &[
+                        ("Ctrl/Alt+C M D A", "on tagged files"),
+                        ("Ctrl+T/U", "all"),
+                        ("F2", "relog"),
+                        ("Esc", "tree"),
+                    ],
+                ),
             ),
         };
         let first = match &app.message {
             Some(msg) => Line::from(Span::styled(
                 msg.clone(),
                 Style::new()
-                    .fg(Color::LightRed)
+                    .fg(Color::LightYellow)
                     .add_modifier(Modifier::BOLD),
             )),
             None => first,
         };
-        let second = menu_line(
-            "",
-            &[
-                ("↑↓", "move"),
-                ("PgUp/PgDn", "page"),
-                ("Home/End", "top/bottom"),
-                ("Enter/Tab", "switch window"),
-            ],
-        );
         vec![first, second]
     };
     frame.render_widget(Paragraph::new(lines), area);
+}
+
+/// Rodapé durante Copy/Move/Delete: arquivo atual e barra de progresso,
+/// ou a pergunta de conflito.
+fn op_lines(op: &Operation) -> Vec<Line<'static>> {
+    let bold = Style::new().add_modifier(Modifier::BOLD);
+    let name = |p: &std::path::Path| {
+        p.file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned()
+    };
+
+    let first = match &op.conflict {
+        Some(dst) => Line::from(vec![
+            Span::styled(format!("{} already exists. Overwrite? ", name(dst)), bold),
+            key("Y"),
+            Span::raw("es  "),
+            key("N"),
+            Span::raw("o  "),
+            key("A"),
+            Span::raw("ll  "),
+            key("S"),
+            Span::raw("kip all  "),
+            key("Esc"),
+            Span::raw(" cancel"),
+        ]),
+        None => Line::from(vec![
+            Span::styled(
+                format!(
+                    "{} {} of {}: ",
+                    op.kind.verb(),
+                    (op.done_files + op.skipped + op.errors.len() + 1).min(op.total_files()),
+                    op.total_files()
+                ),
+                bold,
+            ),
+            Span::raw(op.current().map(name).unwrap_or_default()),
+        ]),
+    };
+
+    const BAR: usize = 30;
+    let fraction = if op.total_bytes == 0 {
+        0.0
+    } else {
+        op.done_bytes as f64 / op.total_bytes as f64
+    };
+    let filled = ((fraction * BAR as f64) as usize).min(BAR);
+    let second = Line::from(vec![
+        Span::raw(format!("{:9}", "")),
+        Span::styled("█".repeat(filled), Style::new().fg(KEY)),
+        Span::styled("░".repeat(BAR - filled), Style::new().fg(DIM)),
+        Span::raw(format!(
+            " {:>3}%  {} of {} bytes   ",
+            (fraction * 100.0) as u32,
+            fmt_num(op.done_bytes),
+            fmt_num(op.total_bytes)
+        )),
+        key("Esc"),
+        Span::raw(" cancel"),
+    ]);
+    vec![first, second]
+}
+
+/// Linha de menu no estilo do XTree: a primeira letra de cada palavra é a tecla.
+fn menu_words(title: &str, words: &[&str]) -> Line<'static> {
+    let mut spans = vec![Span::styled(
+        format!("{title:<9}"),
+        Style::new().add_modifier(Modifier::BOLD),
+    )];
+    for word in words {
+        let (first, rest) = word.split_at(1);
+        spans.push(key(first));
+        spans.push(Span::raw(format!("{rest} ")));
+    }
+    Line::from(spans)
 }
 
 fn draw_viewer(frame: &mut Frame, app: &mut App) {
