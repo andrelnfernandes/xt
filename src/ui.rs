@@ -19,7 +19,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, List, ListItem, ListState, Paragraph};
 
-use crate::app::{App, FileView, Focus};
+use crate::app::{App, FileView, Focus, MenuMode};
 use crate::model::tree::{FileEntry, FileKind};
 use crate::ops::Operation;
 use crate::viewer::{self, ViewMode};
@@ -319,57 +319,7 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
             menu_line("", &[("Esc", "cancel")]),
         ]
     } else {
-        let (first, second) = match app.focus {
-            Focus::Tree => (
-                menu_words(
-                    "DIR",
-                    &[
-                        "Branch", "Delete", "Filespec", "Invert", "Makedir", "Rename", "Showall",
-                        "Tag", "Untag", "Quit",
-                    ],
-                ),
-                menu_line(
-                    "",
-                    &[
-                        ("←→", "close/open"),
-                        ("*", "log branch"),
-                        ("F2", "relog"),
-                        ("Ctrl+T/U", "all logged"),
-                        ("Enter", "files"),
-                    ],
-                ),
-            ),
-            Focus::Files => (
-                menu_words(
-                    "FILE",
-                    &[
-                        "Attributes",
-                        "Branch",
-                        "Copy",
-                        "Delete",
-                        "Filespec",
-                        "Invert",
-                        "Move",
-                        "Rename",
-                        "Showall",
-                        "Tag",
-                        "Untag",
-                        "View",
-                        "Quit",
-                    ],
-                ),
-                menu_line(
-                    "",
-                    &[
-                        ("Ctrl+C M D A", "tagged"),
-                        ("Alt+C M", "tagged with paths"),
-                        ("Ctrl+T/U", "all"),
-                        ("F2", "relog"),
-                        ("Esc", "tree"),
-                    ],
-                ),
-            ),
-        };
+        let (first, second) = idle_menu(app);
         let first = match &app.message {
             Some(msg) => Line::from(Span::styled(
                 msg.clone(),
@@ -382,6 +332,92 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
         vec![first, second]
     };
     frame.render_widget(Paragraph::new(lines), area);
+}
+
+/// Menu do rodapé sem nada em andamento: o normal ou o de Ctrl/Alt,
+/// conforme a tecla pressionada (ou escolhida com F9).
+fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
+    let tree = app.focus == Focus::Tree;
+    // Com F9, a próxima letra recebe o modificador: avisa como desistir.
+    let sticky = app.held.is_none() && app.sticky != MenuMode::Normal;
+    let hint: (&str, &str) = if sticky {
+        ("Esc", "cancel")
+    } else {
+        ("F9", "next menu")
+    };
+
+    match app.menu_mode() {
+        MenuMode::Normal if tree => (
+            menu_words(
+                "DIR",
+                &[
+                    "Branch", "Delete", "Filespec", "Invert", "Makedir", "Rename", "Showall",
+                    "Tag", "Untag", "Quit",
+                ],
+            ),
+            menu_line(
+                "",
+                &[
+                    ("←→", "close/open"),
+                    ("*", "log branch"),
+                    ("F2", "relog"),
+                    ("Enter", "files"),
+                    ("F9", "Ctrl/Alt menus"),
+                ],
+            ),
+        ),
+        MenuMode::Normal => (
+            menu_words(
+                "FILE",
+                &[
+                    "Attributes",
+                    "Branch",
+                    "Copy",
+                    "Delete",
+                    "Filespec",
+                    "Invert",
+                    "Move",
+                    "Rename",
+                    "Showall",
+                    "Tag",
+                    "Untag",
+                    "View",
+                    "Quit",
+                ],
+            ),
+            menu_line(
+                "",
+                &[("F2", "relog"), ("Esc", "tree"), ("F9", "Ctrl/Alt menus")],
+            ),
+        ),
+        MenuMode::Ctrl => (
+            menu_words(
+                "CTRL",
+                &["Attributes", "Copy", "Delete", "Move", "Tag", "Untag"],
+            ),
+            menu_line(
+                "",
+                &[
+                    (
+                        "",
+                        if tree {
+                            "on tagged files here · Tag/Untag: all logged files"
+                        } else {
+                            "on tagged files in the list · Copy/Move without paths"
+                        },
+                    ),
+                    hint,
+                ],
+            ),
+        ),
+        MenuMode::Alt => (
+            menu_words("ALT", &["Attributes", "Copy", "Delete", "Move"]),
+            menu_line(
+                "",
+                &[("", "on tagged files · Copy/Move recreate the paths"), hint],
+            ),
+        ),
+    }
 }
 
 /// Rodapé durante Copy/Move/Delete: arquivo atual e barra de progresso,
@@ -637,6 +673,25 @@ mod tests {
         state.select(Some(2));
         assert_eq!(visible_window(&mut state, 5, 10).0, 0..5);
         assert_eq!(visible_window(&mut state, 0, 10).0, 0..0);
+    }
+
+    #[test]
+    fn footer_shows_menu_for_mode() {
+        use ratatui::{Terminal, backend::TestBackend};
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = App::new(tmp.path().to_path_buf());
+        let footer = |app: &mut App| {
+            let mut term = Terminal::new(TestBackend::new(100, 20)).unwrap();
+            term.draw(|f| draw(f, app)).unwrap();
+            let buf = term.backend().buffer();
+            (0..100).map(|x| buf[(x, 18)].symbol()).collect::<String>()
+        };
+        assert!(footer(&mut app).starts_with("DIR "));
+        app.held = Some(MenuMode::Ctrl);
+        assert!(footer(&mut app).starts_with("CTRL "));
+        app.held = None;
+        app.sticky = MenuMode::Alt;
+        assert!(footer(&mut app).starts_with("ALT "));
     }
 
     #[test]

@@ -54,12 +54,18 @@ relativos à raiz da lista (o diretório atual, a raiz do Branch, ou a raiz da
 No prompt do destino, **F6** troca entre os dois modos, e o modo atual aparece
 no próprio prompt. Alt+D e Alt+A funcionam como Ctrl+D e Ctrl+A.
 
+**Menus Ctrl/Alt:** como no ZTree, o rodapé mostra só os comandos de uma
+tecla. **F9** alterna para o menu de Ctrl, depois o de Alt, e volta. Com um
+desses menus aberto pelo F9, a próxima letra vale como Ctrl+letra ou
+Alt+letra (ex.: `F9` `M` = Ctrl+M); `Esc` desiste. Nos terminais com o
+protocolo de teclado do kitty, basta **segurar Ctrl ou Alt** para o menu
+correspondente aparecer enquanto a tecla estiver pressionada.
+
 **Ctrl+M:** na maioria dos terminais, Ctrl+M chega igual a Enter. O xt liga
 automaticamente o protocolo de teclado do kitty quando o terminal o suporta
 (kitty, WezTerm, foot, Ghostty, Alacritty recente, iTerm2), e aí Ctrl+M move
 os arquivos marcados como no ZTree. Nos terminais baseados em VTE (GNOME
-Terminal, Ptyxis, Terminator, Tilix) use **Alt+M** e, para mover sem
-caminhos, aperte **F6** no prompt.
+Terminal, Ptyxis, Terminator, Tilix) use **F9 M** (ou Alt+M e F6 no prompt).
 
 Durante um log demorado, o progresso aparece no rodapé e `Esc` cancela.
 

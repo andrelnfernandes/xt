@@ -5,7 +5,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use ratatui::crossterm::event::{KeyCode, KeyEvent};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, ModifierKeyCode};
 use ratatui::widgets::ListState;
 
 use crate::input::{self, Command, LineEvent, LineInput};
@@ -47,6 +47,15 @@ pub struct Job {
 enum AfterLog {
     Refresh,
     OpenBranch(NodeId),
+}
+
+/// Qual menu o rodapé mostra: o normal ou o dos comandos com Ctrl/Alt.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum MenuMode {
+    #[default]
+    Normal,
+    Ctrl,
+    Alt,
 }
 
 /// Campo de texto aberto no rodapé.
@@ -123,6 +132,10 @@ pub struct App {
     /// Último destino digitado no Copy/Move.
     last_dest: Option<String>,
     pub should_quit: bool,
+    /// Ctrl/Alt pressionado agora (só em terminais que avisam isso).
+    pub held: Option<MenuMode>,
+    /// Menu escolhido com F9; a próxima letra recebe esse modificador.
+    pub sticky: MenuMode,
     /// Altura útil das listas no último desenho (para PgUp/PgDn).
     pub tree_page: usize,
     pub file_page: usize,
@@ -149,6 +162,8 @@ impl App {
             viewer: None,
             last_dest: None,
             should_quit: false,
+            held: None,
+            sticky: MenuMode::Normal,
             tree_page: 1,
             file_page: 1,
         };
@@ -196,7 +211,42 @@ impl App {
         self.job.is_some() || self.op.as_ref().is_some_and(|op| op.conflict.is_none())
     }
 
-    pub fn handle_key(&mut self, key: KeyEvent) {
+    /// Menu a mostrar no rodapé.
+    pub fn menu_mode(&self) -> MenuMode {
+        self.held.unwrap_or(self.sticky)
+    }
+
+    pub fn handle_key(&mut self, mut key: KeyEvent) {
+        // Ctrl/Alt sozinhos só trocam o menu enquanto estão pressionados.
+        if let KeyCode::Modifier(m) = key.code {
+            let mode = match m {
+                ModifierKeyCode::LeftControl | ModifierKeyCode::RightControl => MenuMode::Ctrl,
+                ModifierKeyCode::LeftAlt | ModifierKeyCode::RightAlt => MenuMode::Alt,
+                _ => return,
+            };
+            if key.kind == KeyEventKind::Release {
+                if self.held == Some(mode) {
+                    self.held = None;
+                }
+            } else {
+                self.held = Some(mode);
+            }
+            return;
+        }
+        if key.kind == KeyEventKind::Release {
+            return;
+        }
+        // Se a soltura do Ctrl/Alt se perdeu (ex.: troca de janela), a
+        // próxima tecla sem ele corrige o menu.
+        let still_held = match self.held {
+            Some(MenuMode::Ctrl) => key.modifiers.contains(KeyModifiers::CONTROL),
+            Some(MenuMode::Alt) => key.modifiers.contains(KeyModifiers::ALT),
+            _ => true,
+        };
+        if !still_held {
+            self.held = None;
+        }
+
         self.message = None;
 
         if let Some(confirm) = self.confirm.take() {
@@ -263,6 +313,28 @@ impl App {
                 LineEvent::Editing => {}
             }
             return;
+        }
+        if key.code == KeyCode::F(9) {
+            self.sticky = match self.sticky {
+                MenuMode::Normal => MenuMode::Ctrl,
+                MenuMode::Ctrl => MenuMode::Alt,
+                MenuMode::Alt => MenuMode::Normal,
+            };
+            return;
+        }
+        // Com o menu Ctrl/Alt aberto pelo F9, a próxima letra vale como
+        // Ctrl+letra / Alt+letra. Útil onde o terminal não deixa passar a
+        // combinação (Ctrl+M no Terminator, por exemplo).
+        match std::mem::take(&mut self.sticky) {
+            MenuMode::Normal => {}
+            _ if key.code == KeyCode::Esc => return,
+            MenuMode::Ctrl if matches!(key.code, KeyCode::Char(_)) => {
+                key.modifiers |= KeyModifiers::CONTROL;
+            }
+            MenuMode::Alt if matches!(key.code, KeyCode::Char(_)) => {
+                key.modifiers |= KeyModifiers::ALT;
+            }
+            _ => {}
         }
         if let Some(cmd) = input::map_key(key, self.focus) {
             self.apply(cmd);
@@ -1204,5 +1276,86 @@ mod tests {
         assert!(dest.join("c.rs").exists());
         assert!(dest.join("deep/a.rs").exists());
         assert!(!tmp.path().join("sub/deep/a.rs").exists());
+    }
+
+    fn modifier(app: &mut App, m: ModifierKeyCode, kind: KeyEventKind) {
+        let mut key = KeyEvent::new(KeyCode::Modifier(m), KeyModifiers::NONE);
+        key.kind = kind;
+        app.handle_key(key);
+    }
+
+    #[test]
+    fn holding_ctrl_or_alt_switches_menu() {
+        let (_tmp, mut app) = sample();
+        assert_eq!(app.menu_mode(), MenuMode::Normal);
+        modifier(&mut app, ModifierKeyCode::LeftControl, KeyEventKind::Press);
+        assert_eq!(app.menu_mode(), MenuMode::Ctrl);
+        modifier(&mut app, ModifierKeyCode::LeftControl, KeyEventKind::Repeat);
+        assert_eq!(app.menu_mode(), MenuMode::Ctrl);
+        modifier(
+            &mut app,
+            ModifierKeyCode::LeftControl,
+            KeyEventKind::Release,
+        );
+        assert_eq!(app.menu_mode(), MenuMode::Normal);
+
+        modifier(&mut app, ModifierKeyCode::RightAlt, KeyEventKind::Press);
+        assert_eq!(app.menu_mode(), MenuMode::Alt);
+        // Soltura perdida: a próxima tecla sem Alt volta ao normal.
+        press(&mut app, KeyCode::Down);
+        assert_eq!(app.menu_mode(), MenuMode::Normal);
+    }
+
+    #[test]
+    fn release_events_do_nothing() {
+        let (_tmp, mut app) = sample();
+        let mut key = KeyEvent::new(KeyCode::Down, KeyModifiers::NONE);
+        key.kind = KeyEventKind::Release;
+        app.handle_key(key);
+        assert_eq!(app.tree_state.selected(), Some(0));
+        key.kind = KeyEventKind::Repeat;
+        app.handle_key(key);
+        assert_eq!(app.tree_state.selected(), Some(1), "held arrows repeat");
+    }
+
+    #[test]
+    fn f9_cycles_menus_and_applies_modifier_once() {
+        let (_tmp, mut app) = sample();
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::F(9));
+        assert_eq!(app.menu_mode(), MenuMode::Ctrl);
+        press(&mut app, KeyCode::F(9));
+        assert_eq!(app.menu_mode(), MenuMode::Alt);
+        press(&mut app, KeyCode::F(9));
+        assert_eq!(app.menu_mode(), MenuMode::Normal);
+
+        // F9 + T = Ctrl+T (marca a lista toda); depois volta ao normal.
+        press(&mut app, KeyCode::F(9));
+        press(&mut app, KeyCode::Char('t'));
+        assert_eq!(tagged(&app).len(), 2);
+        assert_eq!(app.menu_mode(), MenuMode::Normal);
+
+        // F9 + M = Ctrl+M: mover marcados sem caminhos.
+        press(&mut app, KeyCode::F(9));
+        press(&mut app, KeyCode::Char('m'));
+        let label = &app.prompt.as_ref().unwrap().label;
+        assert!(
+            label.starts_with("MOVE 2 tagged files (no paths)"),
+            "{label}"
+        );
+        press(&mut app, KeyCode::Esc);
+
+        // F9 F9 + C = Alt+C: copiar com caminhos.
+        press(&mut app, KeyCode::F(9));
+        press(&mut app, KeyCode::F(9));
+        press(&mut app, KeyCode::Char('c'));
+        assert!(app.prompt.as_ref().unwrap().label.contains("with paths"));
+        press(&mut app, KeyCode::Esc);
+
+        // Esc desiste do menu sem fazer nada.
+        press(&mut app, KeyCode::F(9));
+        press(&mut app, KeyCode::Esc);
+        assert_eq!(app.menu_mode(), MenuMode::Normal);
+        assert_eq!(app.focus, Focus::Files);
     }
 }

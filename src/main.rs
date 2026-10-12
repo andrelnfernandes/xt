@@ -16,7 +16,7 @@ use std::time::Duration;
 use anyhow::{Context, bail};
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{
-    self, Event, KeyEventKind, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
+    self, Event, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
     PushKeyboardEnhancementFlags,
 };
 use ratatui::crossterm::{execute, terminal};
@@ -37,41 +37,91 @@ fn main() -> anyhow::Result<()> {
     let mut app = App::new(root);
     // `init` também instala um panic hook que restaura o terminal.
     let mut terminal = ratatui::init();
-    let enhanced = enable_keyboard_enhancement();
-    let result = run(&mut terminal, &mut app);
-    if enhanced {
-        let _ = execute!(stdout(), PopKeyboardEnhancementFlags);
-    }
+    let mut keyboard = Keyboard::detect();
+    let result = run(&mut terminal, &mut app, &mut keyboard);
+    keyboard.restore();
     ratatui::restore();
     result
 }
 
-/// Liga o protocolo de teclado do kitty, quando o terminal o suporta
-/// (kitty, WezTerm, foot, Ghostty, Alacritty...). Com ele, Ctrl+M chega
-/// separado de Enter (e Esc deixa de ser ambíguo); sem ele, Ctrl+M é Enter
-/// e o "mover marcados" fica só no Alt+M.
-fn enable_keyboard_enhancement() -> bool {
-    let supported = terminal::supports_keyboard_enhancement().unwrap_or(false);
-    if !supported {
-        return false;
-    }
-    let flags = KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES;
-    if execute!(stdout(), PushKeyboardEnhancementFlags(flags)).is_err() {
-        return false;
-    }
-    // Se o programa entrar em pânico, desliga o protocolo antes de o hook
-    // do ratatui restaurar o terminal; senão o shell ficaria recebendo
-    // códigos de tecla estranhos.
-    let previous = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        let _ = execute!(stdout(), PopKeyboardEnhancementFlags);
-        previous(info);
-    }));
-    true
+/// Protocolo de teclado do kitty, quando o terminal o suporta (kitty,
+/// WezTerm, foot, Ghostty, Alacritty...).
+///
+/// - Modo simples: Ctrl+M chega separado de Enter e Esc deixa de ser
+///   ambíguo. Usado enquanto um prompt está aberto, para a digitação
+///   (acentos, teclas mortas) continuar como sempre.
+/// - Modo completo: o terminal também avisa quando cada tecla é pressionada
+///   e solta, inclusive Ctrl e Alt sozinhos; é o que permite trocar o menu
+///   enquanto o Ctrl/Alt está pressionado, como no ZTree.
+///
+/// Sem suporte (ex.: terminais VTE como o Terminator), nada disso é ligado.
+struct Keyboard {
+    supported: bool,
+    full: bool,
 }
 
-fn run(terminal: &mut DefaultTerminal, app: &mut App) -> anyhow::Result<()> {
+impl Keyboard {
+    const SIMPLE: KeyboardEnhancementFlags = KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES;
+    const FULL: KeyboardEnhancementFlags = KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+        .union(KeyboardEnhancementFlags::REPORT_EVENT_TYPES)
+        .union(KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES)
+        .union(KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS);
+
+    fn detect() -> Self {
+        let supported = terminal::supports_keyboard_enhancement().unwrap_or(false)
+            && execute!(stdout(), PushKeyboardEnhancementFlags(Self::SIMPLE)).is_ok();
+        if supported {
+            // Se o programa entrar em pânico, desliga o protocolo antes de o
+            // hook do ratatui restaurar o terminal; senão o shell ficaria
+            // recebendo códigos de tecla estranhos. Desempilhar a mais é
+            // inofensivo.
+            let previous = std::panic::take_hook();
+            std::panic::set_hook(Box::new(move |info| {
+                let _ = execute!(stdout(), PopKeyboardEnhancementFlags);
+                let _ = execute!(stdout(), PopKeyboardEnhancementFlags);
+                previous(info);
+            }));
+        }
+        Keyboard {
+            supported,
+            full: false,
+        }
+    }
+
+    /// Liga o modo completo fora dos prompts e o desliga dentro deles.
+    fn sync(&mut self, app: &mut App) -> std::io::Result<()> {
+        let want_full = self.supported && app.prompt.is_none();
+        if want_full == self.full {
+            return Ok(());
+        }
+        if want_full {
+            execute!(stdout(), PushKeyboardEnhancementFlags(Self::FULL))?;
+        } else {
+            execute!(stdout(), PopKeyboardEnhancementFlags)?;
+        }
+        self.full = want_full;
+        // No modo simples a soltura do Ctrl/Alt não é avisada.
+        app.held = None;
+        Ok(())
+    }
+
+    fn restore(&mut self) {
+        if self.full {
+            let _ = execute!(stdout(), PopKeyboardEnhancementFlags);
+        }
+        if self.supported {
+            let _ = execute!(stdout(), PopKeyboardEnhancementFlags);
+        }
+    }
+}
+
+fn run(
+    terminal: &mut DefaultTerminal,
+    app: &mut App,
+    keyboard: &mut Keyboard,
+) -> anyhow::Result<()> {
     while !app.should_quit {
+        keyboard.sync(app)?;
         terminal.draw(|frame| ui::draw(frame, app))?;
         // Com trabalho em andamento (log, cópia...), não bloqueia esperando tecla:
         // processa um pedaço e redesenha o progresso.
@@ -79,9 +129,8 @@ fn run(terminal: &mut DefaultTerminal, app: &mut App) -> anyhow::Result<()> {
             app.tick(Duration::from_millis(50));
             continue;
         }
-        if let Event::Key(key) = event::read()?
-            && key.kind == KeyEventKind::Press
-        {
+        // Pressionar, repetir e soltar: o App decide o que usar.
+        if let Event::Key(key) = event::read()? {
             app.handle_key(key);
         }
     }
