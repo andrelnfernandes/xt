@@ -157,5 +157,11 @@ Na árvore, `+` no conector (`├─+`) indica um diretório recolhido que tem s
 - [x] Fase 0 — tela clássica, árvore navegável, janela de arquivos
 - [x] Fase 1 — Filespec, Showall/Branch, viewer texto/hex, log com progresso
 - [x] Fase 2 — tagging, copy/move/delete/rename, makedir, permissões, re-log
-- [ ] Fase 3 — janela dividida, compare, arquivos compactados, inotify, macros
+- [ ] Fase 3
+  - [x] janela dividida (F8), Tab, Log
+  - [x] Compare (diretório ou ramo)
+  - [x] navegação em ZIP/TAR
+  - [x] atualização automática (inotify)
+  - [x] Edit, eXecute, histórico nos prompts
+  - [ ] macros
 - [ ] Fase 4 — temas, keymap configurável, empacotamento
