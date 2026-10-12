@@ -240,6 +240,86 @@ Na árvore, `+` no conector (`├─+`) indica um diretório recolhido que tem s
 
 - pacote `.deb` (falta definir licença e mantenedor)
 - versões para macOS e Windows
-- macros
-- dono/grupo (chown), Graft, rename com curinga
-- lixeira (em vez de apagar de vez)
+- os itens de "Não implementado" abaixo
+
+## Comparação com o ZTreeWin
+
+Levantamento feito comando a comando a partir do manual oficial do ZTreeWin
+v2.2 ([ztwhlp.pdf](https://www.zedtek.com/download/ztwhlp.pdf), de 2011, em
+especial a "Quick Command Table" e a seção 3.7 de configuração). Versões mais
+novas do ZTreeWin podem ter mudado detalhes.
+
+### Implementado
+
+Árvore com log sob demanda (`+`, `*`), janela de arquivos, Filespec, Branch,
+Showall, tags (T, U, I, Ctrl+T/U), Copy/Move/Delete/Rename com as versões
+Ctrl (marcados) e Alt (marcados com caminhos), Make dir, Delete dir, Prune,
+Attributes, View, Edit, eXecute, Compare (diretório e ramo), Sort, Log,
+janela dividida (F8 e Tab), relog (F2), atualização automática, navegação e
+extração de arquivos compactados, histórico nos prompts, ajuda (F1) e tela de
+configuração (Alt+F10).
+
+### Simplificado
+
+| Recurso | No ZTreeWin | No xt |
+|---|---|---|
+| Filespec | regras próprias, filtros por data, tamanho e atributo, filespec invertido | glob (`*`, `?`, `[abc]`), exclusão com `-`, sem filtros por data/tamanho/atributo |
+| Visualizador | modos Alpha, Dump, Hex, Junk e Wrap; busca; conjuntos de caracteres; edição hex | texto (UTF-8) ou hex, sem busca nem quebra de linha; até 16 MiB |
+| Attributes | atributos do Windows (R, A, S, H) | permissões do Unix em octal (`644`); sem dono/grupo |
+| Sort | Name, Ext, Date, Time, Length, Alpha, nuMber, Size, Value, Unsorted; Charset; same/diff na tela dividida | Name, Ext, Date, Size, crescente/decrescente, Path first; cada janela tem a sua ordem |
+| Compare | opções Identical, Unique, Newer, Older, Size, Binary, Case; filtro de exibição | marca únicos, mais novos, mais antigos, idênticos, diferentes ou únicos+mais novos; sem comparação binária |
+| Prune | apaga só os subdiretórios ou também o atual; só diretórios vazios; lixeira | apaga sempre o diretório inteiro, permanentemente; confirmação configurável |
+| Delete | lixeira opcional | apaga de vez |
+| Log | vários drives logados, Global, troca de drive | uma raiz por janela; `L` abre outro diretório |
+| eXecute | parâmetros de batch `%1`–`%8`, nova janela (NTW) | `sh` com `%f`, `%t` e `%d`; sempre no terminal do xt |
+| Histórico | janela de histórico com marcadores | ↑/↓ no prompt, um histórico por tipo, salvo entre execuções |
+| Configuração | 7 páginas, editor de cores (F4) por elemento, Alt-Export | 4 páginas com as opções que fazem sentido no Linux; F4 escolhe entre 8 temas prontos; cores individuais no `config.toml` |
+| Arquivos compactados | qualquer formato com archiver externo, criar (F5), extrair (Alt-F5) | só leitura de ZIP/JAR/WAR/APK/TAR/TGZ; extrair com Copy |
+| Tela dividida | painéis de estatísticas opcionais por lado | sem painel de estatísticas |
+| Menus | menu de Ctrl/Alt ao segurar a tecla | igual em terminais com o protocolo do kitty; F9 em qualquer terminal |
+
+Opções de configuração do ZTreeWin que não foram trazidas por serem do
+Windows: atributos RSH, lixeira, junctions, OEM/ANSI, EBCDIC, tamanho da
+janela, atalhos (.lnk). As demais dependem de recursos ainda não feitos
+(abaixo).
+
+### Teclas diferentes
+
+| Função | ZTreeWin | xt |
+|---|---|---|
+| Reler o diretório | F3 | F2 |
+| Configuração | Alt+F10 | F12 ou Alt+F10 (no GNOME, Alt+F10 maximiza a janela) |
+| Abrir arquivo compactado | Alt+F5 | `O` |
+| Compare do ramo | Alt+C na árvore | `C` e depois `B` |
+| Alt+C na árvore | Compare do ramo | Copy dos marcados com caminhos |
+| Alt+M na árvore | Mirror | Move dos marcados com caminhos |
+| Mover marcados | Ctrl+M | Ctrl+M (terminais com o protocolo do kitty), `F9` `M`, ou Alt+M e F6 |
+| `-` na árvore | descarrega o ramo da memória | só recolhe (continua logado) |
+| ← na janela de arquivos | página acima | volta para a árvore |
+| F9 | menu de aplicativos | menus de Ctrl/Alt |
+| F12 | macros | configuração |
+
+Todas as teclas podem ser trocadas em `[keys]` no `config.toml`.
+
+### Não implementado
+
+- **Árvore:** Avail (A), Global (G), Graft (Alt+G), Mirror (Alt+M), Oops
+  (O, recuperar apagados), Release/descarregar da memória (Alt+R, `-`,
+  Ctrl+Backspace), Hide (Alt+H), Info (Alt+I), Wash (Alt+W), Volume
+  (Ctrl+V), KByte (Alt+K), F5/F6 (esconder níveis de subdiretórios),
+  marcar/desmarcar o ramo (Ctrl+F7/F8), marcar por atributo (Alt+T/U),
+  navegação por Treespec (`\`), busca ao digitar (spell search), janela de
+  estatísticas (`?`), troca de drive (`<` e `>`).
+- **Arquivos:** Open com o programa associado (O; no Linux seria
+  `xdg-open`), New date (N), Batch (Ctrl+B/Alt+B), busca no conteúdo dos
+  marcados (Ctrl+S), JFC (J, comparar o conteúdo de dois arquivos), ZAAP
+  (Y), sHortcut (H), Print (P), modos de exibição (Alt+F: várias colunas,
+  só nomes), Rename com máscara, localizar e trocar e mudança de maiúsculas,
+  dono/grupo (chown), Megaview e Autoview (F7), juntar marcados entre as
+  janelas (Ctrl+F6), Partial Untag (Ctrl+F8), copiar caminho para a área de
+  transferência (Ctrl+Insert).
+- **Geral:** macros (F12), menu de aplicativos (F9), marcadores (F11, `[`
+  e `]`), Quit mudando o diretório do shell (Ctrl+Q/Alt+Q), salvar e
+  carregar o log (Zlist, Ctrl/Alt+Z), lixeira, cores por nome e atributo
+  (ZCOLORS.INI), mouse, opções de linha de comando do ZTreeWin, comandos de
+  vídeo (Alt+F6–F9), criar arquivos compactados (F5).
