@@ -475,10 +475,17 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
             ),
         ),
         MenuMode::Alt => (
-            menu_words("ALT", &["Attributes", "Copy", "Delete", "Move"]),
+            menu_words(
+                "ALT",
+                if tree {
+                    &["Attributes", "Copy", "Delete", "Move", "Prune", "Sort"]
+                } else {
+                    &["Attributes", "Copy", "Delete", "Move", "Sort"]
+                },
+            ),
             menu_line(
                 "",
-                &[("", "on tagged files · Copy/Move recreate the paths"), hint],
+                &[("", "tagged files · Copy/Move recreate the paths"), hint],
             ),
         ),
     }

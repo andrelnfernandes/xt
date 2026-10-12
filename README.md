@@ -82,6 +82,7 @@ erro no rodapé.
 | `C` | | copia o arquivo |
 | `M` | cria um subdiretório | move o arquivo |
 | `D` | apaga o diretório (só se vazio) | apaga o arquivo |
+| Alt+P | Prune: apaga o diretório com tudo dentro | |
 | `R` | renomeia o diretório | renomeia o arquivo |
 | `A` | | permissões (octal, ex.: `644`) |
 | Ctrl + `C` `M` `D` `A` | idem, nos arquivos marcados | idem, nos arquivos marcados |
@@ -174,6 +175,14 @@ simbólicos são copiados como links. Mover entre discos copia e depois apaga.
 
 **Delete** apaga de verdade (não vai para a lixeira) e sempre pede confirmação.
 
+**Prune (Alt+P na árvore):** loga o ramo inteiro, mostra quantos arquivos,
+diretórios e bytes serão apagados e pede que você **digite PRUNE** (ou o nome
+do diretório, ou Y, conforme `prune_confirmation`). Apaga os arquivos e depois
+os diretórios, do mais fundo para cima, com progresso e `Esc` para cancelar.
+Links simbólicos são removidos sem seguir o destino, e **outros pontos de
+montagem dentro do ramo são pulados** (um pendrive montado ali dentro não é
+apagado). A raiz da árvore não pode sofrer Prune.
+
 **Visualizador:** setas/PgUp/PgDn/Home/End rolam, ←→ deslocam na horizontal,
 `H` alterna texto/hex, `Esc` fecha. Arquivos binários abrem em hex.
 Arquivos acima de 16 MiB mostram só o começo.
@@ -213,5 +222,5 @@ Na árvore, `+` no conector (`├─+`) indica um diretório recolhido que tem s
 - pacote `.deb` (falta definir licença e mantenedor)
 - versões para macOS e Windows
 - macros
-- dono/grupo (chown), Prune, Graft, rename com curinga
+- dono/grupo (chown), Graft, rename com curinga
 - lixeira (em vez de apagar de vez)

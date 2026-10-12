@@ -8,14 +8,14 @@
 use std::collections::HashSet;
 use std::fs;
 use std::ops::{Deref, DerefMut};
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, ModifierKeyCode};
 
 use crate::archive;
-use crate::config::Options;
+use crate::config::{Options, PruneConfirm};
 use crate::input::{Command, LineEvent, LineInput};
 use crate::keymap::Keymap;
 use crate::model::compare::{self, CompareMode};
@@ -41,6 +41,8 @@ enum AfterLog {
     OpenBranch(NodeId),
     /// Abre o Branch e compara com a outra janela.
     CompareBranch(NodeId, CompareMode),
+    /// Pede a confirmação do Prune deste diretório.
+    Prune(NodeId),
 }
 
 /// Qual menu o rodapé mostra: o normal ou o dos comandos com Ctrl/Alt.
@@ -75,6 +77,13 @@ enum PromptKind {
     Chmod(Vec<PathBuf>),
     Log,
     Execute,
+    /// Confirmação de um Prune: o texto digitado tem de ser `word`.
+    Prune {
+        root: PathBuf,
+        word: String,
+        files: Vec<Source>,
+        dirs: Vec<PathBuf>,
+    },
 }
 
 impl PromptKind {
@@ -87,7 +96,9 @@ impl PromptKind {
             PromptKind::Execute => "execute",
             PromptKind::MakeDir(_) => "mkdir",
             PromptKind::Chmod(_) => "chmod",
-            PromptKind::RenameFile(_) | PromptKind::RenameDir(_) => return None,
+            PromptKind::RenameFile(_) | PromptKind::RenameDir(_) | PromptKind::Prune { .. } => {
+                return None;
+            }
         })
     }
 }
@@ -170,6 +181,8 @@ pub struct App {
     pub external: Option<External>,
     /// Opções do arquivo de configuração.
     pub options: Options,
+    /// Diretório sendo apagado por um Prune em andamento.
+    pruning: Option<PathBuf>,
     pub keymap: Keymap,
     pub should_quit: bool,
     /// Ctrl/Alt pressionado agora (só em terminais que avisam isso).
@@ -210,6 +223,7 @@ impl App {
             history_file: None,
             external: None,
             options: Options::default(),
+            pruning: None,
             keymap: Keymap::default(),
             should_quit: false,
             held: None,
@@ -405,6 +419,7 @@ impl App {
                 | Command::Log
                 | Command::Edit
                 | Command::Execute
+                | Command::Prune
         );
         if writes && self.archive.is_some() {
             self.message = Some("Archives are read-only (use Copy to extract)".into());
@@ -423,6 +438,15 @@ impl App {
             Command::SwitchPane => self.apply(Command::SwitchWindow),
             Command::Split => self.toggle_split(),
             Command::Compare => self.ask_compare(false),
+            Command::Prune => {
+                let id = self.current();
+                if id == ROOT {
+                    self.message = Some("Cannot prune the root directory".into());
+                } else {
+                    // Loga o ramo inteiro antes, para saber tudo o que será apagado.
+                    self.start_job(LogJob::new(id, false), AfterLog::Prune(id));
+                }
+            }
             Command::Sort => {
                 let sort = self.sort;
                 self.ask_sort(sort);
@@ -555,6 +579,12 @@ impl App {
                 self.compare(mode);
                 return;
             }
+            AfterLog::Prune(id) => {
+                pane.refresh_files();
+                self.job = None;
+                self.prepare_prune(id);
+                return;
+            }
             AfterLog::Refresh => pane.refresh_files(),
         }
         self.job = None;
@@ -575,10 +605,82 @@ impl App {
         self.tick(Duration::from_millis(30));
     }
 
+    /// Monta a lista do Prune e pede a confirmação digitada. Outros pontos
+    /// de montagem dentro do ramo ficam de fora (não se apaga um pendrive
+    /// montado ali dentro por engano).
+    fn prepare_prune(&mut self, id: NodeId) {
+        let root = self.tree.path(id);
+        let root_dev = match fs::symlink_metadata(&root) {
+            Ok(m) => m.dev(),
+            Err(e) => {
+                self.message = Some(format!("Cannot prune {}: {e}", root.display()));
+                return;
+            }
+        };
+        let (mut files, mut dirs) = (Vec::new(), Vec::new());
+        let (mut mounts, mut unreadable) = (0, 0);
+        let mut stack = vec![id];
+        while let Some(n) = stack.pop() {
+            let path = self.tree.path(n);
+            match fs::symlink_metadata(&path) {
+                Ok(m) if m.dev() == root_dev => {}
+                Ok(_) => {
+                    mounts += 1;
+                    continue;
+                }
+                Err(_) => continue,
+            }
+            let node = self.tree.node(n);
+            unreadable += usize::from(node.error.is_some());
+            for f in &node.files {
+                files.push(Source {
+                    path: path.join(&f.name),
+                    size: f.size,
+                });
+            }
+            stack.extend(node.children.iter().copied());
+            dirs.push(path);
+        }
+
+        let name = fit_name(&root);
+        let word = match self.options.prune_confirmation {
+            PruneConfirm::Prune => "PRUNE".to_string(),
+            PruneConfirm::Name => name.clone(),
+            PruneConfirm::Y => "Y".to_string(),
+        };
+        let bytes: u64 = files.iter().map(|f| f.size).sum();
+        let mut warnings = String::new();
+        if mounts > 0 {
+            warnings.push_str(&format!(", skipping {mounts} mount point(s)"));
+        }
+        if unreadable > 0 {
+            warnings.push_str(&format!(", {unreadable} unreadable dir(s)"));
+        }
+        let label = format!(
+            "PRUNE {name}: {} files, {} dirs, {} bytes{warnings}. Type {word} to confirm: ",
+            files.len(),
+            dirs.len(),
+            bytes
+        );
+        let kind = PromptKind::Prune {
+            root,
+            word,
+            files,
+            dirs,
+        };
+        self.open_prompt(kind, label, "");
+    }
+
     /// Fim (ou cancelamento) de uma operação: relê os diretórios afetados.
     fn finish_op(&mut self, prefix: &str) {
         let Some(op) = self.op.take() else { return };
         self.rescan_everywhere(&op.touched_dirs());
+        // Depois de um Prune, o cursor vai para o diretório pai.
+        if let Some(root) = self.pruning.take()
+            && let Some(parent) = root.parent()
+        {
+            self.goto(parent);
+        }
         self.message = Some(format!("{prefix}{}", op.summary()));
     }
 
@@ -779,6 +881,20 @@ impl App {
                 self.refresh_files();
             }),
             PromptKind::Log => self.log(&text),
+            PromptKind::Prune {
+                root,
+                word,
+                files,
+                dirs,
+            } => {
+                if text.trim().eq_ignore_ascii_case(&word) {
+                    self.pruning = Some(root);
+                    self.start_op(Operation::prune(files, dirs));
+                    Ok(())
+                } else {
+                    Err("Prune cancelled: confirmation did not match".into())
+                }
+            }
             PromptKind::Execute => {
                 if !text.trim().is_empty() {
                     let file = self.selected_file().filter(|_| self.focus == Focus::Files);
@@ -1918,5 +2034,58 @@ mod tests {
         // A nova janela do F8 herda a ordenação.
         press(&mut app, KeyCode::F(8));
         assert_eq!(app.panes[1].sort, app.panes[0].sort);
+    }
+
+    #[test]
+    fn prune_needs_typed_confirmation() {
+        let (tmp, mut app) = sample();
+        press(&mut app, KeyCode::Down); // sub (com sub/deep/a.rs)
+        alt(&mut app, 'p');
+        let label = app.prompt.as_ref().expect("asks to type").label.clone();
+        assert!(label.starts_with("PRUNE sub: 2 files, 2 dirs"), "{label}");
+
+        // Texto errado: nada é apagado.
+        answer_prompt(&mut app, "yes");
+        assert!(tmp.path().join("sub/deep/a.rs").exists());
+        assert!(
+            app.message
+                .as_deref()
+                .unwrap()
+                .starts_with("Prune cancelled")
+        );
+
+        alt(&mut app, 'p');
+        answer_prompt(&mut app, "prune");
+        assert!(!tmp.path().join("sub").exists());
+        assert!(app.message.as_deref().unwrap().starts_with("Pruned 4 of 4"));
+        assert_eq!(app.current(), ROOT, "cursor goes to the parent");
+        assert!(
+            tmp.path().join("a.rs").exists(),
+            "outside the branch is untouched"
+        );
+    }
+
+    #[test]
+    fn prune_refuses_root_and_can_use_the_name() {
+        let (tmp, mut app) = sample();
+        alt(&mut app, 'p');
+        assert!(app.prompt.is_none());
+        assert_eq!(
+            app.message.as_deref(),
+            Some("Cannot prune the root directory")
+        );
+
+        app.options.prune_confirmation = PruneConfirm::Name;
+        press(&mut app, KeyCode::Down);
+        alt(&mut app, 'p');
+        assert!(
+            app.prompt
+                .as_ref()
+                .unwrap()
+                .label
+                .contains("Type sub to confirm")
+        );
+        answer_prompt(&mut app, "SUB");
+        assert!(!tmp.path().join("sub").exists());
     }
 }

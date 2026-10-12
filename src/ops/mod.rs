@@ -21,6 +21,8 @@ pub enum OpKind {
     Copy,
     Move,
     Delete,
+    /// Apaga um ramo: arquivos e depois diretórios, do mais fundo para cima.
+    Prune,
 }
 
 impl OpKind {
@@ -29,6 +31,7 @@ impl OpKind {
             OpKind::Copy => "Copying",
             OpKind::Move => "Moving",
             OpKind::Delete => "Deleting",
+            OpKind::Prune => "Pruning",
         }
     }
 
@@ -37,6 +40,7 @@ impl OpKind {
             OpKind::Copy => "Copied",
             OpKind::Move => "Moved",
             OpKind::Delete => "Deleted",
+            OpKind::Prune => "Pruned",
         }
     }
 }
@@ -54,6 +58,8 @@ struct Item {
     /// Vazio no Delete.
     dst: PathBuf,
     size: u64,
+    /// Diretório a remover (só no Prune; já estará vazio).
+    is_dir: bool,
 }
 
 /// Resposta do usuário a um conflito ("o destino já existe").
@@ -117,9 +123,25 @@ impl Operation {
                 src: s.path,
                 dst: PathBuf::new(),
                 size: s.size,
+                is_dir: false,
             })
             .collect();
         Self::new(OpKind::Delete, items)
+    }
+
+    /// Prepara um Prune: apaga `files` e depois `dirs`, dos mais fundos
+    /// para os mais rasos (cada um já estará vazio quando chegar a vez).
+    pub fn prune(files: Vec<Source>, mut dirs: Vec<PathBuf>) -> Self {
+        dirs.sort_by_key(|d| std::cmp::Reverse(d.components().count()));
+        let mut op = Self::delete(files);
+        op.kind = OpKind::Prune;
+        op.items.extend(dirs.into_iter().map(|d| Item {
+            src: d,
+            dst: PathBuf::new(),
+            size: 0,
+            is_dir: true,
+        }));
+        op
     }
 
     /// Prepara uma cópia ou movimentação para `dest`. Se `dest` for um
@@ -146,6 +168,7 @@ impl Operation {
                         dst: dest.join(rel).join(s.path.file_name().unwrap_or_default()),
                         src: s.path,
                         size: s.size,
+                        is_dir: false,
                     }
                 })
                 .collect()
@@ -158,6 +181,7 @@ impl Operation {
                 src: s.path,
                 dst: dest.to_path_buf(),
                 size: s.size,
+                is_dir: false,
             }]
         } else {
             return Err(format!(
@@ -306,8 +330,13 @@ impl Operation {
     fn start_item(&mut self) {
         let item = self.items[self.next].clone();
 
-        if self.kind == OpKind::Delete {
-            match fs::remove_file(&item.src) {
+        if matches!(self.kind, OpKind::Delete | OpKind::Prune) {
+            let removed = if item.is_dir {
+                fs::remove_dir(&item.src)
+            } else {
+                fs::remove_file(&item.src)
+            };
+            match removed {
                 Ok(()) => {
                     self.done_bytes += item.size;
                     self.finish_item();
@@ -501,8 +530,12 @@ impl Operation {
 
     /// Resumo para mostrar no fim.
     pub fn summary(&self) -> String {
+        let noun = match self.kind {
+            OpKind::Prune => "files and directories",
+            _ => "files",
+        };
         let mut s = format!(
-            "{} {} of {} files",
+            "{} {} of {} {noun}",
             self.kind.past(),
             self.done_files,
             self.items.len()
@@ -871,6 +904,29 @@ mod tests {
         assert_eq!(op.errors.len(), 1);
         assert!(fs::symlink_metadata(b.join("etc-link")).is_err());
         assert!(no_temp_files(&b));
+    }
+
+    #[test]
+    fn prunes_files_then_dirs_deepest_first() {
+        let (tmp, a, _b) = setup();
+        fs::create_dir_all(a.join("x/y")).unwrap();
+        fs::write(a.join("x/y/z.txt"), "z").unwrap();
+        symlink(tmp.path(), a.join("x/link-up")).unwrap();
+        let files = ["one.txt", "two.txt", "x/y/z.txt", "x/link-up"]
+            .map(|f| src(&a.join(f)))
+            .to_vec();
+        let dirs = vec![a.clone(), a.join("x"), a.join("x/y")];
+        let mut op = Operation::prune(files, dirs);
+        run(&mut op);
+        assert!(op.errors.is_empty(), "{:?}", op.errors);
+        assert_eq!(op.done_files, 7);
+        assert!(!a.exists());
+        // O link foi removido, não o que ele aponta.
+        assert!(tmp.path().join("b").exists());
+        assert!(
+            op.summary()
+                .starts_with("Pruned 7 of 7 files and directories")
+        );
     }
 
     #[test]

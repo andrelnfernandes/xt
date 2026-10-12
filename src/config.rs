@@ -27,6 +27,9 @@ confirm_quit = true
 # (Alt+S muda durante o uso).
 sort = "name"
 sort_descending = false
+# Para confirmar um Prune (Alt+P), digitar: "prune" (a palavra PRUNE),
+# "name" (o nome do diretório) ou "y".
+prune_confirmation = "prune"
 
 # Cores individuais, por cima do tema. Valores: nomes ("yellow",
 # "lightblue", "darkgray"...), "#rrggbb" ou um índice de 0 a 255.
@@ -90,6 +93,20 @@ pub struct Options {
     /// Ordenação inicial dos arquivos.
     pub sort: SortKey,
     pub sort_descending: bool,
+    /// O que digitar para confirmar um Prune.
+    pub prune_confirmation: PruneConfirm,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PruneConfirm {
+    /// A palavra PRUNE.
+    #[default]
+    Prune,
+    /// O nome do diretório.
+    Name,
+    /// Só Y.
+    Y,
 }
 
 impl Default for Options {
@@ -98,6 +115,7 @@ impl Default for Options {
             confirm_quit: true,
             sort: SortKey::Name,
             sort_descending: false,
+            prune_confirmation: PruneConfirm::Prune,
         }
     }
 }

@@ -35,6 +35,8 @@ pub enum Command {
     Help,
     /// Alt+S: escolhe a ordenação dos arquivos.
     Sort,
+    /// Alt+P: apaga o diretório atual com tudo dentro.
+    Prune,
     Back,
     Filespec,
     Showall,

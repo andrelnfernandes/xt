@@ -142,6 +142,11 @@ const COMMANDS: &[(&str, Command, &str)] = &[
     ),
     ("rename", Command::Rename, "rename file or directory"),
     ("make_dir", Command::MakeDir, "make a subdirectory"),
+    (
+        "prune",
+        Command::Prune,
+        "delete directory with everything in it",
+    ),
     ("log", Command::Log, "open another directory in the pane"),
     (
         "compare",
@@ -216,6 +221,7 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("c", Tree, "compare"),
     ("l", Tree, "log"),
     ("m", Tree, "make_dir"),
+    ("alt+p", Tree, "prune"),
     ("esc", Files, "back"),
     ("left", Files, "back"),
     ("a", Files, "attributes"),
