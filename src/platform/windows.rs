@@ -7,12 +7,22 @@
 use std::ffi::OsStr;
 use std::fs::{self, File, Metadata, OpenOptions};
 use std::io;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::fs::{FileTypeExt, MetadataExt, OpenOptionsExt};
 use std::os::windows::io::AsRawHandle;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
+use windows_sys::Win32::Foundation::ERROR_BUFFER_OVERFLOW;
+use windows_sys::Win32::NetworkManagement::IpHelper::{
+    GAA_FLAG_INCLUDE_GATEWAYS, GAA_FLAG_SKIP_ANYCAST, GAA_FLAG_SKIP_MULTICAST,
+    GetAdaptersAddresses, IF_TYPE_SOFTWARE_LOOPBACK, IP_ADAPTER_ADDRESSES_LH,
+};
+use windows_sys::Win32::NetworkManagement::Ndis::IfOperStatusUp;
+use windows_sys::Win32::Networking::WinSock::{
+    AF_INET, AF_INET6, AF_UNSPEC, SOCKADDR_IN, SOCKADDR_IN6, SOCKET_ADDRESS,
+};
 use windows_sys::Win32::Storage::FileSystem::{
     BY_HANDLE_FILE_INFORMATION, FILE_ATTRIBUTE_ARCHIVE, FILE_ATTRIBUTE_HIDDEN,
     FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_NOT_CONTENT_INDEXED, FILE_ATTRIBUTE_OFFLINE,
@@ -20,8 +30,16 @@ use windows_sys::Win32::Storage::FileSystem::{
     FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_WRITE_ATTRIBUTES,
     GetDiskFreeSpaceExW, GetFileInformationByHandle, GetLogicalDrives, SetFileAttributesW,
 };
+use windows_sys::Win32::System::ProcessStatus::{K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
+use windows_sys::Win32::System::Registry::{
+    HKEY_LOCAL_MACHINE, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegGetValueW,
+};
+use windows_sys::Win32::System::SystemInformation::{
+    GetTickCount64, GlobalMemoryStatusEx, MEMORYSTATUSEX,
+};
+use windows_sys::Win32::System::Threading::GetCurrentProcess;
 
-use super::{DiskSpace, Mount, env_dir};
+use super::{DiskSpace, Memory, Mount, Network, System, env_dir};
 
 /// The attributes shown and edited by xt, in display order.
 const RHSA: [(u32, char); 4] = [
@@ -280,6 +298,207 @@ pub(super) fn state_base() -> Option<PathBuf> {
     env_dir("LOCALAPPDATA")
 }
 
+/// The machine, from the registry and the memory and process APIs.
+pub fn system() -> System {
+    const VERSION: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion";
+    let build = registry_string(VERSION, "CurrentBuild");
+    let os = registry_string(VERSION, "ProductName").map(|name| {
+        // Windows 11 still calls itself "Windows 10" in ProductName.
+        let eleven = build.as_deref().and_then(|b| b.parse::<u32>().ok()) >= Some(22000);
+        let name = if eleven {
+            name.replacen("Windows 10", "Windows 11", 1)
+        } else {
+            name
+        };
+        match registry_string(VERSION, "DisplayVersion") {
+            Some(v) => format!("{name} {v}"),
+            None => name,
+        }
+    });
+    let kernel = build.map(|b| match registry_dword(VERSION, "UBR") {
+        Some(ubr) => format!("Windows NT build {b}.{ubr}"),
+        None => format!("Windows NT build {b}"),
+    });
+    let mut status = MEMORYSTATUSEX {
+        dwLength: size_of::<MEMORYSTATUSEX>() as u32,
+        ..Default::default()
+    };
+    // SAFETY: `status` is a valid MEMORYSTATUSEX with its size filled in.
+    let memory = (unsafe { GlobalMemoryStatusEx(&mut status) } != 0).then_some(Memory {
+        total: status.ullTotalPhys,
+        available: status.ullAvailPhys,
+    });
+    let mut counters = PROCESS_MEMORY_COUNTERS::default();
+    let size = size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
+    // SAFETY: the pseudo handle of the current process and a buffer of `size` bytes.
+    let ok = unsafe { K32GetProcessMemoryInfo(GetCurrentProcess(), &mut counters, size) } != 0;
+    System {
+        os,
+        kernel,
+        host: std::env::var("COMPUTERNAME").ok(),
+        cpu: registry_string(
+            r"HARDWARE\DESCRIPTION\System\CentralProcessor\0",
+            "ProcessorNameString",
+        ),
+        // SAFETY: no arguments.
+        uptime: Some(Duration::from_millis(unsafe { GetTickCount64() })),
+        load: None,
+        memory,
+        // The page file is not swap in the Unix sense; left out.
+        swap: None,
+        xt_memory: ok.then_some(counters.WorkingSetSize as u64),
+    }
+}
+
+/// The adapters that are up, with their addresses, gateway and DNS, from
+/// `GetAdaptersAddresses`.
+pub fn network() -> Network {
+    let mut net = Network::default();
+    let flags = GAA_FLAG_INCLUDE_GATEWAYS | GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST;
+    // u64 to align the structures the API writes in the buffer.
+    let mut buf: Vec<u64> = Vec::new();
+    let mut size: u32 = 16 * 1024;
+    for _ in 0..3 {
+        buf.resize((size as usize).div_ceil(8), 0);
+        // SAFETY: a buffer of at least `size` bytes; on overflow, `size`
+        // comes back with what is needed.
+        let err = unsafe {
+            GetAdaptersAddresses(
+                AF_UNSPEC as u32,
+                flags,
+                std::ptr::null(),
+                buf.as_mut_ptr().cast(),
+                &mut size,
+            )
+        };
+        match err {
+            0 => break,
+            ERROR_BUFFER_OVERFLOW => continue,
+            _ => return net,
+        }
+    }
+    let mut next = buf.as_ptr() as *const IP_ADAPTER_ADDRESSES_LH;
+    // SAFETY: a linked list written by the API inside `buf`, which outlives
+    // the loop; every pointer in it is null or valid.
+    while let Some(a) = unsafe { next.as_ref() } {
+        next = a.Next;
+        if a.OperStatus != IfOperStatusUp || a.IfType == IF_TYPE_SOFTWARE_LOOPBACK {
+            continue;
+        }
+        let name = unsafe { from_wide_ptr(a.FriendlyName) };
+        let mut u = a.FirstUnicastAddress;
+        while let Some(addr) = unsafe { u.as_ref() } {
+            if let Some(ip) = unsafe { socket_ip(&addr.Address) } {
+                net.add(&name, ip, addr.OnLinkPrefixLength);
+            }
+            u = addr.Next;
+        }
+        let mut g = a.FirstGatewayAddress;
+        while let Some(addr) = unsafe { g.as_ref() } {
+            // The IPv4 gateway is preferred, as `ipconfig` shows it first.
+            if let Some(ip) = unsafe { socket_ip(&addr.Address) }
+                && net.gateway.is_none_or(|old| old.is_ipv6() && ip.is_ipv4())
+            {
+                net.gateway = Some(ip);
+            }
+            g = addr.Next;
+        }
+        let mut d = a.FirstDnsServerAddress;
+        while let Some(addr) = unsafe { d.as_ref() } {
+            if let Some(ip) = unsafe { socket_ip(&addr.Address) }
+                && !net.dns.contains(&ip)
+            {
+                net.dns.push(ip);
+            }
+            d = addr.Next;
+        }
+    }
+    net
+}
+
+/// The IP of a SOCKET_ADDRESS (IPv4 or IPv6).
+///
+/// # Safety
+/// `lpSockaddr` is null or points to a sockaddr of its family.
+unsafe fn socket_ip(s: &SOCKET_ADDRESS) -> Option<IpAddr> {
+    // SAFETY: as the caller guarantees.
+    unsafe {
+        let family = s.lpSockaddr.as_ref()?.sa_family;
+        match family {
+            AF_INET => {
+                let sin = &*(s.lpSockaddr as *const SOCKADDR_IN);
+                // S_addr is in network byte order, as are its bytes in memory.
+                Some(Ipv4Addr::from(sin.sin_addr.S_un.S_addr.to_ne_bytes()).into())
+            }
+            AF_INET6 => {
+                let sin6 = &*(s.lpSockaddr as *const SOCKADDR_IN6);
+                Some(Ipv6Addr::from(sin6.sin6_addr.u.Byte).into())
+            }
+            _ => None,
+        }
+    }
+}
+
+/// A NUL-terminated UTF-16 string.
+///
+/// # Safety
+/// `p` is null or points to a NUL-terminated string.
+unsafe fn from_wide_ptr(p: *const u16) -> String {
+    if p.is_null() {
+        return String::new();
+    }
+    // SAFETY: as the caller guarantees.
+    unsafe {
+        let len = (0..).take_while(|&i| *p.add(i) != 0).count();
+        String::from_utf16_lossy(std::slice::from_raw_parts(p, len))
+    }
+}
+
+/// A text value under HKEY_LOCAL_MACHINE.
+fn registry_string(key: &str, value: &str) -> Option<String> {
+    let mut buf = [0u16; 512];
+    let mut bytes = size_of_val(&buf) as u32;
+    let (key, value) = (wide(Path::new(key)), wide(Path::new(value)));
+    // SAFETY: NUL-terminated names and a buffer of `bytes` bytes.
+    let err = unsafe {
+        RegGetValueW(
+            HKEY_LOCAL_MACHINE,
+            key.as_ptr(),
+            value.as_ptr(),
+            RRF_RT_REG_SZ,
+            std::ptr::null_mut(),
+            buf.as_mut_ptr().cast(),
+            &mut bytes,
+        )
+    };
+    if err != 0 {
+        return None;
+    }
+    let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+    let text = String::from_utf16_lossy(&buf[..len]).trim().to_string();
+    (!text.is_empty()).then_some(text)
+}
+
+/// A DWORD value under HKEY_LOCAL_MACHINE.
+fn registry_dword(key: &str, value: &str) -> Option<u32> {
+    let mut data = 0u32;
+    let mut bytes = size_of::<u32>() as u32;
+    let (key, value) = (wide(Path::new(key)), wide(Path::new(value)));
+    // SAFETY: NUL-terminated names and a 4-byte buffer.
+    let err = unsafe {
+        RegGetValueW(
+            HKEY_LOCAL_MACHINE,
+            key.as_ptr(),
+            value.as_ptr(),
+            RRF_RT_REG_DWORD,
+            std::ptr::null_mut(),
+            (&raw mut data).cast(),
+            &mut bytes,
+        )
+    };
+    (err == 0).then_some(data)
+}
+
 fn wide(path: &Path) -> Vec<u16> {
     path.as_os_str().encode_wide().chain([0]).collect()
 }
@@ -341,5 +560,16 @@ mod tests {
         assert!(check_name("end.").is_err());
         assert!(is_executable(OsStr::new("Setup.EXE"), 0));
         assert!(!is_executable(OsStr::new("notes.txt"), 0));
+    }
+
+    #[test]
+    fn system_on_windows() {
+        let s = system();
+        assert!(s.os.unwrap().starts_with("Windows"));
+        assert!(s.kernel.unwrap().starts_with("Windows NT build"));
+        assert!(s.memory.unwrap().total > 0);
+        assert!(s.xt_memory.unwrap() > 0);
+        // Only that it does not fail: CI machines may have no network.
+        let _ = network();
     }
 }
