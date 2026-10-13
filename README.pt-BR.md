@@ -460,7 +460,11 @@ dono e grupo, datas (modificação, acesso e mudança), inode, links e
 dispositivo do arquivo ou diretório (de um link, para onde aponta; de um
 diretório, também o que está logado nele e no ramo). `A` na árvore lista os
 sistemas de arquivos montados com total, usado, livre e % de uso, como o
-`df`. `?` resume a janela: o que está logado, a lista, os marcados e o disco.
+`df`. `?` resume a janela: o que está logado, a lista, os marcados e o disco
+(ponto de montagem, livre e usado); abaixo, a máquina (sistema e kernel, CPU,
+tempo ligado, carga, memória e swap, shell, terminal), a rede (endereços IP
+de cada interface, gateway e DNS) e o próprio xt (versão, PID, memória em uso,
+executável e arquivo de configuração).
 
 **Delete** apaga de verdade (não vai para a lixeira) e sempre pede confirmação.
 
