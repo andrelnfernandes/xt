@@ -230,6 +230,13 @@ enum Writer {
     TarGz(Box<tar::Builder<flate2::write::GzEncoder<File>>>),
 }
 
+/// Name inside an archive for a relative path: always with `/`, as ZIP and
+/// TAR require (on Windows, `Path` uses `\`).
+pub fn entry_name(relative: &Path) -> String {
+    let parts: Vec<_> = relative.iter().map(|c| c.to_string_lossy()).collect();
+    parts.join("/")
+}
+
 /// A file to put in the archive: the path on disk and the name inside it.
 pub struct ArchiveItem {
     pub path: PathBuf,
@@ -452,10 +459,7 @@ pub mod tests {
     }
 
     fn paths(entries: &[Entry]) -> Vec<String> {
-        let mut p: Vec<String> = entries
-            .iter()
-            .map(|e| e.path.to_string_lossy().into_owned())
-            .collect();
+        let mut p: Vec<String> = entries.iter().map(|e| entry_name(&e.path)).collect();
         p.sort();
         p
     }

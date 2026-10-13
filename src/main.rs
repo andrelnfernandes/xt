@@ -83,7 +83,7 @@ fn main() -> anyhow::Result<()> {
         None => std::env::current_dir().context("cannot read current directory")?,
     };
     let root =
-        std::fs::canonicalize(&root).with_context(|| format!("cannot open {}", root.display()))?;
+        dunce::canonicalize(&root).with_context(|| format!("cannot open {}", root.display()))?;
     if !root.is_dir() {
         bail!("{} is not a directory", root.display());
     }
