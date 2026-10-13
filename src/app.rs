@@ -27,6 +27,7 @@ use crate::model::sort::{Sort, SortKey};
 use crate::model::tree::{LogJob, NodeId, ROOT};
 use crate::ops::{self, Answer, OpKind, Operation, Source};
 pub use crate::pane::{FileRef, FileView, Focus, Kbyte, KbyteShow, Pane};
+use crate::picker::{Outcome as PickerOutcome, Picker};
 use crate::platform;
 use crate::search::{self, Pattern, SearchJob, SearchSpec};
 use crate::settings::{Outcome, Settings};
@@ -175,7 +176,24 @@ const AUTOVIEW_BYTES: u64 = 1024 * 1024;
 /// Entries kept per prompt kind.
 const HISTORY_SIZE: usize = 100;
 
+impl PromptKind {
+    /// Asks for a folder (F2 picks it in a tree): `Some(true)` when the
+    /// text is a file and only its folder is picked.
+    fn folder(&self) -> Option<bool> {
+        match self {
+            PromptKind::Transfer { .. } | PromptKind::Log => Some(false),
+            PromptKind::BatchFile | PromptKind::CreateArchive(_) => Some(true),
+            _ => None,
+        }
+    }
+}
+
 impl Prompt {
+    /// F2 opens the folder picker.
+    pub fn picks_folder(&self) -> bool {
+        self.kind.folder().is_some()
+    }
+
     /// The Copy/Move prompt for tagged files accepts F6 (with/without paths).
     pub fn toggles_paths(&self) -> bool {
         matches!(self.kind, PromptKind::Transfer { tagged: true, .. })
@@ -301,6 +319,8 @@ pub struct App {
     pub sticky: MenuMode,
     /// Git status of the files on screen (when `git` is on).
     pub git_status: git::StatusCache,
+    /// F2 in a prompt that asks for a folder.
+    pub picker: Option<Picker>,
 }
 
 /// The active window.
@@ -351,6 +371,55 @@ impl App {
             held: None,
             sticky: MenuMode::Normal,
             git_status: git::StatusCache::default(),
+            picker: None,
+        }
+    }
+
+    /// F2: picks the prompt's folder in a tree, starting at the one typed.
+    fn open_picker(&mut self) {
+        let Some(prompt) = &self.prompt else {
+            return;
+        };
+        let base = self.outer.as_deref().unwrap_or(self).current_path();
+        let typed = ops::resolve_path(&prompt.input.text, &base);
+        let start = match prompt.kind.folder() {
+            Some(true) => typed.parent().map_or(base, Path::to_path_buf),
+            _ => typed,
+        };
+        // Archives are read-only: their window offers the disk behind them.
+        let windows: Vec<(PathBuf, PathBuf, bool)> = self
+            .panes
+            .iter()
+            .map(|p| {
+                let p = p.outer.as_deref().unwrap_or(p);
+                (p.tree.path(ROOT), p.current_path(), p.tree.show_hidden)
+            })
+            .collect();
+        self.picker = Some(Picker::new(&windows, self.active, &start));
+    }
+
+    fn picker_key(&mut self, key: KeyEvent) {
+        let Some(picker) = &mut self.picker else {
+            return;
+        };
+        match picker.handle_key(key, &self.keymap) {
+            PickerOutcome::Stay => {}
+            PickerOutcome::Cancel => self.picker = None,
+            PickerOutcome::Chosen(dir) => {
+                self.picker = None;
+                let Some(prompt) = &mut self.prompt else {
+                    return;
+                };
+                // Ctrl+B and F5 keep the typed file name.
+                let path = match prompt.kind.folder() {
+                    Some(true) => match Path::new(&prompt.input.text).file_name() {
+                        Some(name) => dir.join(name),
+                        None => dir,
+                    },
+                    _ => dir,
+                };
+                prompt.input.set_text(path.to_string_lossy().into_owned());
+            }
         }
     }
 
@@ -561,6 +630,14 @@ impl App {
                 ));
                 self.search_job = None;
             }
+            return;
+        }
+        if self.picker.is_some() {
+            self.picker_key(key);
+            return;
+        }
+        if key.code == KeyCode::F(2) && self.prompt.as_ref().is_some_and(Prompt::picks_folder) {
+            self.open_picker();
             return;
         }
         if let Some(Prompt {
@@ -3534,6 +3611,54 @@ mod tests {
         // Esc closes both.
         press(&mut app, KeyCode::Esc);
         assert!(app.viewer.is_none());
+    }
+
+    #[test]
+    fn f2_picks_the_folder_in_a_tree() {
+        let (tmp, mut app) = sample();
+        let root = tmp.path().to_path_buf();
+        // Copy of a.rs: the prompt asks for a folder.
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Char('c'));
+        let typed = app.prompt.as_ref().unwrap().input.text.clone();
+        press(&mut app, KeyCode::F(2));
+        let picker = app.picker.as_ref().expect("tree open");
+        assert_eq!(picker.pane().current_path(), root);
+
+        // Esc goes back to the prompt as it was.
+        press(&mut app, KeyCode::Esc);
+        assert!(app.picker.is_none());
+        assert_eq!(app.prompt.as_ref().unwrap().input.text, typed);
+
+        // Enter puts the folder in the prompt, without copying yet.
+        press(&mut app, KeyCode::F(2));
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Enter);
+        assert!(app.picker.is_none());
+        let prompt = app.prompt.as_ref().expect("still asking");
+        assert_eq!(Path::new(&prompt.input.text), root.join("sub"));
+        assert!(!root.join("sub/a.rs").exists());
+        press(&mut app, KeyCode::Enter);
+        assert!(app.op.is_some() || root.join("sub/a.rs").exists());
+        while app.busy() {
+            app.tick(std::time::Duration::from_millis(50));
+        }
+        assert!(root.join("sub/a.rs").exists());
+
+        // Ctrl+B: only the folder changes, the file name stays.
+        ctrl(&mut app, 't');
+        ctrl(&mut app, 'b');
+        press(&mut app, KeyCode::F(2));
+        press(&mut app, KeyCode::Char('S'));
+        press(&mut app, KeyCode::Enter);
+        let text = &app.prompt.as_ref().unwrap().input.text;
+        assert_eq!(Path::new(text), root.join("sub").join(shell::BATCH_FILE));
+
+        // Not in prompts that take something else (Filespec): F2 does nothing.
+        press(&mut app, KeyCode::Esc);
+        press(&mut app, KeyCode::Char('f'));
+        press(&mut app, KeyCode::F(2));
+        assert!(app.picker.is_none());
     }
 
     #[test]

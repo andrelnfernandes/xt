@@ -605,6 +605,7 @@ impl Keymap {
             "\nFIXED KEYS\n  \
              F9                      Ctrl/Alt menus; the next letter gets the modifier\n  \
              F6                      in Copy/Move of tagged files: with/without paths\n  \
+             F2                      in prompts that ask for a folder: pick it in a tree\n  \
              ↑, ↓                    in prompts: history\n  \
              F2, F4                  in search prompts: match case, text/hex\n\n\
              VIEWER (V, Ctrl+V)\n  \
