@@ -56,6 +56,12 @@ confirm_quit = true
 # To confirm a Prune (Alt+P), type: "prune" (the word PRUNE),
 # "name" (the directory name) or "y".
 prune_confirmation = "prune"
+# Alt+C / Alt+M (copy/move tagged files with their paths): from where each
+# file's path is recreated at the destination (F7 changes it at the prompt):
+# "full" (from the root of the disk, as in ZTreeWin), "tree" (from the root
+# of xt's tree), "current" (from the current directory, its name included)
+# or "relative" (only what is below the current directory).
+copy_paths = "full"
 # Don't keep entries starting with "@" in the history (useful for commands
 # with passwords in eXecute; the "@" is stripped before running).
 history_skip_at = false
@@ -145,6 +151,8 @@ pub struct Options {
     pub confirm_quit: bool,
     /// What to type to confirm a Prune.
     pub prune_confirmation: PruneConfirm,
+    /// Alt+C / Alt+M: initial path mode.
+    pub copy_paths: CopyPaths,
     pub history_skip_at: bool,
     pub compare_ignore_2s: bool,
     pub compare_ignore_1h: bool,
@@ -168,6 +176,7 @@ impl Default for Options {
             sort_descending: false,
             confirm_quit: true,
             prune_confirmation: PruneConfirm::Prune,
+            copy_paths: CopyPaths::Full,
             history_skip_at: false,
             compare_ignore_2s: true,
             compare_ignore_1h: false,
@@ -203,6 +212,7 @@ impl Options {
             ("sort_descending", Value::from(self.sort_descending)),
             ("confirm_quit", Value::from(self.confirm_quit)),
             ("prune_confirmation", s(self.prune_confirmation.as_str())),
+            ("copy_paths", s(self.copy_paths.as_str())),
             ("history_skip_at", Value::from(self.history_skip_at)),
             ("compare_ignore_2s", Value::from(self.compare_ignore_2s)),
             ("compare_ignore_1h", Value::from(self.compare_ignore_1h)),
@@ -301,6 +311,40 @@ impl NumberFormat {
             NumberFormat::Dot => Some('.'),
             NumberFormat::Space => Some(' '),
             NumberFormat::Plain => None,
+        }
+    }
+}
+
+/// Alt+C / Alt+M: from where each file's path is recreated at the
+/// destination (F7 changes it at the prompt). The first three are
+/// ZTreeWin's.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CopyPaths {
+    /// From the root of the disk: `/home/me/proj/src/a.rs` → `dest/home/me/proj/src/a.rs`.
+    #[default]
+    Full,
+    /// From the root of xt's tree (not in ZTreeWin).
+    Tree,
+    /// From the current directory, its own name included: `dest/src/a.rs`.
+    Current,
+    /// Only what is below the current directory: `dest/a.rs`.
+    Relative,
+}
+
+impl Choice for CopyPaths {
+    const ALL: &'static [Self] = &[
+        CopyPaths::Full,
+        CopyPaths::Tree,
+        CopyPaths::Current,
+        CopyPaths::Relative,
+    ];
+    fn as_str(self) -> &'static str {
+        match self {
+            CopyPaths::Full => "full",
+            CopyPaths::Tree => "tree",
+            CopyPaths::Current => "current",
+            CopyPaths::Relative => "relative",
         }
     }
 }

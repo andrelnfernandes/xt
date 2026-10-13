@@ -15,7 +15,7 @@ use std::time::Duration;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, ModifierKeyCode};
 
 use crate::archive::{self, ArchiveItem, ArchiveJob};
-use crate::config::{self, Config, DateFormat, Options, PruneConfirm, Theme};
+use crate::config::{self, Choice, Config, CopyPaths, DateFormat, Options, PruneConfirm, Theme};
 use crate::git;
 use crate::highlight;
 use crate::info;
@@ -76,9 +76,11 @@ enum PromptKind {
         kind: OpKind,
         sources: Vec<Source>,
         tagged: bool,
-        /// Recreate the subdirectories from `base` at the destination.
+        /// Recreate each file's path at the destination, from the base
+        /// of `mode` (Alt+C / Alt+M; F6 toggles, F7 changes the mode).
         paths: bool,
-        base: PathBuf,
+        mode: CopyPaths,
+        bases: PathBases,
     },
     RenameFile(PathBuf),
     RenameDir(NodeId),
@@ -208,12 +210,61 @@ impl Prompt {
     }
 }
 
-fn transfer_label(kind: OpKind, sources: &[Source], tagged: bool, paths: bool) -> String {
+/// Where Alt+C / Alt+M recreate the paths from, in each mode.
+struct PathBases {
+    full: PathBuf,
+    tree: PathBuf,
+    current: PathBuf,
+    relative: PathBuf,
+}
+
+impl PathBases {
+    /// For a list whose root is `relative`, in a tree rooted at `tree`.
+    /// Inside an archive, paths never go above it.
+    fn new(relative: PathBuf, tree: PathBuf, archive: bool) -> Self {
+        let mut current = relative
+            .parent()
+            .map_or(relative.clone(), Path::to_path_buf);
+        let mut full = relative
+            .ancestors()
+            .last()
+            .map_or(relative.clone(), Path::to_path_buf);
+        if archive {
+            full = tree.clone();
+            if !current.starts_with(&tree) {
+                current = tree.clone();
+            }
+        }
+        PathBases {
+            full,
+            tree,
+            current,
+            relative,
+        }
+    }
+
+    fn get(&self, mode: CopyPaths) -> &Path {
+        match mode {
+            CopyPaths::Full => &self.full,
+            CopyPaths::Tree => &self.tree,
+            CopyPaths::Current => &self.current,
+            CopyPaths::Relative => &self.relative,
+        }
+    }
+}
+
+fn transfer_label(
+    kind: OpKind,
+    sources: &[Source],
+    tagged: bool,
+    paths: bool,
+    mode: CopyPaths,
+) -> String {
     let verb = if kind == OpKind::Copy { "COPY" } else { "MOVE" };
     let mode = match (tagged, paths) {
-        (false, _) => "",
-        (true, false) => " (no paths)",
-        (true, true) => " (with paths)",
+        (false, _) => String::new(),
+        (true, false) => " (no paths)".into(),
+        (true, true) => format!(" (with paths: {})", mode.as_str()),
     };
     format!("{verb} {}{mode} to: ", describe(sources))
 }
@@ -661,17 +712,25 @@ impl App {
                 prompt.label = prompt.kind.search_label().unwrap_or_default();
                 return;
             }
-            if key.code == KeyCode::F(6)
+            // F6: with/without paths; F7: from where the paths start.
+            if matches!(key.code, KeyCode::F(6) | KeyCode::F(7))
                 && let PromptKind::Transfer {
                     kind,
                     sources,
                     tagged: true,
                     paths,
+                    mode,
                     ..
                 } = &mut prompt.kind
             {
-                *paths = !*paths;
-                prompt.label = transfer_label(*kind, sources, true, *paths);
+                if key.code == KeyCode::F(6) {
+                    *paths = !*paths;
+                } else if *paths {
+                    *mode = mode.next();
+                } else {
+                    *paths = true;
+                }
+                prompt.label = transfer_label(*kind, sources, true, *paths, *mode);
                 return;
             }
             match prompt.input.handle_key(key) {
@@ -1985,14 +2044,15 @@ impl App {
                 kind,
                 sources,
                 paths,
-                base,
+                mode,
+                bases,
                 ..
             } => {
                 let dest = ops::resolve_path(&text, &self.tree.path(self.current()));
                 // Saves the absolute path: a relative one would change meaning
                 // next time, from another directory.
                 self.last_dest = Some(dest.to_string_lossy().into_owned());
-                let paths_from = paths.then_some(base.as_path());
+                let paths_from = paths.then(|| bases.get(mode));
                 let archive = self.archive.clone();
                 Operation::transfer(kind, sources, &dest, paths_from)
                     .and_then(|op| match &archive {
@@ -2097,7 +2157,8 @@ impl App {
         let Some(sources) = self.sources_or_warn(tagged) else {
             return;
         };
-        let label = transfer_label(kind, &sources, tagged, paths);
+        let mode = self.options.copy_paths;
+        let label = transfer_label(kind, &sources, tagged, paths, mode);
         // With the screen split, the natural destination is the other window.
         let default = match self.other() {
             Some(other) => other.current_path().to_string_lossy().into_owned(),
@@ -2111,7 +2172,12 @@ impl App {
             sources,
             tagged,
             paths,
-            base: self.tree.path(self.view_root()),
+            mode,
+            bases: PathBases::new(
+                self.tree.path(self.view_root()),
+                self.tree.path(ROOT),
+                self.archive.is_some(),
+            ),
         };
         self.open_prompt(prompt, label, &default);
     }
@@ -2862,9 +2928,16 @@ mod tests {
     #[test]
     fn alt_copy_recreates_paths() {
         let (tmp, mut app) = sample();
+        app.options.copy_paths = CopyPaths::Relative;
         let dest = tag_both_a_rs(&tmp, &mut app);
         alt(&mut app, 'c');
-        assert!(app.prompt.as_ref().unwrap().label.contains("with paths"));
+        assert!(
+            app.prompt
+                .as_ref()
+                .unwrap()
+                .label
+                .contains("with paths: relative")
+        );
         answer_prompt(&mut app, dest.to_str().unwrap());
 
         assert!(dest.join("a.rs").exists());
@@ -2876,6 +2949,70 @@ mod tests {
         let out = app.tree.find(&dest).expect("dest in tree");
         app.tree.expand(out);
         assert!(app.tree.find(&dest.join("sub")).is_some());
+    }
+
+    /// Alt+C of `sub/deep/a.rs` (listed from `sub/deep`) in each mode; F7
+    /// cycles them.
+    #[test]
+    fn alt_copy_path_modes() {
+        let (tmp, mut app) = sample();
+        let root = tmp.path().to_path_buf();
+        let deep = root.join("sub/deep");
+        let dest = root.join("out");
+        std::fs::create_dir(&dest).unwrap();
+        // Full: from the root of the disk.
+        let full = deep
+            .strip_prefix(deep.ancestors().last().unwrap())
+            .unwrap()
+            .to_path_buf();
+        let expected = [
+            (CopyPaths::Full, full.join("a.rs")),
+            (CopyPaths::Tree, PathBuf::from("sub/deep/a.rs")),
+            (CopyPaths::Current, PathBuf::from("deep/a.rs")),
+            (CopyPaths::Relative, PathBuf::from("a.rs")),
+        ];
+        assert!(app.goto(&deep));
+        press(&mut app, KeyCode::Enter);
+        for (i, (mode, path)) in expected.iter().enumerate() {
+            ctrl(&mut app, 't');
+            alt(&mut app, 'c');
+            // F7 from Full to this mode.
+            for _ in 0..i {
+                press(&mut app, KeyCode::F(7));
+            }
+            let label = &app.prompt.as_ref().unwrap().label;
+            assert!(
+                label.contains(&format!("with paths: {}", mode.as_str())),
+                "{label}"
+            );
+            answer_prompt(&mut app, dest.to_str().unwrap());
+            while app.busy() {
+                app.tick(std::time::Duration::from_millis(50));
+            }
+            assert!(dest.join(path).exists(), "{mode:?}: {}", path.display());
+            std::fs::remove_dir_all(&dest).unwrap();
+            std::fs::create_dir(&dest).unwrap();
+        }
+
+        // The configured mode is where the prompt starts; F7 wraps around.
+        app.options.copy_paths = CopyPaths::Current;
+        ctrl(&mut app, 't');
+        alt(&mut app, 'c');
+        assert!(
+            app.prompt
+                .as_ref()
+                .unwrap()
+                .label
+                .contains("paths: current")
+        );
+        press(&mut app, KeyCode::F(7));
+        press(&mut app, KeyCode::F(7));
+        assert!(app.prompt.as_ref().unwrap().label.contains("paths: full"));
+        // Without paths, F7 turns them back on.
+        press(&mut app, KeyCode::F(6));
+        assert!(app.prompt.as_ref().unwrap().label.contains("no paths"));
+        press(&mut app, KeyCode::F(7));
+        assert!(app.prompt.as_ref().unwrap().label.contains("paths: full"));
     }
 
     #[test]
@@ -2899,6 +3036,7 @@ mod tests {
     #[test]
     fn alt_move_with_paths_from_branch_root() {
         let (tmp, mut app) = sample();
+        app.options.copy_paths = CopyPaths::Relative;
         // Branch from sub/: paths relative to sub.
         press(&mut app, KeyCode::Down);
         app.apply(Command::Branch);
