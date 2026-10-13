@@ -142,7 +142,7 @@ reaches xt). It has four pages:
 | 1. Programs and formats | editor, date format, number format, Git commands |
 | 2. Display and sorting | show hidden files, initial sort order and direction, what Enter does in the file window, initial mode of the file window, syntax colors in the viewer |
 | 3. Confirmations and history | confirm on quit, Prune confirmation, don't keep entries containing `@` |
-| 4. Compare and refresh | ignore 2 s, ignore 1 h, automatic refresh |
+| 4. Copy, compare and refresh | ignore 2 s, ignore 1 h, automatic refresh, where Alt+C/Alt+M paths start |
 
 The option's letter (or Enter) changes the value, PgUp/PgDn or 1–4 switch pages,
 **F4** picks the theme from a list (with an instant preview), **F3** saves and applies,
@@ -278,11 +278,22 @@ Group operations act on the tagged files **of the current list**
 (the directory, or the open Branch/Showall).
 
 **With or without paths:** Ctrl+C / Ctrl+M copy or move all the tagged files
-straight into the destination. Alt+C / Alt+M recreate the subdirectories at the destination,
-relative to the list's root (the current directory, the Branch root, or the root of the
-tree in Showall): `proj/src/model/tree.rs` → `destino/src/model/tree.rs`.
-At the destination prompt, **F6** switches between the two modes, and the current mode is shown
-in the prompt itself. Alt+D and Alt+A work like Ctrl+D and Ctrl+A.
+straight into the destination. Alt+C / Alt+M recreate each file's path at the
+destination; where that path starts depends on the mode. For `/home/me/proj/src/ops/mod.rs`,
+listed from `src/ops` (the list's root: the current directory, the Branch root,
+or the root of the tree in Showall), copied to `dest`:
+
+| Mode | Result | |
+|---|---|---|
+| Full | `dest/home/me/proj/src/ops/mod.rs` | from the root of the disk, as in ZTreeWin (default) |
+| Tree | `dest/src/ops/mod.rs` | from the root of xt's tree (here `proj`); not in ZTreeWin |
+| Current | `dest/ops/mod.rs` | from the list's root, its name included |
+| Relative | `dest/mod.rs` | only what is below the list's root |
+
+At the destination prompt, **F6** switches between with and without paths and
+**F7** cycles the modes; both show in the prompt itself. The mode the prompt
+starts with is chosen on page 4 of F12 (`copy_paths`). Inside an archive, paths
+start at most at the archive's root. Alt+D and Alt+A work like Ctrl+D and Ctrl+A.
 
 **Picking the folder (F2):** in any prompt that asks for a folder (Copy, Move,
 Log, and the folder of Ctrl+B and F5), **F2** opens a tree to choose it, as in
