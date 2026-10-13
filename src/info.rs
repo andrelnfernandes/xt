@@ -44,12 +44,8 @@ pub fn path_info(path: &Path) -> String {
         }
     }
     row(&mut out, "Size", format!("{} bytes", group(meta.len())));
-    let mode = platform::mode(&meta) & 0o7777;
-    row(
-        &mut out,
-        "Permissions",
-        format!("{mode:04o}  {}", rwx(mode)),
-    );
+    let (label, mode) = platform::describe_mode(platform::mode(&meta));
+    row(&mut out, label, mode);
     system_rows(&mut out, &meta);
     out
 }
@@ -155,17 +151,6 @@ pub fn group(n: u64) -> String {
     out
 }
 
-fn rwx(mode: u32) -> String {
-    let mut s = String::new();
-    for shift in [6, 3, 0] {
-        let b = (mode >> shift) & 7;
-        s.push(if b & 4 != 0 { 'r' } else { '-' });
-        s.push(if b & 2 != 0 { 'w' } else { '-' });
-        s.push(if b & 1 != 0 { 'x' } else { '-' });
-    }
-    s
-}
-
 fn time(t: Option<SystemTime>) -> String {
     t.map(|t| {
         DateTime::<Local>::from(t)
@@ -235,7 +220,6 @@ mod tests {
     #[test]
     fn helpers() {
         assert_eq!(group(1234567), "1,234,567");
-        assert_eq!(rwx(0o750), "rwxr-x---");
         #[cfg(unix)]
         assert_eq!((major(0x803), minor(0x803)), (8, 3));
     }

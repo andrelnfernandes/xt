@@ -787,7 +787,7 @@ impl App {
             Command::Batch => {
                 if self.sources_or_warn(true).is_some() {
                     let base = self.outer.as_deref().unwrap_or(self);
-                    let default = base.current_path().join("xt-batch.sh");
+                    let default = base.current_path().join(shell::BATCH_FILE);
                     let default = default.to_string_lossy().into_owned();
                     let label = "BATCH: write to file: ".to_string();
                     self.open_prompt(PromptKind::BatchFile, label, &default);
@@ -1022,7 +1022,7 @@ impl App {
     fn prepare_prune(&mut self, id: NodeId) {
         let root = self.tree.path(id);
         let root_dev = match fs::symlink_metadata(&root) {
-            Ok(m) => platform::device(&m),
+            Ok(m) => platform::device(&root, &m),
             Err(e) => {
                 self.message = Some(format!("Cannot prune {}: {e}", root.display()));
                 return;
@@ -1034,7 +1034,7 @@ impl App {
         while let Some(n) = stack.pop() {
             let path = self.tree.path(n);
             match fs::symlink_metadata(&path) {
-                Ok(m) if platform::device(&m) == root_dev => {}
+                Ok(m) if platform::device(&path, &m) == root_dev => {}
                 Ok(_) => {
                     mounts += 1;
                     continue;
@@ -1230,8 +1230,8 @@ impl App {
             return;
         }
         let mut text = self.current_path().to_string_lossy().into_owned();
-        if !text.ends_with('/') {
-            text.push('/');
+        if !text.ends_with(std::path::is_separator) {
+            text.push(std::path::MAIN_SEPARATOR);
         }
         let origin = self.current();
         self.open_prompt(PromptKind::Treespec { origin }, "TREESPEC: ".into(), &text);
@@ -1247,8 +1247,8 @@ impl App {
         let new_text = match key.code {
             KeyCode::Char('/' | '\\') => {
                 let mut t = self.treespec_complete(&text).unwrap_or(text.clone());
-                if !t.ends_with('/') {
-                    t.push('/');
+                if !t.ends_with(std::path::is_separator) {
+                    t.push(std::path::MAIN_SEPARATOR);
                 }
                 Some(t)
             }
@@ -1420,21 +1420,19 @@ impl App {
         );
     }
 
-    /// Writes the Batch file: one line per tagged file. A `.sh` gets
-    /// `#!/bin/sh` and execute permission.
+    /// Writes the Batch file: one line per tagged file. A script (`.sh`, or
+    /// `.bat`/`.cmd` on Windows) gets its header and execute permission.
     fn write_batch(&mut self, file: &Path, mask: &str) -> Result<(), String> {
         if mask.trim().is_empty() {
             return Err("Batch cancelled: empty line mask".into());
         }
         let sources = self.sources(true);
-        let script = file.extension().is_some_and(|e| e == "sh");
-        let mut data = Vec::new();
-        if script {
-            data.extend_from_slice(b"#!/bin/sh\n");
-        }
+        let header = shell::batch_header(file);
+        let script = header.is_some();
+        let mut data = header.unwrap_or_default().to_vec();
         for s in &sources {
             data.extend(shell::batch_line(mask, &s.path, s.size));
-            data.push(b'\n');
+            data.extend_from_slice(shell::NEWLINE);
         }
         let mut out = fs::OpenOptions::new()
             .write(true)
@@ -1869,9 +1867,9 @@ impl App {
             return;
         };
         let mode = fs::metadata(&sources[0].path)
-            .map(|m| format!("{:03o}", platform::mode(&m) & 0o7777))
+            .map(|m| platform::mode_text(platform::mode(&m)))
             .unwrap_or_default();
-        let label = format!("PERMISSIONS for {} (octal): ", describe(&sources));
+        let label = platform::mode_prompt(&describe(&sources));
         let paths = sources.into_iter().map(|s| s.path).collect();
         self.open_prompt(PromptKind::Chmod(paths), label, &mode);
     }
@@ -1949,15 +1947,23 @@ impl App {
         Ok(())
     }
 
+    /// Permissions (Linux) or attributes (Windows, where `+R -A` changes
+    /// each file's own attributes).
     fn chmod(&mut self, paths: &[PathBuf], text: &str) -> Result<(), String> {
-        let mode = ops::parse_mode(text)?;
+        platform::parse_mode(text, 0)?;
         let mut errors = Vec::new();
         let mut changed = 0;
         for path in paths {
-            // Symbolic links have no permissions of their own on Linux.
-            if fs::symlink_metadata(path).is_ok_and(|m| m.is_symlink()) {
-                continue;
-            }
+            let meta = match fs::symlink_metadata(path) {
+                // Symbolic links have no permissions of their own on Linux.
+                Ok(m) if m.is_symlink() => continue,
+                Ok(m) => m,
+                Err(e) => {
+                    errors.push(format!("{}: {e}", path.display()));
+                    continue;
+                }
+            };
+            let mode = platform::parse_mode(text, platform::mode(&meta))?;
             match platform::set_mode(path, mode) {
                 Ok(()) => changed += 1,
                 Err(e) => errors.push(format!("{}: {e}", path.display())),
@@ -1966,7 +1972,8 @@ impl App {
         let mut dirs: Vec<&Path> = paths.iter().filter_map(|p| p.parent()).collect();
         dirs.dedup();
         self.rescan_everywhere(&dirs);
-        let mut msg = format!("Permissions set to {mode:03o} on {changed} files");
+        let what = platform::describe_mode(0).0;
+        let mut msg = format!("{what} set to {} on {changed} files", text.trim());
         if let Some(e) = errors.first() {
             msg.push_str(&format!(". {} errors, first: {e}", errors.len()));
         }

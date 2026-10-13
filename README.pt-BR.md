@@ -73,6 +73,44 @@ xt() {
 Com ela, `xt` funciona como antes; só ao sair com **Alt+Q** o shell fica no
 diretório em que você estava no xt. `Q` e F10 saem sem mudar nada.
 
+## Windows (experimental)
+
+O xt também compila para Windows (Windows Terminal ou o console clássico).
+Ele passa nos testes automáticos lá, mas ainda não foi usado no dia a dia,
+então espere arestas. A instalação é a mesma (Rust via rustup, depois
+`cargo install --git ...`); cada execução do CI também gera um `xt.exe`.
+
+O que muda no Windows:
+
+- **Attributes** (`A`) edita R, H, S e A, como no ZTreeWin: `RA` define
+  exatamente esses, `+H -A` liga ou desliga alguns. A lista de arquivos os
+  mostra como `r-sa`.
+- **Ocultos** são os arquivos e diretórios com o atributo H (um nome que
+  começa com ponto é um nome comum).
+- **eXecute** e **Edit** passam pelo `cmd`, com os nomes entre aspas duplas.
+  Um `%NOME%` dentro de um nome de arquivo ainda é expandido pelo `cmd`.
+- O editor padrão é o `notepad`, `O` usa o `start` e o Ctrl+B sugere
+  `xt-batch.bat` (começando com `@echo off`).
+- Apagar um arquivo somente leitura apaga o arquivo, como o `rm` no Linux.
+- Copiar links simbólicos exige o Modo de Desenvolvedor ou direitos de
+  administrador.
+- Configuração em `%APPDATA%\xt\config.toml`, histórico em
+  `%LOCALAPPDATA%\xt\`.
+
+Para o **Alt+Q** no PowerShell, coloque isto no seu `$PROFILE`:
+
+```powershell
+function xt {
+    $tmp = New-TemporaryFile
+    xt.exe --cwd-file $tmp @args
+    $dir = Get-Content -Raw -Encoding UTF8 $tmp
+    Remove-Item $tmp
+    if ($dir -and (Test-Path -LiteralPath $dir -PathType Container)) {
+        Set-Location -LiteralPath $dir
+    }
+}
+```
+
 ## Configuração
 
 A forma mais fácil é a **tela de configuração: F12** (ou Alt+F10, como no
@@ -416,7 +454,9 @@ Na árvore, `+` no conector (`├─+`) indica um diretório recolhido que tem s
 ### Para depois
 
 - pacote `.deb` (falta definir licença e mantenedor)
-- versão para Windows (e, talvez, macOS)
+- versão para Windows: compila e passa nos testes (veja
+  [Windows (experimental)](#windows-experimental)); falta usar no dia a dia.
+  Talvez macOS
 - os itens de "Não implementado" abaixo
 
 ## Comparação com o ZTreeWin
@@ -443,7 +483,7 @@ configuração (Alt+F10).
 | Filespec | nome com regras próprias de nome e extensão, data, tamanho, atributo, filespec invertido (Ctrl+I), rótulos | glob para os nomes, data e tamanho como no ZTreeWin (com K/M/G); sem atributos, inversão e rótulos |
 | Visualizador | modos Alpha, Dump, Hex, Junk e Wrap; conjuntos de caracteres; edição hex; marcadores; auto-scroll | texto (UTF-8) ou hex, com a busca do ZTreeWin (F, B, /, \\, Espaço, + e -), cores de sintaxe (que o ZTreeWin não tem), sem quebra de linha; até 16 MiB |
 | Ctrl+S | texto, hex ou Unicode; busca só no índice de ZIPs | texto ou hex |
-| Attributes | atributos do Windows (R, A, S, H) | permissões do Unix em octal (`644`); sem dono/grupo |
+| Attributes | atributos do Windows (R, A, S, H) | permissões do Unix em octal (`644`); sem dono/grupo. No Windows, R, H, S e A, como no ZTreeWin |
 | Sort | Name, Ext, Date, Time, Length, Alpha, nuMber, Size, Value, Unsorted; Charset; same/diff na tela dividida | Name, Ext, Date, Size, crescente/decrescente, Path first; cada janela tem a sua ordem |
 | Compare | opções Identical, Unique, Newer, Older, Size, Binary, Case; filtro de exibição | marca únicos, mais novos, mais antigos, idênticos, diferentes ou únicos+mais novos; sem comparação binária |
 | Prune | apaga só os subdiretórios ou também o atual; só diretórios vazios; lixeira | apaga sempre o diretório inteiro, permanentemente; confirmação configurável |
