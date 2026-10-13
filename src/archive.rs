@@ -349,9 +349,8 @@ fn add(writer: &mut Writer, item: &ArchiveItem) -> io::Result<()> {
         Writer::TarGz(t) => t.append_path_with_name(&item.path, &item.name),
         Writer::Zip(z) => {
             let meta = std::fs::symlink_metadata(&item.path)?;
-            let mut opts = zip::write::SimpleFileOptions::default().unix_permissions(
-                std::os::unix::fs::PermissionsExt::mode(&meta.permissions()) & 0o7777,
-            );
+            let mut opts = zip::write::SimpleFileOptions::default()
+                .unix_permissions(crate::platform::mode(&meta) & 0o7777);
             if let Ok(t) = meta.modified() {
                 use chrono::{Datelike, Timelike};
                 let t = chrono::DateTime::<Local>::from(t);
@@ -528,6 +527,7 @@ pub mod tests {
         }
     }
 
+    #[cfg(unix)]
     #[test]
     fn creates_archives_that_read_back() {
         let tmp = tempfile::tempdir().unwrap();

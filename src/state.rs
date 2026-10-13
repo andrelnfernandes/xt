@@ -4,10 +4,11 @@
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+
+use crate::platform;
 
 pub type History = HashMap<String, Vec<String>>;
 
@@ -18,13 +19,7 @@ struct StateFile {
 }
 
 pub fn history_path() -> Option<PathBuf> {
-    let base = std::env::var_os("XDG_STATE_HOME")
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local").join("state"))
-        })?;
-    Some(base.join("xt").join("history.toml"))
+    Some(platform::state_dir()?.join("history.toml"))
 }
 
 /// Saved history; empty if the file doesn't exist or can't be read.
@@ -47,12 +42,8 @@ pub fn save_history(path: &Path, history: &History) -> io::Result<()> {
         fs::create_dir_all(dir)?;
     }
     let tmp = path.with_extension("toml.tmp");
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(&tmp)?;
+    let mut file =
+        platform::private(OpenOptions::new().write(true).create(true).truncate(true)).open(&tmp)?;
     file.write_all(text.as_bytes())?;
     file.sync_all()?;
     fs::rename(&tmp, path)
@@ -61,7 +52,6 @@ pub fn save_history(path: &Path, history: &History) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
 
     #[test]
     fn saves_and_loads_privately() {
@@ -75,8 +65,12 @@ mod tests {
         save_history(&path, &history).unwrap();
         assert_eq!(load_history(&path), history);
 
-        let mode = fs::metadata(&path).unwrap().permissions().mode();
-        assert_eq!(mode & 0o777, 0o600);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
         assert!(!path.with_extension("toml.tmp").exists());
     }
 

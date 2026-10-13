@@ -9,7 +9,6 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::BufRead;
 use std::ops::{Deref, DerefMut};
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -27,6 +26,7 @@ use crate::model::sort::{Sort, SortKey};
 use crate::model::tree::{LogJob, NodeId, ROOT};
 use crate::ops::{self, Answer, OpKind, Operation, Source};
 pub use crate::pane::{FileRef, FileView, Focus, Kbyte, KbyteShow, Pane};
+use crate::platform;
 use crate::search::{self, Pattern, SearchJob, SearchSpec};
 use crate::settings::{Outcome, Settings};
 use crate::shell::{self, External};
@@ -1022,7 +1022,7 @@ impl App {
     fn prepare_prune(&mut self, id: NodeId) {
         let root = self.tree.path(id);
         let root_dev = match fs::symlink_metadata(&root) {
-            Ok(m) => m.dev(),
+            Ok(m) => platform::device(&m),
             Err(e) => {
                 self.message = Some(format!("Cannot prune {}: {e}", root.display()));
                 return;
@@ -1034,7 +1034,7 @@ impl App {
         while let Some(n) = stack.pop() {
             let path = self.tree.path(n);
             match fs::symlink_metadata(&path) {
-                Ok(m) if m.dev() == root_dev => {}
+                Ok(m) if platform::device(&m) == root_dev => {}
                 Ok(_) => {
                     mounts += 1;
                     continue;
@@ -1379,15 +1379,10 @@ impl App {
             "Tagged",
             format!("{} files, {} bytes", g(tagged), g(tagged_bytes)),
         );
-        if let Ok(st) = nix::sys::statvfs::statvfs(&self.current_path()) {
-            let frag = st.fragment_size();
+        if let Some(disk) = platform::disk_space(&self.current_path()) {
             row(
                 "Disk",
-                format!(
-                    "{} bytes free of {}",
-                    g(st.blocks_available() * frag),
-                    g(st.blocks() * frag)
-                ),
+                format!("{} bytes free of {}", g(disk.available), g(disk.total)),
             );
         }
         text
@@ -1449,7 +1444,7 @@ impl App {
             .map_err(|e| format!("Cannot create {}: {e}", file.display()))?;
         std::io::Write::write_all(&mut out, &data).map_err(|e| e.to_string())?;
         if script {
-            let _ = out.set_permissions(fs::Permissions::from_mode(0o755));
+            let _ = platform::set_file_mode(&out, 0o755);
         }
         if let Some(dir) = file.parent() {
             self.rescan_everywhere(&[dir]);
@@ -1876,7 +1871,7 @@ impl App {
             return;
         };
         let mode = fs::metadata(&sources[0].path)
-            .map(|m| format!("{:03o}", m.permissions().mode() & 0o7777))
+            .map(|m| format!("{:03o}", platform::mode(&m) & 0o7777))
             .unwrap_or_default();
         let label = format!("PERMISSIONS for {} (octal): ", describe(&sources));
         let paths = sources.into_iter().map(|s| s.path).collect();
@@ -1965,7 +1960,7 @@ impl App {
             if fs::symlink_metadata(path).is_ok_and(|m| m.is_symlink()) {
                 continue;
             }
-            match fs::set_permissions(path, fs::Permissions::from_mode(mode)) {
+            match platform::set_mode(path, mode) {
                 Ok(()) => changed += 1,
                 Err(e) => errors.push(format!("{}: {e}", path.display())),
             }
@@ -2251,6 +2246,8 @@ mod tests {
     use super::*;
     use ratatui::crossterm::event::KeyModifiers;
     use std::fs::{create_dir_all, write};
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
 
     /// root/{a.rs, b.txt}, root/sub/{c.rs}, root/sub/deep/{a.rs}
     fn sample() -> (tempfile::TempDir, App) {
@@ -2527,6 +2524,7 @@ mod tests {
         assert_eq!(app.message.as_deref(), Some("Directory is not empty"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn chmod_tagged_files() {
         let (tmp, mut app) = sample();
@@ -2986,16 +2984,15 @@ mod tests {
         assert_eq!(names(&app).len(), 4);
     }
 
+    #[cfg(unix)]
     #[test]
     fn edit_and_execute_request_external_programs() {
         let (tmp, mut app) = sample();
         press(&mut app, KeyCode::Enter);
         press(&mut app, KeyCode::Char('e'));
         let ext = app.external.take().expect("editor requested");
-        assert_eq!(
-            ext.args.last().unwrap(),
-            tmp.path().join("a.rs").as_os_str()
-        );
+        let quoted = format!(" '{}'", tmp.path().join("a.rs").display());
+        assert!(ext.line.to_string_lossy().ends_with(&quoted));
 
         press(&mut app, KeyCode::Char('t'));
         press(&mut app, KeyCode::Char('t'));
@@ -3006,7 +3003,7 @@ mod tests {
         let a = tmp.path().join("a.rs");
         let b = tmp.path().join("b.txt");
         let expected = format!("wc -c '{}' '{}'", a.display(), b.display());
-        assert_eq!(ext.args[1], expected.as_str());
+        assert_eq!(ext.line, expected.as_str());
         assert_eq!(ext.cwd, tmp.path());
         assert!(ext.wait);
 
@@ -3183,6 +3180,7 @@ mod tests {
         assert!(!app.rows.iter().any(|r| app.tree.node(r.id).name == ".git"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn at_prefix_skips_history_and_is_stripped() {
         let (_tmp, mut app) = sample();
@@ -3191,7 +3189,7 @@ mod tests {
         type_text(&mut app, "@echo secret");
         press(&mut app, KeyCode::Enter);
         let ext = app.external.take().unwrap();
-        assert_eq!(ext.args[1], "echo secret");
+        assert_eq!(ext.line, "echo secret");
         assert!(!app.history.contains_key("execute"));
     }
 
@@ -3707,6 +3705,7 @@ mod tests {
         assert_eq!(mtime("sub").date_naive().to_string(), "2018-01-01");
     }
 
+    #[cfg(unix)]
     #[test]
     fn ctrl_b_writes_a_batch_file() {
         let (tmp, mut app) = sample();

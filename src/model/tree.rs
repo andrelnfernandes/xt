@@ -7,7 +7,6 @@
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -489,7 +488,7 @@ fn read_dir_entries(path: &Path) -> std::io::Result<(Vec<OsString>, Vec<FileEntr
             name,
             size: meta.len(),
             modified: meta.modified().ok(),
-            mode: meta.permissions().mode(),
+            mode: crate::platform::mode(&meta),
             kind,
             tagged: false,
         });
@@ -745,6 +744,7 @@ mod tests {
         assert_eq!(tagged[ROOT], (1, 5));
     }
 
+    #[cfg(unix)]
     #[test]
     fn symlinks_are_not_followed() {
         let tmp = tempfile::tempdir().unwrap();
