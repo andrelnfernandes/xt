@@ -163,7 +163,7 @@ impl LineInput {
         self.history.clone()
     }
 
-    fn set_text(&mut self, text: String) {
+    pub fn set_text(&mut self, text: String) {
         self.cursor = text.chars().count();
         self.text = text;
     }

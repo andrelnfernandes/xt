@@ -52,6 +52,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     .areas(frame.area());
 
     draw_header(frame, app, header);
+    if app.picker.is_some() {
+        draw_picker(frame, app, main, menu);
+        return;
+    }
     draw_menu(frame, app, menu);
     let git = app.options.git.then_some(&app.git_status);
 
@@ -209,6 +213,45 @@ fn draw_tree(frame: &mut Frame, pane: &mut Pane, active: bool, title: String, ar
         .block(panel(title, active))
         .highlight_style(highlight(active));
     frame.render_stateful_widget(list, area, &mut state);
+}
+
+/// F2 in a prompt: the tree to pick a folder from, with the prompt's question
+/// in the footer.
+fn draw_picker(frame: &mut Frame, app: &mut App, main: Rect, menu: Rect) {
+    let question = app
+        .prompt
+        .as_ref()
+        .map(|p| p.label.clone())
+        .unwrap_or_default();
+    let Some(picker) = &mut app.picker else {
+        return;
+    };
+    let windows = picker.panes.len();
+    let width = main.width.saturating_sub(4) as usize;
+    let path = picker.pane().current_path();
+    let title = format!(
+        " Folder: {} ",
+        fit_tail(&path.to_string_lossy(), width.saturating_sub(10))
+    );
+    draw_tree(frame, picker.pane_mut(), true, title, main);
+
+    let mut keys = vec![
+        ("↑↓", "move"),
+        ("←→", "close/open"),
+        ("Enter", "choose"),
+        ("Esc", "back"),
+    ];
+    if windows > 1 {
+        keys.push(("Tab", "other window"));
+    }
+    let lines = vec![
+        menu_line("FOLDER", &keys),
+        Line::from(Span::styled(
+            format!("{:9}{}", "", question.trim_end()),
+            Style::new().fg(theme().dim),
+        )),
+    ];
+    frame.render_widget(Paragraph::new(lines), menu);
 }
 
 /// With `git`, files in a repository show their status before the name.
@@ -767,6 +810,9 @@ fn prompt_lines(frame: &mut Frame, prompt: &app::Prompt, area: Rect) -> Vec<Line
     let col = area.x + (prompt.label.chars().count() + prompt.input.cursor) as u16;
     frame.set_cursor_position((col.min(area.right().saturating_sub(1)), area.y));
     let mut help = vec![("Enter", "accept"), ("Esc", "cancel"), ("Ctrl+U", "clear")];
+    if prompt.picks_folder() {
+        help.push(("F2", "tree"));
+    }
     if prompt.toggles_paths() {
         help.push(("F6", "with/without paths"));
     }
