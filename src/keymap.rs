@@ -585,7 +585,8 @@ impl Keymap {
              Space, + / -            next hit (in Ctrl+V, continues in the next files)\n  \
              N / P, Alt+Home/End     next / previous / first / last tagged file\n  \
              U                       untag the file being viewed\n  \
-             H                       hex / text\n\n\
+             H                       hex / text\n  \
+             E                       edit the file in the configured editor\n\n\
              NAVIGATION\n  \
              Shift+letter, 0-9       next directory / file starting with it\n",
         );
