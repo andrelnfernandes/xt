@@ -485,7 +485,11 @@ pub mod tests {
             .iter()
             .find(|e| e.path == Path::new("src/a.rs"))
             .unwrap();
-        assert_eq!((a.size, a.mode, a.kind), (9, 0o755, EntryKind::File));
+        assert_eq!((a.size, a.kind), (9, EntryKind::File));
+        // On Windows, the zip crate records entries as made on DOS, without the
+        // Unix permissions.
+        #[cfg(unix)]
+        assert_eq!(a.mode, 0o755);
         assert!(a.modified.is_some());
 
         let mut out = Vec::new();
