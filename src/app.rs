@@ -3174,6 +3174,8 @@ mod tests {
         let (tmp, mut app) = sample();
         write(tmp.path().join(".env"), "").unwrap();
         create_dir_all(tmp.path().join(".git")).unwrap();
+        hide(&tmp.path().join(".env"));
+        hide(&tmp.path().join(".git"));
         app.apply(Command::Relog);
         assert!(names(&app).contains(&".env".to_string()));
 
@@ -3208,6 +3210,7 @@ mod tests {
         let file = tmp.path().join("cfg/config.toml");
         app.config_file = Some(file.clone());
         write(tmp.path().join(".hidden"), "").unwrap();
+        hide(&tmp.path().join(".hidden"));
         app.apply(Command::Relog);
 
         press(&mut app, KeyCode::F(12));
@@ -3460,6 +3463,19 @@ mod tests {
         (tmp, app, root)
     }
 
+    /// `/` in the expected text becomes the platform's separator.
+    fn sep(text: String) -> String {
+        text.replace('/', std::path::MAIN_SEPARATOR_STR)
+    }
+
+    /// Hides a file or directory: the dot in the name is enough on Linux; on
+    /// Windows it takes the H attribute.
+    fn hide(path: &Path) {
+        #[cfg(windows)]
+        platform::set_mode(path, 0x2).unwrap();
+        let _ = path;
+    }
+
     fn current_name(app: &App) -> String {
         app.tree
             .node(app.current())
@@ -3472,18 +3488,21 @@ mod tests {
     fn treespec_navigates_while_typing() {
         let (_tmp, mut app, root) = treespec_setup();
         press(&mut app, KeyCode::Char('\\'));
-        assert_eq!(app.prompt.as_ref().unwrap().input.text, format!("{root}/"));
+        assert_eq!(
+            app.prompt.as_ref().unwrap().input.text,
+            sep(format!("{root}/"))
+        );
         type_text(&mut app, "do");
         assert_eq!(current_name(&app), "Docs", "cursor follows the typing");
         type_text(&mut app, "/");
         assert_eq!(
             app.prompt.as_ref().unwrap().input.text,
-            format!("{root}/Docs/")
+            sep(format!("{root}/Docs/"))
         );
         type_text(&mut app, "r\\s");
         assert_eq!(
             app.prompt.as_ref().unwrap().input.text,
-            format!("{root}/Docs/rust/s")
+            sep(format!("{root}/Docs/rust/s"))
         );
         assert_eq!(current_name(&app), "src");
         press(&mut app, KeyCode::Enter);
@@ -3500,7 +3519,7 @@ mod tests {
         press(&mut app, KeyCode::Tab);
         assert_eq!(
             app.prompt.as_ref().unwrap().input.text,
-            format!("{root}/Docs")
+            sep(format!("{root}/Docs"))
         );
         press(&mut app, KeyCode::Tab);
         assert_eq!(current_name(&app), "downloads");
@@ -3833,7 +3852,10 @@ mod tests {
     fn slash_also_opens_treespec() {
         let (_tmp, mut app, root) = treespec_setup();
         press(&mut app, KeyCode::Char('/'));
-        assert_eq!(app.prompt.as_ref().unwrap().input.text, format!("{root}/"));
+        assert_eq!(
+            app.prompt.as_ref().unwrap().input.text,
+            sep(format!("{root}/"))
+        );
         type_text(&mut app, "dow");
         assert_eq!(current_name(&app), "downloads");
         press(&mut app, KeyCode::Esc);
