@@ -426,11 +426,11 @@ fn draw_stats(frame: &mut Frame, app: &App, area: Rect) {
         Line::default(),
     ];
 
-    if let Some((total, free)) = disk_space(&app.tree.path(id)) {
+    if let Some(disk) = crate::platform::disk_space(&app.tree.path(id)) {
         lines.extend([
             label("DISK"),
-            value("Total", fmt_num(total)),
-            value("Free", fmt_num(free)),
+            value("Total", fmt_num(disk.total)),
+            value("Free", fmt_num(disk.available)),
             Line::default(),
         ]);
     }
@@ -1060,12 +1060,6 @@ fn menu_line(title: &str, entries: &[(&str, &str)]) -> Line<'static> {
         spans.push(Span::raw(format!(" {desc}   ")));
     }
     Line::from(spans)
-}
-
-fn disk_space(path: &std::path::Path) -> Option<(u64, u64)> {
-    let s = nix::sys::statvfs::statvfs(path).ok()?;
-    let frag = s.fragment_size() as u64;
-    Some((s.blocks() as u64 * frag, s.blocks_available() as u64 * frag))
 }
 
 /// Cuts or pads with spaces to fit `width` columns.

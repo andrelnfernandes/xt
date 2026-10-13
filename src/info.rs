@@ -3,12 +3,12 @@
 
 use std::fmt::Write as _;
 use std::fs;
-use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::path::Path;
 use std::time::SystemTime;
 
 use chrono::{DateTime, Local};
-use nix::unistd::{Gid, Group, Uid, User};
+
+use crate::platform;
 
 /// Everything about a file or directory.
 pub fn path_info(path: &Path) -> String {
@@ -27,19 +27,8 @@ pub fn path_info(path: &Path) -> String {
         "symbolic link"
     } else if ft.is_file() {
         "regular file"
-    } else if ft.is_fifo() {
-        "named pipe (FIFO)"
-    } else if ft.is_socket() {
-        "socket"
-    } else if ft.is_block_device() {
-        "block device"
-    } else if ft.is_char_device() {
-        "character device"
     } else {
-        "other"
-    };
-    let row = |out: &mut String, k: &str, v: String| {
-        let _ = writeln!(out, "  {k:<14}{v}");
+        special_kind(&ft)
     };
     row(&mut out, "Type", kind.into());
     if ft.is_symlink() {
@@ -55,27 +44,67 @@ pub fn path_info(path: &Path) -> String {
         }
     }
     row(&mut out, "Size", format!("{} bytes", group(meta.len())));
-    let mode = meta.mode() & 0o7777;
+    let mode = platform::mode(&meta) & 0o7777;
     row(
         &mut out,
         "Permissions",
         format!("{mode:04o}  {}", rwx(mode)),
     );
-    row(&mut out, "Owner", user_name(meta.uid()));
-    row(&mut out, "Group", group_name(meta.gid()));
-    row(&mut out, "Modified", time(meta.modified().ok()));
-    row(&mut out, "Accessed", time(meta.accessed().ok()));
+    system_rows(&mut out, &meta);
+    out
+}
+
+fn row(out: &mut String, k: &str, v: String) {
+    let _ = writeln!(out, "  {k:<14}{v}");
+}
+
+#[cfg(unix)]
+fn special_kind(ft: &fs::FileType) -> &'static str {
+    use std::os::unix::fs::FileTypeExt;
+    if ft.is_fifo() {
+        "named pipe (FIFO)"
+    } else if ft.is_socket() {
+        "socket"
+    } else if ft.is_block_device() {
+        "block device"
+    } else if ft.is_char_device() {
+        "character device"
+    } else {
+        "other"
+    }
+}
+
+#[cfg(windows)]
+fn special_kind(_ft: &fs::FileType) -> &'static str {
+    "other"
+}
+
+/// Owner, dates, inode and device.
+#[cfg(unix)]
+fn system_rows(out: &mut String, meta: &fs::Metadata) {
+    use std::os::unix::fs::MetadataExt;
+    row(out, "Owner", user_name(meta.uid()));
+    row(out, "Group", group_name(meta.gid()));
+    row(out, "Modified", time(meta.modified().ok()));
+    row(out, "Accessed", time(meta.accessed().ok()));
     let changed =
         SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(meta.ctime().max(0) as u64);
-    row(&mut out, "Changed", time(Some(changed)));
-    row(&mut out, "Inode", meta.ino().to_string());
-    row(&mut out, "Links", meta.nlink().to_string());
+    row(out, "Changed", time(Some(changed)));
+    row(out, "Inode", meta.ino().to_string());
+    row(out, "Links", meta.nlink().to_string());
     row(
-        &mut out,
+        out,
         "Device",
         format!("{}:{}", major(meta.dev()), minor(meta.dev())),
     );
-    out
+}
+
+/// Dates.
+#[cfg(windows)]
+fn system_rows(out: &mut String, meta: &fs::Metadata) {
+    row(out, "Created", time(meta.created().ok()));
+    row(out, "Modified", time(meta.modified().ok()));
+    row(out, "Accessed", time(meta.accessed().ok()));
 }
 
 /// The mounted file systems, like `df`.
@@ -86,35 +115,27 @@ pub fn avail() -> String {
         "  {:>15} {:>15} {:>15} {:>5}  {:<10} Mounted on",
         "Total", "Used", "Free", "Use%", "Type"
     );
-    let mounts = fs::read_to_string("/proc/self/mounts").unwrap_or_default();
     let mut seen = std::collections::HashSet::new();
-    for line in mounts.lines() {
-        let fields: Vec<&str> = line.split_whitespace().collect();
-        let [_, point, fstype, ..] = fields[..] else {
+    for mount in platform::mounts() {
+        let Some(disk) = platform::disk_space(&mount.point) else {
             continue;
         };
-        // "\040" is the space in /proc/mounts names.
-        let point = point.replace("\\040", " ");
-        let Ok(st) = nix::sys::statvfs::statvfs(Path::new(&point)) else {
-            continue;
-        };
-        let frag = st.fragment_size();
-        let total = st.blocks() * frag;
         // Virtual file systems (proc, sysfs, cgroup...) have no size.
-        if total == 0 || !seen.insert(point.clone()) {
+        if disk.total == 0 || !seen.insert(mount.point.clone()) {
             continue;
         }
-        let free = st.blocks_available() * frag;
-        let used = total.saturating_sub(st.blocks_free() * frag);
+        let free = disk.available;
+        let used = disk.total.saturating_sub(disk.free);
         let pct = (used * 100).checked_div(used + free).unwrap_or(0);
         let _ = writeln!(
             out,
-            "  {:>15} {:>15} {:>15} {:>4}%  {:<10} {point}",
-            group(total),
+            "  {:>15} {:>15} {:>15} {:>4}%  {:<10} {}",
+            group(disk.total),
             group(used),
             group(free),
             pct,
-            fstype
+            mount.fstype,
+            mount.point.display()
         );
     }
     out
@@ -154,24 +175,30 @@ fn time(t: Option<SystemTime>) -> String {
     .unwrap_or_else(|| "-".into())
 }
 
+#[cfg(unix)]
 fn user_name(uid: u32) -> String {
+    use nix::unistd::{Uid, User};
     match User::from_uid(Uid::from_raw(uid)) {
         Ok(Some(u)) => format!("{} ({uid})", u.name),
         _ => uid.to_string(),
     }
 }
 
+#[cfg(unix)]
 fn group_name(gid: u32) -> String {
+    use nix::unistd::{Gid, Group};
     match Group::from_gid(Gid::from_raw(gid)) {
         Ok(Some(g)) => format!("{} ({gid})", g.name),
         _ => gid.to_string(),
     }
 }
 
+#[cfg(unix)]
 fn major(dev: u64) -> u64 {
     ((dev >> 32) & 0xffff_f000) | ((dev >> 8) & 0xfff)
 }
 
+#[cfg(unix)]
 fn minor(dev: u64) -> u64 {
     ((dev >> 12) & 0xffff_ff00) | (dev & 0xff)
 }
@@ -180,6 +207,7 @@ fn minor(dev: u64) -> u64 {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     #[test]
     fn file_info_has_the_basics() {
         let tmp = tempfile::tempdir().unwrap();
@@ -197,6 +225,7 @@ mod tests {
         assert!(path_info(&tmp.path().join("missing")).contains("Cannot read"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn avail_lists_the_root_file_system() {
         let text = avail();
@@ -207,6 +236,7 @@ mod tests {
     fn helpers() {
         assert_eq!(group(1234567), "1,234,567");
         assert_eq!(rwx(0o750), "rwxr-x---");
+        #[cfg(unix)]
         assert_eq!((major(0x803), minor(0x803)), (8, 3));
     }
 }

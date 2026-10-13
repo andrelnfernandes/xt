@@ -12,6 +12,7 @@ mod keymap;
 mod model;
 mod ops;
 mod pane;
+mod platform;
 mod search;
 mod settings;
 mod shell;
@@ -212,10 +213,7 @@ fn run_external(
     terminal::disable_raw_mode()?;
     execute!(stdout(), LeaveAlternateScreen, cursor::Show)?;
 
-    let status = std::process::Command::new(&ext.program)
-        .args(&ext.args)
-        .current_dir(&ext.cwd)
-        .status();
+    let status = ext.command().status();
     if ext.wait {
         print!("\n[xt] Press Enter to return to xt...");
         let _ = stdout().flush();
