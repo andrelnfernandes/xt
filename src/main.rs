@@ -13,6 +13,7 @@ mod keymap;
 mod model;
 mod ops;
 mod pane;
+mod picker;
 mod platform;
 mod search;
 mod settings;

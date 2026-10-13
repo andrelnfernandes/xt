@@ -284,6 +284,14 @@ tree in Showall): `proj/src/model/tree.rs` → `destino/src/model/tree.rs`.
 At the destination prompt, **F6** switches between the two modes, and the current mode is shown
 in the prompt itself. Alt+D and Alt+A work like Ctrl+D and Ctrl+A.
 
+**Picking the folder (F2):** in any prompt that asks for a folder (Copy, Move,
+Log, and the folder of Ctrl+B and F5), **F2** opens a tree to choose it, as in
+ZTreeWin. It starts at the folder typed so far; the tree keys move around
+(directories are read as they are opened), **Tab** switches to the other
+window's tree with the screen split, **Enter** puts the folder in the prompt
+(Ctrl+B and F5 keep the file name) and **Esc** goes back without changing it.
+Nothing runs until you confirm the prompt.
+
 **Split screen:** F8 opens a second window, starting in the same directory;
 Tab switches between them (without the split, Tab does the same as Enter). Each window
 has its own tree, cursor and filespec; use `L` to open another directory in it.
