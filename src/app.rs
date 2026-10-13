@@ -1398,12 +1398,11 @@ impl App {
         let items: Vec<ArchiveItem> = sources
             .iter()
             .map(|s| ArchiveItem {
-                name: s
-                    .path
-                    .strip_prefix(&base)
-                    .unwrap_or(Path::new(s.path.file_name().unwrap_or_default()))
-                    .to_string_lossy()
-                    .into_owned(),
+                name: archive::entry_name(
+                    s.path
+                        .strip_prefix(&base)
+                        .unwrap_or(Path::new(s.path.file_name().unwrap_or_default())),
+                ),
                 path: s.path.clone(),
                 size: s.size,
             })
@@ -1504,8 +1503,7 @@ impl App {
                     .and_local_timezone(chrono::Local)
                     .earliest()
                     .ok_or("time does not exist (daylight saving change)")?;
-                let file = fs::File::open(path).map_err(|e| e.to_string())?;
-                file.set_modified(when.into()).map_err(|e| e.to_string())
+                platform::set_modified(path, when.into()).map_err(|e| e.to_string())
             })();
             match result {
                 Ok(()) => changed += 1,
@@ -1568,7 +1566,7 @@ impl App {
     /// just moves the cursor there; otherwise, the window gets `path` as its root.
     fn log(&mut self, text: &str) -> Result<(), String> {
         let path = ops::resolve_path(text, &self.current_path());
-        let path = fs::canonicalize(&path).map_err(|e| format!("Cannot log {text}: {e}"))?;
+        let path = dunce::canonicalize(&path).map_err(|e| format!("Cannot log {text}: {e}"))?;
         if !path.is_dir() {
             return Err(format!("{} is not a directory", path.display()));
         }
@@ -2770,18 +2768,22 @@ mod tests {
 
     #[test]
     fn log_moves_cursor_or_opens_new_root() {
-        let (tmp, mut app) = sample();
+        let (tmp, _) = sample();
+        // As in `main`: the root is canonical (on Windows, the temporary
+        // directory comes with a short 8.3 name).
+        let root = dunce::canonicalize(tmp.path()).unwrap();
+        let mut app = App::new(root.clone());
         // Inside the current tree: just moves the cursor.
         press(&mut app, KeyCode::Char('l'));
         answer_prompt(&mut app, "sub/deep");
-        assert_eq!(app.current_path(), tmp.path().join("sub/deep"));
-        assert_eq!(app.tree.path(ROOT), tmp.path());
+        assert_eq!(app.current_path(), root.join("sub/deep"));
+        assert_eq!(app.tree.path(ROOT), root);
 
         // Outside it: the window gets a new root.
         let other = tempfile::tempdir().unwrap();
         press(&mut app, KeyCode::Char('l'));
         answer_prompt(&mut app, other.path().to_str().unwrap());
-        let canonical = fs::canonicalize(other.path()).unwrap();
+        let canonical = dunce::canonicalize(other.path()).unwrap();
         assert_eq!(app.tree.path(ROOT), canonical);
 
         press(&mut app, KeyCode::Char('l'));
@@ -3510,7 +3512,10 @@ mod tests {
         ctrl(&mut app, 'u');
         type_text(&mut app, other.path().to_str().unwrap());
         press(&mut app, KeyCode::Enter);
-        assert_eq!(app.tree.path(ROOT), fs::canonicalize(other.path()).unwrap());
+        assert_eq!(
+            app.tree.path(ROOT),
+            dunce::canonicalize(other.path()).unwrap()
+        );
     }
 
     #[test]
@@ -3776,7 +3781,7 @@ mod tests {
             .list()
             .unwrap()
             .iter()
-            .map(|e| e.path.to_string_lossy().into_owned())
+            .map(|e| archive::entry_name(&e.path))
             .collect();
         names.sort();
         assert_eq!(names, ["a.rs", "b.txt", "sub/c.rs", "sub/deep/a.rs"]);

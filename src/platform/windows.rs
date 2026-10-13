@@ -8,8 +8,11 @@ use std::fs::{self, File, Metadata, OpenOptions};
 use std::io;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
-use windows_sys::Win32::Storage::FileSystem::{GetDiskFreeSpaceExW, GetLogicalDrives};
+use windows_sys::Win32::Storage::FileSystem::{
+    FILE_FLAG_BACKUP_SEMANTICS, FILE_WRITE_ATTRIBUTES, GetDiskFreeSpaceExW, GetLogicalDrives,
+};
 
 use super::{DiskSpace, Mount, env_dir};
 
@@ -35,6 +38,17 @@ pub fn set_file_mode(file: &File, mode: u32) -> io::Result<()> {
     let mut perms = file.metadata()?.permissions();
     perms.set_readonly(mode & 0o222 == 0);
     file.set_permissions(perms)
+}
+
+/// Changes the modification date: needs a handle opened with permission to
+/// write attributes (and, for directories, backup semantics).
+pub fn set_modified(path: &Path, time: SystemTime) -> io::Result<()> {
+    use std::os::windows::fs::OpenOptionsExt;
+    OpenOptions::new()
+        .access_mode(FILE_WRITE_ATTRIBUTES)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .open(path)?
+        .set_modified(time)
 }
 
 /// Identifies a file regardless of the name used to reach it: the

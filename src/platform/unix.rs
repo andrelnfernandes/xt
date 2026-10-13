@@ -4,6 +4,7 @@ use std::fs::{self, File, Metadata, OpenOptions};
 use std::io;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use super::{DiskSpace, Mount, env_dir};
 
@@ -18,6 +19,12 @@ pub fn set_mode(path: &Path, mode: u32) -> io::Result<()> {
 
 pub fn set_file_mode(file: &File, mode: u32) -> io::Result<()> {
     file.set_permissions(fs::Permissions::from_mode(mode))
+}
+
+/// Changes the modification date (the owner can do it without write
+/// permission).
+pub fn set_modified(path: &Path, time: SystemTime) -> io::Result<()> {
+    File::open(path)?.set_modified(time)
 }
 
 /// Identifies a file regardless of the name used to reach it.
