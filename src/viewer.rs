@@ -174,11 +174,11 @@ impl Viewer {
         }
     }
 
-    /// Colors as if it were the file `name` (`x.diff` for git's output).
+    /// Colors as if it were the file `name` (`x.diff` for git's output, or
+    /// `highlight::GIT_STATUS`).
     pub fn colored_as(mut self, name: &Path) -> Self {
         if self.mode == ViewMode::Text {
-            let first = self.lines.first().map_or("", String::as_str);
-            self.colors = Highlighter::for_file(name, first);
+            self.colors = Highlighter::for_name(name, &self.lines);
             self.colors_on = self.colors.is_some();
         }
         self
