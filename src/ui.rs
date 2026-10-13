@@ -21,9 +21,10 @@ use ratatui::widgets::{Block, BorderType, Clear, List, ListItem, ListState, Para
 
 use crate::app::{self, App, FileView, Focus, KbyteShow, MenuMode, Pane};
 use crate::config::{self, formats, theme};
+use crate::git::StatusCache;
 use crate::model::tree::{FileEntry, FileKind};
 use crate::ops::Operation;
-use crate::pane::FileDisplay;
+use crate::pane::{FileDisplay, FileRef};
 use crate::settings::{self, Settings};
 use crate::viewer::{self, ViewMode, Viewer};
 
@@ -52,6 +53,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     draw_header(frame, app, header);
     draw_menu(frame, app, menu);
+    let git = app.options.git.then_some(&app.git_status);
 
     if app.autoview.is_some() {
         // F7: list on the left, contents of the selected file on the right.
@@ -59,7 +61,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)])
                 .areas(main);
         let active = app.active;
-        draw_files(frame, &mut app.panes[active], true, list);
+        draw_files(frame, &mut app.panes[active], true, list, git);
         if let Some(v) = &mut app.autoview {
             let name = v
                 .path
@@ -76,19 +78,26 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
                 .areas(main);
         let active = app.active;
         for (i, (pane, area)) in app.panes.iter_mut().zip(halves).enumerate() {
-            draw_pane(frame, pane, i == active, true, area);
+            draw_pane(frame, pane, i == active, true, area, git);
         }
     } else {
         let [left, stats] =
             Layout::horizontal([Constraint::Min(20), Constraint::Length(STATS_WIDTH)]).areas(main);
         draw_stats(frame, app, stats);
-        draw_pane(frame, &mut app.panes[0], true, false, left);
+        draw_pane(frame, &mut app.panes[0], true, false, left, git);
     }
 }
 
 /// One window: tree on top and files below, or just the files.
 /// With a split screen, the tree title shows the current directory.
-fn draw_pane(frame: &mut Frame, pane: &mut Pane, active: bool, split: bool, area: Rect) {
+fn draw_pane(
+    frame: &mut Frame,
+    pane: &mut Pane,
+    active: bool,
+    split: bool,
+    area: Rect,
+    git: Option<&StatusCache>,
+) {
     match pane.focus {
         Focus::Tree => {
             let [tree, files] =
@@ -107,9 +116,9 @@ fn draw_pane(frame: &mut Frame, pane: &mut Pane, active: bool, split: bool, area
                 " Tree ".to_string()
             };
             draw_tree(frame, pane, active, title, tree);
-            draw_files(frame, pane, false, files);
+            draw_files(frame, pane, false, files, git);
         }
-        Focus::Files => draw_files(frame, pane, active, area),
+        Focus::Files => draw_files(frame, pane, active, area, git),
     }
 }
 
@@ -202,7 +211,18 @@ fn draw_tree(frame: &mut Frame, pane: &mut Pane, active: bool, title: String, ar
     frame.render_stateful_widget(list, area, &mut state);
 }
 
-fn draw_files(frame: &mut Frame, pane: &mut Pane, active: bool, area: Rect) {
+/// With `git`, files in a repository show their status before the name.
+fn draw_files(
+    frame: &mut Frame,
+    pane: &mut Pane,
+    active: bool,
+    area: Rect,
+    git: Option<&StatusCache>,
+) {
+    let git = git.filter(|g| pane.archive.is_none() && g.in_repo(&pane.current_path()));
+    // Status letters of a file in the repository ("  " if unchanged).
+    let marker =
+        |pane: &Pane, f: FileRef| git.map(|g| g.marker(&pane.file_path(f)).unwrap_or(*b"  "));
     let kind = match pane.view {
         FileView::Dir => "Files",
         FileView::Branch(_) => "Branch",
@@ -219,7 +239,7 @@ fn draw_files(frame: &mut Frame, pane: &mut Pane, active: bool, area: Rect) {
         _ => false,
     };
     if pane.display.multi_column() && !pane.files.is_empty() && !error {
-        draw_file_columns(frame, pane, active, area, title);
+        draw_file_columns(frame, pane, active, area, title, &marker);
         return;
     }
     pane.file_cols = 1;
@@ -245,7 +265,7 @@ fn draw_files(frame: &mut Frame, pane: &mut Pane, active: bool, area: Rect) {
     } else {
         pane.files[range]
             .iter()
-            .map(|&f| file_line(pane.file(f), width, names_only))
+            .map(|&f| file_line(pane.file(f), width, names_only, marker(pane, f)))
             .collect()
     };
 
@@ -281,7 +301,23 @@ const MAX_COLUMN_NAME: usize = 20;
 
 /// Multi-column modes (Alt+F): files run left to right and then onto the next
 /// row down, as in XTree.
-fn draw_file_columns(frame: &mut Frame, pane: &mut Pane, active: bool, area: Rect, title: String) {
+fn draw_file_columns(
+    frame: &mut Frame,
+    pane: &mut Pane,
+    active: bool,
+    area: Rect,
+    title: String,
+    marker: &dyn Fn(&Pane, FileRef) -> Option<[u8; 2]>,
+) {
+    let git_w = if pane
+        .files
+        .first()
+        .is_some_and(|&f| marker(pane, f).is_some())
+    {
+        3
+    } else {
+        0
+    };
     let block = panel(title, active);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -300,7 +336,7 @@ fn draw_file_columns(frame: &mut Frame, pane: &mut Pane, active: bool, area: Rec
         .unwrap_or(1)
         .min(MAX_COLUMN_NAME);
     // Tag mark + name + (size and permissions) + space between columns.
-    let cell_w = 2 + name_w + if with_size { 23 } else { 0 } + 1;
+    let cell_w = 2 + git_w + name_w + if with_size { 23 } else { 0 } + 1;
     let cols = (width / cell_w).max(1);
     pane.file_cols = cols;
     pane.file_page = height * cols;
@@ -320,14 +356,16 @@ fn draw_file_columns(frame: &mut Frame, pane: &mut Pane, active: bool, area: Rec
         .map(|r| {
             let mut spans = Vec::new();
             for i in r * cols..(r * cols + cols).min(n) {
+                let git = marker(pane, pane.files[i]);
                 let f = pane.file(pane.files[i]);
                 let mut name = f.name.to_string_lossy().into_owned();
                 if f.kind == FileKind::Symlink {
                     name.push('@');
                 }
                 let mut cell = format!(
-                    "{}{}",
+                    "{}{}{}",
                     if f.tagged { "■ " } else { "  " },
+                    git.map(|xy| git_text(&xy)).unwrap_or_default(),
                     fit(&name, name_w)
                 );
                 if with_size {
@@ -366,7 +404,17 @@ fn file_style(f: &FileEntry) -> Style {
 
 /// One row of the files window: name, size, date and permissions (or just
 /// the name, in long-names mode).
-fn file_line(f: &FileEntry, width: usize, names_only: bool) -> ListItem<'static> {
+/// `M ` → `"M  "`: the two status letters and a space.
+fn git_text(xy: &[u8; 2]) -> String {
+    format!("{}{} ", char::from(xy[0]), char::from(xy[1]))
+}
+
+fn file_line(
+    f: &FileEntry,
+    width: usize,
+    names_only: bool,
+    git: Option<[u8; 2]>,
+) -> ListItem<'static> {
     let size = fmt_num(f.size);
     let date = f.modified.map(fmt_time).unwrap_or_default();
     let mode = fmt_mode(f.mode, f.kind);
@@ -381,8 +429,10 @@ fn file_line(f: &FileEntry, width: usize, names_only: bool) -> ListItem<'static>
         format!(" {size:>13}")
     };
 
-    // 2 columns for the tag mark.
-    let name_width = width.saturating_sub(details.chars().count() + 2).max(8);
+    // 2 columns for the tag mark, 3 for the Git status.
+    let git = git.map(|xy| git_text(&xy));
+    let marks = 2 + git.as_ref().map_or(0, String::len);
+    let name_width = width.saturating_sub(details.chars().count() + marks).max(8);
     let mut name: String = f.name.to_string_lossy().into_owned();
     if f.kind == FileKind::Symlink {
         name.push('@');
@@ -391,11 +441,18 @@ fn file_line(f: &FileEntry, width: usize, names_only: bool) -> ListItem<'static>
 
     let style = file_style(f);
     let mark = if f.tagged { "■ " } else { "  " };
-    ListItem::new(Line::from(vec![
-        Span::styled(mark, Style::new().fg(theme().tagged)),
+    let mut spans = vec![Span::styled(mark, Style::new().fg(theme().tagged))];
+    if let Some(git) = git {
+        spans.push(Span::styled(
+            git,
+            Style::new().fg(theme().key).add_modifier(Modifier::BOLD),
+        ));
+    }
+    spans.extend([
         Span::styled(name, style),
         Span::styled(details, Style::new().fg(theme().dim)),
-    ]))
+    ]);
+    ListItem::new(Line::from(spans))
 }
 
 fn draw_stats(frame: &mut Frame, app: &App, area: Rect) {
@@ -529,7 +586,11 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
             menu_line("", &[("Esc", "cancel")]),
         ]
     } else {
-        let (first, second) = idle_menu(app);
+        let (first, mut second) = idle_menu(app);
+        if app.options.git && app.menu_mode() == MenuMode::Normal && app.archive.is_none() {
+            second.spans.push(key("Ctrl+G"));
+            second.spans.push(Span::raw(" git   "));
+        }
         let first = match &app.message {
             Some(msg) => Line::from(Span::styled(
                 msg.clone(),
@@ -557,6 +618,23 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
     };
 
     match app.menu_mode() {
+        MenuMode::Git => (
+            menu_words("GIT", crate::git::MENU),
+            menu_line(
+                "",
+                &[
+                    (
+                        "",
+                        if tree {
+                            "on this directory (or the tagged files)"
+                        } else {
+                            "on the tagged files (or this one)"
+                        },
+                    ),
+                    ("Esc", "cancel"),
+                ],
+            ),
+        ),
         MenuMode::Normal if tree && app.archive.is_some() => (
             menu_words(
                 "ARCHIVE",

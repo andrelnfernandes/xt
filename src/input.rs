@@ -39,6 +39,8 @@ pub enum Command {
     Edit,
     /// Runs a shell command.
     Execute,
+    /// Ctrl+G: Git menu (when `git` is on in the configuration).
+    Git,
     /// F1: key list.
     Help,
     /// Alt+S: chooses the file sort order.

@@ -141,7 +141,7 @@ xt). Ela tem quatro páginas:
 
 | Página | Opções |
 |---|---|
-| 1. Programas e formatos | editor, formato de data, formato de número |
+| 1. Programas e formatos | editor, formato de data, formato de número, comandos Git |
 | 2. Exibição e ordenação | mostrar ocultos, ordenação inicial e sentido, o que o Enter faz na janela de arquivos, modo inicial da janela de arquivos, cores de sintaxe no visualizador |
 | 3. Confirmações e histórico | confirmar ao sair, confirmação do Prune, não guardar entradas com `@` |
 | 4. Compare e atualização | ignorar 2 s, ignorar 1 h, atualização automática |
@@ -171,6 +171,29 @@ mkdir -p ~/.config/xt && xt --default-config > ~/.config/xt/config.toml
 Um erro no arquivo não impede o xt de abrir: ele usa os padrões e mostra o
 erro no rodapé (e a tela de configuração não grava até o arquivo ser
 corrigido, para não apagar o que você escreveu).
+
+## Git (opcional)
+
+O Git não existe no XTree nem no ZTreeWin, por isso começa desligado: ligue
+na **F12** (página 1, "Git commands") ou com `git = true` em `[options]`. É
+preciso ter o programa `git`.
+
+- **Ctrl+G** abre o menu Git no rodapé; a letra seguinte escolhe:
+  - **S**tatus, **L**og, **D**iff (contra o HEAD: o que está e o que não está
+    no stage, juntos, com cores) e **B**lame abrem no visualizador, com busca.
+  - **A**dd e **U**nstage.
+  - **C**ommit abre o editor do próprio Git, como o `git commit`.
+- Os comandos agem sobre os arquivos marcados na lista, senão sobre o arquivo
+  atual; na árvore, sobre o diretório atual. O Status sempre mostra o
+  repositório inteiro.
+- A lista de arquivos mostra o estado de cada arquivo antes do nome, com as
+  duas letras do `git status --short`: `M ` no stage, ` M` alterado fora do
+  stage, `A ` adicionado, `??` não rastreado, `R ` renomeado. Arquivos sem
+  alteração ficam em branco. O estado é relido depois das operações do
+  próprio xt, depois do F3 e a cada 10 segundos (para pegar commits feitos em
+  outro terminal).
+- Para push, pull e outros comandos que usam a rede, use o eXecute (`X`), por
+  exemplo `git push`.
 
 ## Teclas
 
@@ -458,6 +481,7 @@ Na árvore, `+` no conector (`├─+`) indica um diretório recolhido que tem s
 - `src/archive.rs` — leitura de ZIP/TAR
 - `src/watch.rs` — avisos de mudanças no disco (inotify)
 - `src/shell.rs` — editor e comandos do shell (com aspas seguras)
+- `src/git.rs` — menu Git (Ctrl+G) e marcadores de estado, pelo programa `git`
 - `src/config.rs` — arquivo de configuração, temas e formatos
 - `src/settings.rs` — tela de configuração (F12)
 - `src/state.rs` — histórico dos prompts entre execuções

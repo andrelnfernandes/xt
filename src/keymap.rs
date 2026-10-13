@@ -177,6 +177,11 @@ const COMMANDS: &[(&str, Command, &str)] = &[
     ("edit", Command::Edit, "edit file"),
     ("execute", Command::Execute, "execute a shell command"),
     (
+        "git",
+        Command::Git,
+        "Git menu: status, log, diff, blame, add, unstage, commit",
+    ),
+    (
         "sort",
         Command::Sort,
         "sort files (name, ext, date, size; order)",
@@ -304,6 +309,7 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("n", Any, "new_date"),
     ("ctrl+n", Files, "new_date_tagged"),
     ("ctrl+b", Files, "batch"),
+    ("ctrl+g", Any, "git"),
     ("alt+i", Any, "info"),
     ("a", Tree, "avail"),
     ("?", Any, "stats"),
@@ -485,18 +491,22 @@ fn command_by_name(name: &str) -> Result<Option<Command>, String> {
 #[derive(Debug, Clone)]
 pub struct Keymap {
     maps: HashMap<Scope, HashMap<KeySpec, Option<Command>>>,
+    /// Git commands are on (`git` in the configuration).
+    git: bool,
 }
 
 impl Default for Keymap {
     fn default() -> Self {
         let mut keymap = Keymap {
             maps: HashMap::new(),
+            git: false,
         };
         for (key, scope, name) in DEFAULT_KEYS {
             let spec = KeySpec::parse(key).expect("valid default key");
             let cmd = command_by_name(name).expect("valid default command");
             keymap.maps.entry(*scope).or_default().insert(spec, cmd);
         }
+        keymap.drop_git();
         keymap
     }
 }
@@ -505,6 +515,14 @@ impl Keymap {
     /// The defaults with the config file's overrides applied.
     pub fn from_config(keys: &Keys, options: &Options) -> Result<Self, String> {
         let mut keymap = Keymap::default();
+        if options.git {
+            keymap.git = true;
+            for (key, scope, name) in DEFAULT_KEYS.iter().filter(|(.., n)| *n == "git") {
+                let spec = KeySpec::parse(key).expect("valid default key");
+                let cmd = command_by_name(name).expect("valid default command");
+                keymap.maps.entry(*scope).or_default().insert(spec, cmd);
+            }
+        }
         if options.enter_views {
             let enter = KeySpec::parse("enter").expect("valid key");
             keymap
@@ -529,7 +547,17 @@ impl Keymap {
                 keymap.maps.entry(scope).or_default().insert(spec, cmd);
             }
         }
+        if !keymap.git {
+            keymap.drop_git();
+        }
         Ok(keymap)
+    }
+
+    /// Git is off: no key opens its menu (and the help does not list it).
+    fn drop_git(&mut self) {
+        for map in self.maps.values_mut() {
+            map.retain(|_, cmd| *cmd != Some(Command::Git));
+        }
     }
 
     pub fn lookup(&self, key: KeyEvent, focus: Focus) -> Option<Command> {
@@ -590,6 +618,15 @@ impl Keymap {
              NAVIGATION\n  \
              Shift+letter, 0-9       next directory / file starting with it\n",
         );
+        if self.git {
+            out.push_str(
+                "\nGIT MENU (Ctrl+G; on the current file, the tagged ones, or the directory in the tree)\n  \
+                 S / L / D / B           status / log / diff against HEAD / blame, in the viewer\n  \
+                 A / U                   add / unstage\n  \
+                 C                       commit (git's own editor)\n  \
+                 File list               two-letter status before the name, as in git status --short\n",
+            );
+        }
         out
     }
 }
@@ -800,8 +837,35 @@ mod tests {
     }
 
     #[test]
+    fn git_key_only_when_enabled() {
+        let ctrl_g = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::CONTROL);
+        let off = Keymap::default();
+        assert_eq!(off.lookup(ctrl_g, Focus::Tree), None);
+        assert!(!off.help_text().contains("GIT MENU"));
+
+        let options = Options {
+            git: true,
+            ..Options::default()
+        };
+        let on = Keymap::from_config(&Keys::default(), &options).unwrap();
+        assert_eq!(on.lookup(ctrl_g, Focus::Files), Some(Command::Git));
+        assert!(on.help_text().contains("GIT MENU"));
+
+        // Bound to another key in the file, but off: still nothing.
+        let mut keys = Keys::default();
+        keys.any.insert("alt+g".into(), "git".into());
+        let km = Keymap::from_config(&keys, &Options::default()).unwrap();
+        let alt_g = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::ALT);
+        assert_eq!(km.lookup(alt_g, Focus::Tree), None);
+    }
+
+    #[test]
     fn every_command_has_a_default_key() {
-        let km = Keymap::default();
+        let options = Options {
+            git: true,
+            ..Options::default()
+        };
+        let km = Keymap::from_config(&Keys::default(), &options).unwrap();
         for (name, cmd, _) in COMMANDS {
             let bound = km
                 .maps

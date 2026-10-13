@@ -3,7 +3,7 @@
 
 use std::fs::File;
 use std::io::{self, Read};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -172,6 +172,16 @@ impl Viewer {
             note: None,
             on_disk: false,
         }
+    }
+
+    /// Colors as if it were the file `name` (`x.diff` for git's output).
+    pub fn colored_as(mut self, name: &Path) -> Self {
+        if self.mode == ViewMode::Text {
+            let first = self.lines.first().map_or("", String::as_str);
+            self.colors = Highlighter::for_file(name, first);
+            self.colors_on = self.colors.is_some();
+        }
+        self
     }
 
     pub fn truncated(&self) -> bool {

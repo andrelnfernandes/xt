@@ -25,6 +25,7 @@ pub enum Opt {
     CompareIgnore2s,
     CompareIgnore1h,
     AutoRefresh,
+    Git,
 }
 
 type Page = (&'static str, &'static [(char, &'static str, Opt)]);
@@ -46,6 +47,11 @@ pub const PAGES: &[Page] = &[
             ('B', OPENER_LABEL, Opt::Opener),
             ('C', "Date format", Opt::DateFormat),
             ('D', "Number format", Opt::NumberFormat),
+            (
+                'E',
+                "Git commands (Ctrl+G) and status in the file list",
+                Opt::Git,
+            ),
         ],
     ),
     (
@@ -134,6 +140,7 @@ impl Opt {
             Opt::CompareIgnore2s => yes_no(o.compare_ignore_2s),
             Opt::CompareIgnore1h => yes_no(o.compare_ignore_1h),
             Opt::AutoRefresh => yes_no(o.auto_refresh),
+            Opt::Git => yes_no(o.git),
         }
     }
 
@@ -157,6 +164,7 @@ impl Opt {
             Opt::CompareIgnore2s => o.compare_ignore_2s = !o.compare_ignore_2s,
             Opt::CompareIgnore1h => o.compare_ignore_1h = !o.compare_ignore_1h,
             Opt::AutoRefresh => o.auto_refresh = !o.auto_refresh,
+            Opt::Git => o.git = !o.git,
         }
         true
     }
