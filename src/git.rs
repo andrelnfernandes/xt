@@ -117,10 +117,10 @@ pub fn report(action: Action, root: &Path, paths: &[PathBuf]) -> io::Result<Repo
     Ok(Report {
         title: title.into(),
         text,
-        colors_of: if action == Action::Diff {
-            "git.diff"
-        } else {
-            ""
+        colors_of: match action {
+            Action::Diff => "git.diff",
+            Action::Status => crate::highlight::GIT_STATUS,
+            _ => "",
         },
     })
 }
@@ -391,6 +391,7 @@ mod tests {
         assert!(String::from_utf8_lossy(&blame.text).contains("one"));
         let status = report(Action::Status, root, &[]).unwrap();
         assert!(String::from_utf8_lossy(&status.text).contains("c.txt"));
+        assert_eq!(status.colors_of, crate::highlight::GIT_STATUS);
 
         let err = change(Action::Add, root, &[root.join("missing")]).unwrap();
         assert!(err.is_err());

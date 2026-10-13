@@ -47,6 +47,8 @@ pub enum Action {
     Untag,
     /// Opens the file in the editor.
     Edit,
+    /// Git diff of the file, or back to the file.
+    Diff,
     /// Asks for the term and searches.
     Search {
         forward: bool,
@@ -94,6 +96,8 @@ pub struct Viewer {
     /// Read from a file on disk (not help, an info screen or an archive
     /// entry): it can be edited and reloaded.
     pub on_disk: bool,
+    /// In a diff (D): the file it belongs to, shown again by D.
+    pub behind: Option<Box<Viewer>>,
 }
 
 /// A piece of a displayed line: text, its color and whether it is part of
@@ -171,14 +175,15 @@ impl Viewer {
             forward: true,
             note: None,
             on_disk: false,
+            behind: None,
         }
     }
 
-    /// Colors as if it were the file `name` (`x.diff` for git's output).
+    /// Colors as if it were the file `name` (`x.diff` for git's output, or
+    /// `highlight::GIT_STATUS`).
     pub fn colored_as(mut self, name: &Path) -> Self {
         if self.mode == ViewMode::Text {
-            let first = self.lines.first().map_or("", String::as_str);
-            self.colors = Highlighter::for_file(name, first);
+            self.colors = Highlighter::for_name(name, &self.lines);
             self.colors_on = self.colors.is_some();
         }
         self
@@ -358,6 +363,7 @@ impl Viewer {
                 'p' => Action::Prev,
                 'u' => Action::Untag,
                 'e' => Action::Edit,
+                'd' => Action::Diff,
                 _ => Action::None,
             },
             KeyCode::F(9) => Action::Search {

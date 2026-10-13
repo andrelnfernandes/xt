@@ -624,6 +624,7 @@ impl Keymap {
                  S / L / D / B           status / log / diff against HEAD / blame, in the viewer\n  \
                  A / U                   add / unstage\n  \
                  C                       commit (git's own editor)\n  \
+                 D (in the viewer)       diff of a changed file since the last commit / back\n  \
                  File list               two-letter status before the name, as in git status --short\n",
             );
         }
