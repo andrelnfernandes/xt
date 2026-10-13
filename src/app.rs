@@ -1668,12 +1668,9 @@ impl App {
             "Tagged",
             format!("{} files, {} bytes", g(tagged), g(tagged_bytes)),
         );
-        if let Some(disk) = platform::disk_space(&self.current_path()) {
-            row(
-                "Disk",
-                format!("{} bytes free of {}", g(disk.available), g(disk.total)),
-            );
-        }
+        text.push_str(&info::disk(&self.current_path()));
+        text.push('\n');
+        text.push_str(&info::system());
         text
     }
 
@@ -4487,6 +4484,11 @@ mod tests {
         press(&mut app, KeyCode::Char('?'));
         let text = app.viewer.as_ref().unwrap().visible_lines(20).join("\n");
         assert!(text.contains("Logged") && text.contains("Tagged"), "{text}");
+        let text = app.viewer.as_ref().unwrap().visible_lines(60).join("\n");
+        assert!(
+            text.contains("SYSTEM") && text.contains("XT") && text.contains("Version"),
+            "{text}"
+        );
     }
 
     #[test]

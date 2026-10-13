@@ -455,7 +455,11 @@ owner and group, dates (modification, access and change), inode, links and
 device of the file or directory (for a link, where it points; for a
 directory, also what is logged in it and in its branch). `A` in the tree lists the mounted
 file systems with total, used, free and % used, like
-`df`. `?` summarizes the window: what is logged, the list, the tagged files and the disk.
+`df`. `?` summarizes the window: what is logged, the list, the tagged files and the disk
+(mount point, free and used); below it, the machine (system and kernel, CPU,
+uptime, load, memory and swap, shell, terminal), the network (IP addresses
+of each interface, gateway and DNS) and xt itself (version, PID, memory in use,
+executable and configuration file).
 
 **Delete** really deletes (it does not go to the trash) and always asks for confirmation.
 

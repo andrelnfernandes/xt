@@ -3,11 +3,12 @@
 use std::ffi::OsStr;
 use std::fs::{self, File, Metadata, OpenOptions};
 use std::io;
+use std::net::{IpAddr, Ipv4Addr};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
-use super::{DiskSpace, Mount, env_dir};
+use super::{DiskSpace, Memory, Mount, Network, System, env_dir};
 
 /// Permission bits (and file type), as in `st_mode`.
 pub fn mode(meta: &Metadata) -> u32 {
@@ -156,6 +157,145 @@ pub(super) fn state_base() -> Option<PathBuf> {
     env_dir("XDG_STATE_HOME").or_else(|| Some(home_dir()?.join(".local").join("state")))
 }
 
+/// The machine, from `/proc` and `/etc/os-release` (Linux; elsewhere most
+/// of it stays empty).
+pub fn system() -> System {
+    let read = |path: &str| fs::read_to_string(path).ok();
+    let line = |path: &str| {
+        read(path)
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty())
+    };
+    let meminfo = read("/proc/meminfo").unwrap_or_default();
+    let (memory, swap) = parse_meminfo(&meminfo);
+    let kernel = match (
+        line("/proc/sys/kernel/ostype"),
+        line("/proc/sys/kernel/osrelease"),
+    ) {
+        (Some(os), Some(release)) => {
+            // WSL kernels say so in the release: "...-microsoft-standard-WSL2".
+            let wsl = release.to_lowercase().contains("microsoft");
+            Some(format!("{os} {release}{}", if wsl { " (WSL)" } else { "" }))
+        }
+        _ => None,
+    };
+    System {
+        os: read("/etc/os-release").and_then(|t| os_release_name(&t)),
+        kernel,
+        host: line("/proc/sys/kernel/hostname").or_else(|| std::env::var("HOSTNAME").ok()),
+        cpu: read("/proc/cpuinfo").and_then(|t| {
+            t.lines()
+                .find_map(|l| l.strip_prefix("model name")?.split_once(':'))
+                .map(|(_, v)| v.split_whitespace().collect::<Vec<_>>().join(" "))
+        }),
+        uptime: read("/proc/uptime").and_then(|t| {
+            let secs: f64 = t.split_whitespace().next()?.parse().ok()?;
+            Some(Duration::from_secs(secs as u64))
+        }),
+        load: read("/proc/loadavg").and_then(|t| {
+            let mut it = t.split_whitespace().map(|v| v.parse::<f64>().ok());
+            Some([it.next()??, it.next()??, it.next()??])
+        }),
+        memory,
+        swap,
+        xt_memory: kb_field(&read("/proc/self/status").unwrap_or_default(), "VmRSS"),
+    }
+}
+
+/// Interfaces from `getifaddrs`, gateway from `/proc/net/route` and DNS
+/// from `/etc/resolv.conf`.
+pub fn network() -> Network {
+    use nix::net::if_::InterfaceFlags;
+    let mut net = Network::default();
+    for a in nix::ifaddrs::getifaddrs().into_iter().flatten() {
+        if !a.flags.contains(InterfaceFlags::IFF_UP)
+            || a.flags.contains(InterfaceFlags::IFF_LOOPBACK)
+        {
+            continue;
+        }
+        let (Some(addr), mask) = (a.address, a.netmask) else {
+            continue;
+        };
+        let (ip, prefix) = if let Some(v4) = addr.as_sockaddr_in() {
+            let mask = mask.as_ref().and_then(|m| m.as_sockaddr_in());
+            (
+                IpAddr::V4(v4.ip()),
+                mask.map_or(32, |m| m.ip().to_bits().count_ones()),
+            )
+        } else if let Some(v6) = addr.as_sockaddr_in6() {
+            let mask = mask.as_ref().and_then(|m| m.as_sockaddr_in6());
+            (
+                IpAddr::V6(v6.ip()),
+                mask.map_or(128, |m| m.ip().to_bits().count_ones()),
+            )
+        } else {
+            continue;
+        };
+        net.add(&a.interface_name, ip, prefix as u8);
+    }
+    let read = |path: &str| fs::read_to_string(path).unwrap_or_default();
+    net.gateway = default_gateway(&read("/proc/net/route"));
+    net.dns = nameservers(&read("/etc/resolv.conf"));
+    net
+}
+
+/// The gateway of the default route (destination 0) in `/proc/net/route`,
+/// where addresses are hexadecimal in the machine's byte order.
+fn default_gateway(route: &str) -> Option<IpAddr> {
+    route.lines().skip(1).find_map(|l| {
+        let fields: Vec<&str> = l.split_whitespace().collect();
+        let [_, "00000000", gateway, ..] = fields[..] else {
+            return None;
+        };
+        let bits = u32::from_str_radix(gateway, 16).ok().filter(|&g| g != 0)?;
+        Some(IpAddr::V4(Ipv4Addr::from(bits.to_ne_bytes())))
+    })
+}
+
+/// The `nameserver` lines of `/etc/resolv.conf`.
+fn nameservers(resolv: &str) -> Vec<IpAddr> {
+    resolv
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("nameserver")?.trim().parse().ok())
+        .collect()
+}
+
+/// `PRETTY_NAME` (or `NAME`) of `/etc/os-release`.
+fn os_release_name(text: &str) -> Option<String> {
+    let field = |key: &str| {
+        text.lines().find_map(|l| {
+            let v = l.strip_prefix(key)?.strip_prefix('=')?;
+            let v = v.trim().trim_matches(|c| c == '"' || c == '\'');
+            (!v.is_empty()).then(|| v.to_string())
+        })
+    };
+    field("PRETTY_NAME").or_else(|| field("NAME"))
+}
+
+/// Memory and swap, from `/proc/meminfo`.
+fn parse_meminfo(text: &str) -> (Option<Memory>, Option<Memory>) {
+    let pair = |total: &str, available: &str| {
+        let total = kb_field(text, total).filter(|&t| t > 0)?;
+        Some(Memory {
+            total,
+            available: kb_field(text, available)?,
+        })
+    };
+    (
+        pair("MemTotal", "MemAvailable").or_else(|| pair("MemTotal", "MemFree")),
+        pair("SwapTotal", "SwapFree"),
+    )
+}
+
+/// "Key:   1234 kB" → 1234 × 1024.
+fn kb_field(text: &str, key: &str) -> Option<u64> {
+    text.lines().find_map(|l| {
+        let v = l.strip_prefix(key)?.strip_prefix(':')?;
+        let kb: u64 = v.split_whitespace().next()?.parse().ok()?;
+        Some(kb * 1024)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -170,5 +310,52 @@ mod tests {
         assert!(parse_mode("8", 0).is_err());
         assert!(parse_mode("rwx", 0).is_err());
         assert!(is_hidden(OsStr::new(".x"), 0) && !is_hidden(OsStr::new("x"), 0));
+    }
+
+    #[test]
+    fn system_files() {
+        let os = "NAME=\"Ubuntu\"\nPRETTY_NAME=\"Ubuntu 24.04.1 LTS\"\n";
+        assert_eq!(os_release_name(os).as_deref(), Some("Ubuntu 24.04.1 LTS"));
+        assert_eq!(os_release_name("NAME=Arch\n").as_deref(), Some("Arch"));
+        let mem = "MemTotal:  2048 kB\nMemFree: 100 kB\nMemAvailable: 1024 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\n";
+        let (memory, swap) = parse_meminfo(mem);
+        assert_eq!(
+            memory,
+            Some(Memory {
+                total: 2048 * 1024,
+                available: 1024 * 1024
+            })
+        );
+        assert_eq!(swap, None, "no swap configured");
+        assert_eq!(parse_meminfo(""), (None, None));
+    }
+
+    #[test]
+    fn network_files() {
+        let route = "Iface\tDestination\tGateway \tFlags\n\
+                     eth0\t0014A8C0\t00000000\t0001\n\
+                     eth0\t00000000\t0114A8C0\t0003\n";
+        let expected: IpAddr = if cfg!(target_endian = "little") {
+            "192.168.20.1".parse().unwrap()
+        } else {
+            "1.20.168.192".parse().unwrap()
+        };
+        assert_eq!(default_gateway(route), Some(expected));
+        assert_eq!(default_gateway("Iface\n"), None);
+        let resolv = "# comment\nnameserver 10.0.0.53\nsearch lan\nnameserver ::1\n";
+        let dns: Vec<String> = nameservers(resolv)
+            .iter()
+            .map(|ip| ip.to_string())
+            .collect();
+        assert_eq!(dns, ["10.0.0.53", "::1"]);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn system_on_linux() {
+        let s = system();
+        assert!(s.kernel.unwrap().starts_with("Linux"));
+        assert!(s.memory.unwrap().total > 0);
+        assert!(s.xt_memory.unwrap() > 0);
     }
 }
