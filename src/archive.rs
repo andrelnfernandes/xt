@@ -230,6 +230,13 @@ enum Writer {
     TarGz(Box<tar::Builder<flate2::write::GzEncoder<File>>>),
 }
 
+/// Name inside an archive for a relative path: always with `/`, as ZIP and
+/// TAR require (on Windows, `Path` uses `\`).
+pub fn entry_name(relative: &Path) -> String {
+    let parts: Vec<_> = relative.iter().map(|c| c.to_string_lossy()).collect();
+    parts.join("/")
+}
+
 /// A file to put in the archive: the path on disk and the name inside it.
 pub struct ArchiveItem {
     pub path: PathBuf,
@@ -349,9 +356,8 @@ fn add(writer: &mut Writer, item: &ArchiveItem) -> io::Result<()> {
         Writer::TarGz(t) => t.append_path_with_name(&item.path, &item.name),
         Writer::Zip(z) => {
             let meta = std::fs::symlink_metadata(&item.path)?;
-            let mut opts = zip::write::SimpleFileOptions::default().unix_permissions(
-                std::os::unix::fs::PermissionsExt::mode(&meta.permissions()) & 0o7777,
-            );
+            let mut opts = zip::write::SimpleFileOptions::default()
+                .unix_permissions(crate::platform::unix_mode(&meta) & 0o7777);
             if let Ok(t) = meta.modified() {
                 use chrono::{Datelike, Timelike};
                 let t = chrono::DateTime::<Local>::from(t);
@@ -453,10 +459,7 @@ pub mod tests {
     }
 
     fn paths(entries: &[Entry]) -> Vec<String> {
-        let mut p: Vec<String> = entries
-            .iter()
-            .map(|e| e.path.to_string_lossy().into_owned())
-            .collect();
+        let mut p: Vec<String> = entries.iter().map(|e| entry_name(&e.path)).collect();
         p.sort();
         p
     }
@@ -482,7 +485,11 @@ pub mod tests {
             .iter()
             .find(|e| e.path == Path::new("src/a.rs"))
             .unwrap();
-        assert_eq!((a.size, a.mode, a.kind), (9, 0o755, EntryKind::File));
+        assert_eq!((a.size, a.kind), (9, EntryKind::File));
+        // On Windows, the zip crate records entries as made on DOS, without the
+        // Unix permissions.
+        #[cfg(unix)]
+        assert_eq!(a.mode, 0o755);
         assert!(a.modified.is_some());
 
         let mut out = Vec::new();
@@ -528,6 +535,7 @@ pub mod tests {
         }
     }
 
+    #[cfg(unix)]
     #[test]
     fn creates_archives_that_read_back() {
         let tmp = tempfile::tempdir().unwrap();

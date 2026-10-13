@@ -12,6 +12,7 @@ mod keymap;
 mod model;
 mod ops;
 mod pane;
+mod platform;
 mod search;
 mod settings;
 mod shell;
@@ -45,10 +46,7 @@ Options:
                      directory to FILE, for a shell function to cd into it
   --default-config   print a commented configuration file
   -h, --help         show this help
-  -V, --version      show the version
-
-Configuration: ~/.config/xt/config.toml (or $XDG_CONFIG_HOME/xt/config.toml).
-Inside xt, press F1 for the list of keys.";
+  -V, --version      show the version";
 
 fn main() -> anyhow::Result<()> {
     let mut root = None;
@@ -61,7 +59,11 @@ fn main() -> anyhow::Result<()> {
                 None => bail!("--cwd-file needs a file name\n\n{USAGE}"),
             },
             Some("-h" | "--help") => {
-                println!("{USAGE}");
+                let config =
+                    config::Config::path().map_or_else(|| "-".into(), |p| p.display().to_string());
+                println!(
+                    "{USAGE}\n\nConfiguration: {config}\nInside xt, press F1 for the list of keys."
+                );
                 return Ok(());
             }
             Some("-V" | "--version") => {
@@ -82,7 +84,7 @@ fn main() -> anyhow::Result<()> {
         None => std::env::current_dir().context("cannot read current directory")?,
     };
     let root =
-        std::fs::canonicalize(&root).with_context(|| format!("cannot open {}", root.display()))?;
+        dunce::canonicalize(&root).with_context(|| format!("cannot open {}", root.display()))?;
     if !root.is_dir() {
         bail!("{} is not a directory", root.display());
     }
@@ -212,10 +214,7 @@ fn run_external(
     terminal::disable_raw_mode()?;
     execute!(stdout(), LeaveAlternateScreen, cursor::Show)?;
 
-    let status = std::process::Command::new(&ext.program)
-        .args(&ext.args)
-        .current_dir(&ext.cwd)
-        .status();
+    let status = ext.command().status();
     if ext.wait {
         print!("\n[xt] Press Enter to return to xt...");
         let _ = stdout().flush();

@@ -29,12 +29,21 @@ pub enum Opt {
 
 type Page = (&'static str, &'static [(char, &'static str, Opt)]);
 
+#[cfg(unix)]
+const EDITOR_LABEL: &str = "Editor (empty: $VISUAL, $EDITOR, vi)";
+#[cfg(unix)]
+const OPENER_LABEL: &str = "Open with (empty: xdg-open)";
+#[cfg(windows)]
+const EDITOR_LABEL: &str = "Editor (empty: %VISUAL%, %EDITOR%, notepad)";
+#[cfg(windows)]
+const OPENER_LABEL: &str = "Open with (empty: start)";
+
 pub const PAGES: &[Page] = &[
     (
         "Programs and formats",
         &[
-            ('A', "Editor (empty: $VISUAL, $EDITOR, vi)", Opt::Editor),
-            ('B', "Open with (empty: xdg-open)", Opt::Opener),
+            ('A', EDITOR_LABEL, Opt::Editor),
+            ('B', OPENER_LABEL, Opt::Opener),
             ('C', "Date format", Opt::DateFormat),
             ('D', "Number format", Opt::NumberFormat),
         ],

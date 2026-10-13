@@ -1,60 +1,60 @@
 //! External programs: the editor (`E` key) and shell commands (`X` key).
 //!
-//! Everything goes through `sh -c`, with file names always in single
-//! quotes. Names are handled as bytes: on Linux they need not
-//! be valid UTF-8.
+//! Everything goes through the system's shell (`sh -c` on Unix, `cmd /C` on
+//! Windows), with file names always quoted. Names are handled as bytes: on
+//! Linux they need not be valid UTF-8.
 
 use std::ffi::{OsStr, OsString};
-use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
-/// A program to run with the terminal handed over to it.
+/// A command line to run with the terminal handed over to it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct External {
-    pub program: OsString,
-    pub args: Vec<OsString>,
+    pub line: OsString,
     pub cwd: PathBuf,
     /// Asks for Enter before returning to xt, to give time to read the output.
     pub wait: bool,
 }
 
+impl External {
+    /// The process that runs the line, in `cwd`.
+    pub fn command(&self) -> Command {
+        let mut cmd = shell(&self.line);
+        cmd.current_dir(&self.cwd);
+        cmd
+    }
+}
+
 /// Opens `file` in the editor: the configured one, `$VISUAL`, `$EDITOR`, the
-/// Debian/Ubuntu `editor` or `vi`. May have arguments (`code -w`).
+/// Debian/Ubuntu `editor` or `vi` (`notepad` on Windows). May have arguments
+/// (`code -w`).
 pub fn editor(file: &Path, cwd: &Path, configured: &str) -> External {
     let env = |name| std::env::var(name).ok().filter(|v| !v.trim().is_empty());
     let editor = Some(configured.trim().to_string())
         .filter(|e| !e.is_empty())
         .or_else(|| env("VISUAL"))
         .or_else(|| env("EDITOR"))
-        .unwrap_or_else(|| if in_path("editor") { "editor" } else { "vi" }.into());
+        .unwrap_or_else(|| default_editor().into());
     External {
-        program: "sh".into(),
-        args: vec![
-            "-c".into(),
-            format!("{editor} \"$1\"").into(),
-            "sh".into(),
-            file.as_os_str().to_os_string(),
-        ],
+        line: with_file(&editor, file),
         cwd: cwd.to_path_buf(),
         wait: false,
     }
 }
 
-/// Opens `file` in the system's default program (`xdg-open`, or `opener`),
-/// without handing over the terminal: the program runs detached in the background.
+/// Opens `file` in the system's default program (`xdg-open`, `start` on
+/// Windows, or `opener`), without handing over the terminal: the program
+/// runs detached in the background.
 pub fn open_detached(file: &Path, opener: &str) -> std::io::Result<()> {
-    use std::process::{Command, Stdio};
+    use std::process::Stdio;
     let opener = match opener.trim() {
         // In tests, never opens real programs on the desktop.
-        "" if cfg!(test) => "true",
-        "" => "xdg-open",
+        "" if cfg!(test) => NO_OP,
+        "" => DEFAULT_OPENER,
         other => other,
     };
-    let mut child = Command::new("sh")
-        .arg("-c")
-        .arg(format!("{opener} \"$1\""))
-        .arg("sh")
-        .arg(file)
+    let mut child = shell(&with_file(opener, file))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -67,11 +67,26 @@ pub fn open_detached(file: &Path, opener: &str) -> std::io::Result<()> {
 /// Runs a user command line.
 pub fn command(line: OsString, cwd: &Path) -> External {
     External {
-        program: "sh".into(),
-        args: vec!["-c".into(), line],
+        line,
         cwd: cwd.to_path_buf(),
         wait: true,
     }
+}
+
+/// `program 'file'`.
+fn with_file(program: &str, file: &Path) -> OsString {
+    let mut out = program.as_bytes().to_vec();
+    out.push(b' ');
+    out.extend(quote(file.as_os_str().as_encoded_bytes()));
+    from_bytes(out)
+}
+
+/// Bytes put together by this module: UTF-8 text and whole names (or names
+/// cut next to an ASCII character) from `as_encoded_bytes`.
+fn from_bytes(bytes: Vec<u8>) -> OsString {
+    // SAFETY: only joins valid UTF-8 and encoded bytes split at ASCII
+    // characters, which is what `from_encoded_bytes_unchecked` allows.
+    unsafe { OsString::from_encoded_bytes_unchecked(bytes) }
 }
 
 /// Replaces, in the command line, `%f` with the file under the cursor, `%t` with the
@@ -90,17 +105,20 @@ pub fn expand(template: &str, file: Option<&Path>, tagged: &[PathBuf], dir: &Pat
             Some('f') => {
                 chars.next();
                 if let Some(f) = file {
-                    out.extend(quote(f.as_os_str()));
+                    out.extend(quote(f.as_os_str().as_encoded_bytes()));
                 }
             }
             Some('t') => {
                 chars.next();
-                let quoted: Vec<Vec<u8>> = tagged.iter().map(|p| quote(p.as_os_str())).collect();
+                let quoted: Vec<Vec<u8>> = tagged
+                    .iter()
+                    .map(|p| quote(p.as_os_str().as_encoded_bytes()))
+                    .collect();
                 out.extend(quoted.join(&b' '));
             }
             Some('d') => {
                 chars.next();
-                out.extend(quote(dir.as_os_str()));
+                out.extend(quote(dir.as_os_str().as_encoded_bytes()));
             }
             Some('%') => {
                 chars.next();
@@ -109,7 +127,7 @@ pub fn expand(template: &str, file: Option<&Path>, tagged: &[PathBuf], dir: &Pat
             _ => out.push(b'%'),
         }
     }
-    OsString::from_vec(out)
+    from_bytes(out)
 }
 
 /// A Batch (Ctrl+B) line for `file`: `%f` path, `%d` directory,
@@ -118,7 +136,7 @@ pub fn expand(template: &str, file: Option<&Path>, tagged: &[PathBuf], dir: &Pat
 /// text (for lists). `%%` is a `%`.
 pub fn batch_line(mask: &str, file: &Path, size: u64) -> Vec<u8> {
     let name = file.file_name().unwrap_or_default();
-    let (base, ext) = split_ext(name.as_bytes());
+    let (base, ext) = split_ext(name.as_encoded_bytes());
     let dir = file.parent().unwrap_or(Path::new(""));
     let size = size.to_string();
     let mut out = Vec::new();
@@ -134,9 +152,9 @@ pub fn batch_line(mask: &str, file: &Path, size: u64) -> Vec<u8> {
             continue;
         };
         let value: &[u8] = match k.to_ascii_lowercase() {
-            'f' => file.as_os_str().as_bytes(),
-            'd' => dir.as_os_str().as_bytes(),
-            'n' => name.as_bytes(),
+            'f' => file.as_os_str().as_encoded_bytes(),
+            'd' => dir.as_os_str().as_encoded_bytes(),
+            'n' => name.as_encoded_bytes(),
             'b' => base,
             'e' => ext,
             's' => size.as_bytes(),
@@ -152,7 +170,7 @@ pub fn batch_line(mask: &str, file: &Path, size: u64) -> Vec<u8> {
         };
         chars.next();
         if k.is_ascii_lowercase() {
-            out.extend(quote(OsStr::from_bytes(value)));
+            out.extend(quote(value));
         } else {
             out.extend_from_slice(value);
         }
@@ -169,10 +187,42 @@ fn split_ext(name: &[u8]) -> (&[u8], &[u8]) {
     }
 }
 
+/// Default file for Ctrl+B.
+#[cfg(unix)]
+pub const BATCH_FILE: &str = "xt-batch.sh";
+#[cfg(unix)]
+pub const NEWLINE: &[u8] = b"\n";
+
+/// First line of a Batch file that is a script.
+#[cfg(unix)]
+pub fn batch_header(file: &Path) -> Option<&'static [u8]> {
+    file.extension()
+        .is_some_and(|e| e == "sh")
+        .then_some(b"#!/bin/sh\n".as_slice())
+}
+
+#[cfg(unix)]
+const DEFAULT_OPENER: &str = "xdg-open";
+#[cfg(unix)]
+const NO_OP: &str = "true";
+
+#[cfg(unix)]
+fn default_editor() -> &'static str {
+    if in_path("editor") { "editor" } else { "vi" }
+}
+
+#[cfg(unix)]
+fn shell(line: &OsStr) -> Command {
+    let mut cmd = Command::new("sh");
+    cmd.arg("-c").arg(line);
+    cmd
+}
+
 /// Shell single quoting: `it's` → `'it'\''s'`.
-fn quote(s: &OsStr) -> Vec<u8> {
+#[cfg(unix)]
+fn quote(s: &[u8]) -> Vec<u8> {
     let mut out = vec![b'\''];
-    for &b in s.as_bytes() {
+    for &b in s {
         if b == b'\'' {
             out.extend_from_slice(b"'\\''");
         } else {
@@ -183,14 +233,63 @@ fn quote(s: &OsStr) -> Vec<u8> {
     out
 }
 
+#[cfg(unix)]
 fn in_path(name: &str) -> bool {
     std::env::var_os("PATH")
         .is_some_and(|paths| std::env::split_paths(&paths).any(|dir| dir.join(name).is_file()))
 }
 
-#[cfg(test)]
+/// Default file for Ctrl+B.
+#[cfg(windows)]
+pub const BATCH_FILE: &str = "xt-batch.bat";
+#[cfg(windows)]
+pub const NEWLINE: &[u8] = b"\r\n";
+
+/// First line of a Batch file that is a script.
+#[cfg(windows)]
+pub fn batch_header(file: &Path) -> Option<&'static [u8]> {
+    file.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("bat") || e.eq_ignore_ascii_case("cmd"))
+        .then_some(b"@echo off\r\n".as_slice())
+}
+
+#[cfg(windows)]
+const DEFAULT_OPENER: &str = "start \"\"";
+#[cfg(windows)]
+const NO_OP: &str = "rem";
+
+#[cfg(windows)]
+fn default_editor() -> &'static str {
+    "notepad"
+}
+
+/// `cmd /S /C "line"`, passed as is: Rust's usual argument quoting is not
+/// what `cmd` understands.
+#[cfg(windows)]
+fn shell(line: &OsStr) -> Command {
+    use std::os::windows::process::CommandExt;
+    let mut arg = OsString::from("/S /C \"");
+    arg.push(line);
+    arg.push("\"");
+    let mut cmd = Command::new("cmd");
+    cmd.raw_arg(arg);
+    cmd
+}
+
+/// Double quotes: Windows names cannot contain `"`. (`%VAR%` inside a name
+/// would still be expanded by `cmd`.)
+#[cfg(windows)]
+fn quote(s: &[u8]) -> Vec<u8> {
+    let mut out = vec![b'"'];
+    out.extend_from_slice(s);
+    out.push(b'"');
+    out
+}
+
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    use std::os::unix::ffi::OsStrExt;
     use std::process::Command;
 
     /// Runs through the real shell and returns the arguments that arrived.
@@ -273,11 +372,9 @@ mod tests {
     #[test]
     fn editor_uses_env_and_passes_file_as_argument() {
         let ext = editor(Path::new("/tmp/a b.txt"), Path::new("/tmp"), "");
-        assert_eq!(ext.program, "sh");
-        assert_eq!(ext.args[3], "/tmp/a b.txt");
-        assert!(ext.args[1].to_string_lossy().ends_with(" \"$1\""));
+        assert!(ext.line.to_string_lossy().ends_with(" '/tmp/a b.txt'"));
         assert!(!ext.wait);
         let ext = editor(Path::new("/x"), Path::new("/"), "nano -l");
-        assert_eq!(ext.args[1], "nano -l \"$1\"");
+        assert_eq!(ext.line, "nano -l '/x'");
     }
 }

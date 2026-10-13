@@ -7,9 +7,10 @@
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
+
+use crate::platform;
 
 pub type NodeId = usize;
 
@@ -33,6 +34,13 @@ pub struct FileEntry {
     pub tagged: bool,
 }
 
+impl FileEntry {
+    /// Hidden file (dot name on Linux, H attribute on Windows).
+    pub fn is_hidden(&self) -> bool {
+        platform::is_hidden(&self.name, self.mode)
+    }
+}
+
 #[derive(Debug)]
 pub struct DirNode {
     /// Directory name; for the root it is the full path.
@@ -45,6 +53,8 @@ pub struct DirNode {
     pub scanned: bool,
     /// Error reading the directory (e.g. permission denied).
     pub error: Option<String>,
+    /// Hidden directory (dot name on Linux, H attribute on Windows).
+    pub hidden: bool,
 }
 
 /// A visible row in the tree pane.
@@ -70,11 +80,6 @@ pub struct Tree {
     /// Shows hidden directories (name starting with a dot). Only affects what
     /// is displayed; everything logged is still kept here.
     pub show_hidden: bool,
-}
-
-/// Hidden name on Linux: starts with a dot.
-pub fn is_hidden(name: &std::ffi::OsStr) -> bool {
-    name.as_encoded_bytes().first() == Some(&b'.')
 }
 
 /// Reading of a whole branch done in small steps, so the interface can
@@ -113,6 +118,7 @@ impl Tree {
                 expanded: false,
                 scanned: false,
                 error: None,
+                hidden: false,
             }],
             is_virtual: false,
             show_hidden: true,
@@ -134,6 +140,7 @@ impl Tree {
                 expanded: true,
                 scanned: true,
                 error: None,
+                hidden: false,
             }],
             is_virtual: true,
             show_hidden: true,
@@ -149,7 +156,8 @@ impl Tree {
                 cur = match found {
                     Some(c) => c,
                     None => {
-                        let c = tree.add_node(name.to_os_string(), cur);
+                        let hidden = platform::is_hidden(name, 0);
+                        let c = tree.add_node(name.to_os_string(), cur, hidden);
                         tree.nodes[c].scanned = true;
                         tree.nodes[cur].children.push(c);
                         c
@@ -202,14 +210,14 @@ impl Tree {
             }
         };
 
-        for name in dirs {
-            let child = self.add_node(name, id);
+        for (name, hidden) in dirs {
+            let child = self.add_node(name, id, hidden);
             self.nodes[id].children.push(child);
         }
         self.nodes[id].files = files;
     }
 
-    fn add_node(&mut self, name: OsString, parent: NodeId) -> NodeId {
+    fn add_node(&mut self, name: OsString, parent: NodeId, hidden: bool) -> NodeId {
         self.nodes.push(DirNode {
             name,
             parent: Some(parent),
@@ -218,6 +226,7 @@ impl Tree {
             expanded: false,
             scanned: false,
             error: None,
+            hidden,
         });
         self.nodes.len() - 1
     }
@@ -258,9 +267,12 @@ impl Tree {
         // Those that vanished are left loose in the arena, outside the tree.
         let children = dirs
             .into_iter()
-            .map(|name| match old.remove(&name) {
-                Some(c) => c,
-                None => self.add_node(name, id),
+            .map(|(name, hidden)| match old.remove(&name) {
+                Some(c) => {
+                    self.nodes[c].hidden = hidden;
+                    c
+                }
+                None => self.add_node(name, id, hidden),
             })
             .collect();
 
@@ -371,7 +383,7 @@ impl Tree {
             .children
             .iter()
             .copied()
-            .filter(|&c| self.show_hidden || !is_hidden(&self.nodes[c].name))
+            .filter(|&c| self.show_hidden || !self.nodes[c].hidden)
     }
 
     /// Like `subtree`, but without entering hidden directories (unless
@@ -420,7 +432,7 @@ impl Tree {
         for &id in order.iter().rev() {
             let node = &self.nodes[id];
             for f in &node.files {
-                if (tagged_only && !f.tagged) || (!self.show_hidden && is_hidden(&f.name)) {
+                if (tagged_only && !f.tagged) || (!self.show_hidden && f.is_hidden()) {
                     continue;
                 }
                 totals[id].0 += 1;
@@ -452,9 +464,12 @@ impl Tree {
     }
 }
 
+/// Subdirectory found on disk: name and whether it is hidden.
+type DirName = (OsString, bool);
+
 /// Reads a directory and returns (subdirectories, files), both sorted.
 /// Symlinks are never followed: they appear as files.
-fn read_dir_entries(path: &Path) -> std::io::Result<(Vec<OsString>, Vec<FileEntry>)> {
+fn read_dir_entries(path: &Path) -> std::io::Result<(Vec<DirName>, Vec<FileEntry>)> {
     let mut dirs = Vec::new();
     let mut files = Vec::new();
 
@@ -475,7 +490,8 @@ fn read_dir_entries(path: &Path) -> std::io::Result<(Vec<OsString>, Vec<FileEntr
         };
         let ft = meta.file_type();
         if ft.is_dir() {
-            dirs.push(name);
+            let hidden = platform::is_hidden(&name, platform::mode(&meta));
+            dirs.push((name, hidden));
             continue;
         }
         let kind = if ft.is_symlink() {
@@ -489,13 +505,13 @@ fn read_dir_entries(path: &Path) -> std::io::Result<(Vec<OsString>, Vec<FileEntr
             name,
             size: meta.len(),
             modified: meta.modified().ok(),
-            mode: meta.permissions().mode(),
+            mode: platform::mode(&meta),
             kind,
             tagged: false,
         });
     }
 
-    dirs.sort_by_key(sort_key);
+    dirs.sort_by_key(|(name, _)| sort_key(name));
     files.sort_by_key(|f| sort_key(&f.name));
     Ok((dirs, files))
 }
@@ -697,6 +713,7 @@ mod tests {
         assert_eq!(tree.node(ROOT).files.len(), 1);
     }
 
+    #[cfg(unix)]
     #[test]
     fn hides_dot_directories_when_asked() {
         let (tmp, mut tree) = sample();
@@ -726,7 +743,6 @@ mod tests {
             names(&tree, &tree.subtree(b)),
             ["b", ".cache", "deep", "deeper"]
         );
-        assert!(is_hidden(std::ffi::OsStr::new(".x")) && !is_hidden(std::ffi::OsStr::new("x")));
     }
 
     #[test]
@@ -745,6 +761,7 @@ mod tests {
         assert_eq!(tagged[ROOT], (1, 5));
     }
 
+    #[cfg(unix)]
     #[test]
     fn symlinks_are_not_followed() {
         let tmp = tempfile::tempdir().unwrap();

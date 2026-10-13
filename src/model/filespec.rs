@@ -532,6 +532,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn works_with_non_utf8_names() {
         use std::os::unix::ffi::OsStrExt;

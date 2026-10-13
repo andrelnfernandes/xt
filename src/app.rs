@@ -9,7 +9,6 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::BufRead;
 use std::ops::{Deref, DerefMut};
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -27,6 +26,7 @@ use crate::model::sort::{Sort, SortKey};
 use crate::model::tree::{LogJob, NodeId, ROOT};
 use crate::ops::{self, Answer, OpKind, Operation, Source};
 pub use crate::pane::{FileRef, FileView, Focus, Kbyte, KbyteShow, Pane};
+use crate::platform;
 use crate::search::{self, Pattern, SearchJob, SearchSpec};
 use crate::settings::{Outcome, Settings};
 use crate::shell::{self, External};
@@ -787,7 +787,7 @@ impl App {
             Command::Batch => {
                 if self.sources_or_warn(true).is_some() {
                     let base = self.outer.as_deref().unwrap_or(self);
-                    let default = base.current_path().join("xt-batch.sh");
+                    let default = base.current_path().join(shell::BATCH_FILE);
                     let default = default.to_string_lossy().into_owned();
                     let label = "BATCH: write to file: ".to_string();
                     self.open_prompt(PromptKind::BatchFile, label, &default);
@@ -1022,7 +1022,7 @@ impl App {
     fn prepare_prune(&mut self, id: NodeId) {
         let root = self.tree.path(id);
         let root_dev = match fs::symlink_metadata(&root) {
-            Ok(m) => m.dev(),
+            Ok(m) => platform::device(&root, &m),
             Err(e) => {
                 self.message = Some(format!("Cannot prune {}: {e}", root.display()));
                 return;
@@ -1034,7 +1034,7 @@ impl App {
         while let Some(n) = stack.pop() {
             let path = self.tree.path(n);
             match fs::symlink_metadata(&path) {
-                Ok(m) if m.dev() == root_dev => {}
+                Ok(m) if platform::device(&path, &m) == root_dev => {}
                 Ok(_) => {
                     mounts += 1;
                     continue;
@@ -1230,8 +1230,8 @@ impl App {
             return;
         }
         let mut text = self.current_path().to_string_lossy().into_owned();
-        if !text.ends_with('/') {
-            text.push('/');
+        if !text.ends_with(std::path::is_separator) {
+            text.push(std::path::MAIN_SEPARATOR);
         }
         let origin = self.current();
         self.open_prompt(PromptKind::Treespec { origin }, "TREESPEC: ".into(), &text);
@@ -1247,8 +1247,8 @@ impl App {
         let new_text = match key.code {
             KeyCode::Char('/' | '\\') => {
                 let mut t = self.treespec_complete(&text).unwrap_or(text.clone());
-                if !t.ends_with('/') {
-                    t.push('/');
+                if !t.ends_with(std::path::is_separator) {
+                    t.push(std::path::MAIN_SEPARATOR);
                 }
                 Some(t)
             }
@@ -1379,15 +1379,10 @@ impl App {
             "Tagged",
             format!("{} files, {} bytes", g(tagged), g(tagged_bytes)),
         );
-        if let Ok(st) = nix::sys::statvfs::statvfs(&self.current_path()) {
-            let frag = st.fragment_size();
+        if let Some(disk) = platform::disk_space(&self.current_path()) {
             row(
                 "Disk",
-                format!(
-                    "{} bytes free of {}",
-                    g(st.blocks_available() * frag),
-                    g(st.blocks() * frag)
-                ),
+                format!("{} bytes free of {}", g(disk.available), g(disk.total)),
             );
         }
         text
@@ -1403,12 +1398,11 @@ impl App {
         let items: Vec<ArchiveItem> = sources
             .iter()
             .map(|s| ArchiveItem {
-                name: s
-                    .path
-                    .strip_prefix(&base)
-                    .unwrap_or(Path::new(s.path.file_name().unwrap_or_default()))
-                    .to_string_lossy()
-                    .into_owned(),
+                name: archive::entry_name(
+                    s.path
+                        .strip_prefix(&base)
+                        .unwrap_or(Path::new(s.path.file_name().unwrap_or_default())),
+                ),
                 path: s.path.clone(),
                 size: s.size,
             })
@@ -1426,21 +1420,19 @@ impl App {
         );
     }
 
-    /// Writes the Batch file: one line per tagged file. A `.sh` gets
-    /// `#!/bin/sh` and execute permission.
+    /// Writes the Batch file: one line per tagged file. A script (`.sh`, or
+    /// `.bat`/`.cmd` on Windows) gets its header and execute permission.
     fn write_batch(&mut self, file: &Path, mask: &str) -> Result<(), String> {
         if mask.trim().is_empty() {
             return Err("Batch cancelled: empty line mask".into());
         }
         let sources = self.sources(true);
-        let script = file.extension().is_some_and(|e| e == "sh");
-        let mut data = Vec::new();
-        if script {
-            data.extend_from_slice(b"#!/bin/sh\n");
-        }
+        let header = shell::batch_header(file);
+        let script = header.is_some();
+        let mut data = header.unwrap_or_default().to_vec();
         for s in &sources {
             data.extend(shell::batch_line(mask, &s.path, s.size));
-            data.push(b'\n');
+            data.extend_from_slice(shell::NEWLINE);
         }
         let mut out = fs::OpenOptions::new()
             .write(true)
@@ -1449,7 +1441,7 @@ impl App {
             .map_err(|e| format!("Cannot create {}: {e}", file.display()))?;
         std::io::Write::write_all(&mut out, &data).map_err(|e| e.to_string())?;
         if script {
-            let _ = out.set_permissions(fs::Permissions::from_mode(0o755));
+            let _ = platform::set_file_mode(&out, 0o755);
         }
         if let Some(dir) = file.parent() {
             self.rescan_everywhere(&[dir]);
@@ -1509,8 +1501,7 @@ impl App {
                     .and_local_timezone(chrono::Local)
                     .earliest()
                     .ok_or("time does not exist (daylight saving change)")?;
-                let file = fs::File::open(path).map_err(|e| e.to_string())?;
-                file.set_modified(when.into()).map_err(|e| e.to_string())
+                platform::set_modified(path, when.into()).map_err(|e| e.to_string())
             })();
             match result {
                 Ok(()) => changed += 1,
@@ -1573,7 +1564,7 @@ impl App {
     /// just moves the cursor there; otherwise, the window gets `path` as its root.
     fn log(&mut self, text: &str) -> Result<(), String> {
         let path = ops::resolve_path(text, &self.current_path());
-        let path = fs::canonicalize(&path).map_err(|e| format!("Cannot log {text}: {e}"))?;
+        let path = dunce::canonicalize(&path).map_err(|e| format!("Cannot log {text}: {e}"))?;
         if !path.is_dir() {
             return Err(format!("{} is not a directory", path.display()));
         }
@@ -1876,9 +1867,9 @@ impl App {
             return;
         };
         let mode = fs::metadata(&sources[0].path)
-            .map(|m| format!("{:03o}", m.permissions().mode() & 0o7777))
+            .map(|m| platform::mode_text(platform::mode(&m)))
             .unwrap_or_default();
-        let label = format!("PERMISSIONS for {} (octal): ", describe(&sources));
+        let label = platform::mode_prompt(&describe(&sources));
         let paths = sources.into_iter().map(|s| s.path).collect();
         self.open_prompt(PromptKind::Chmod(paths), label, &mode);
     }
@@ -1956,16 +1947,24 @@ impl App {
         Ok(())
     }
 
+    /// Permissions (Linux) or attributes (Windows, where `+R -A` changes
+    /// each file's own attributes).
     fn chmod(&mut self, paths: &[PathBuf], text: &str) -> Result<(), String> {
-        let mode = ops::parse_mode(text)?;
+        platform::parse_mode(text, 0)?;
         let mut errors = Vec::new();
         let mut changed = 0;
         for path in paths {
-            // Symbolic links have no permissions of their own on Linux.
-            if fs::symlink_metadata(path).is_ok_and(|m| m.is_symlink()) {
-                continue;
-            }
-            match fs::set_permissions(path, fs::Permissions::from_mode(mode)) {
+            let meta = match fs::symlink_metadata(path) {
+                // Symbolic links have no permissions of their own on Linux.
+                Ok(m) if m.is_symlink() => continue,
+                Ok(m) => m,
+                Err(e) => {
+                    errors.push(format!("{}: {e}", path.display()));
+                    continue;
+                }
+            };
+            let mode = platform::parse_mode(text, platform::mode(&meta))?;
+            match platform::set_mode(path, mode) {
                 Ok(()) => changed += 1,
                 Err(e) => errors.push(format!("{}: {e}", path.display())),
             }
@@ -1973,7 +1972,8 @@ impl App {
         let mut dirs: Vec<&Path> = paths.iter().filter_map(|p| p.parent()).collect();
         dirs.dedup();
         self.rescan_everywhere(&dirs);
-        let mut msg = format!("Permissions set to {mode:03o} on {changed} files");
+        let what = platform::describe_mode(0).0;
+        let mut msg = format!("{what} set to {} on {changed} files", text.trim());
         if let Some(e) = errors.first() {
             msg.push_str(&format!(". {} errors, first: {e}", errors.len()));
         }
@@ -2251,6 +2251,8 @@ mod tests {
     use super::*;
     use ratatui::crossterm::event::KeyModifiers;
     use std::fs::{create_dir_all, write};
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
 
     /// root/{a.rs, b.txt}, root/sub/{c.rs}, root/sub/deep/{a.rs}
     fn sample() -> (tempfile::TempDir, App) {
@@ -2527,6 +2529,7 @@ mod tests {
         assert_eq!(app.message.as_deref(), Some("Directory is not empty"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn chmod_tagged_files() {
         let (tmp, mut app) = sample();
@@ -2772,18 +2775,22 @@ mod tests {
 
     #[test]
     fn log_moves_cursor_or_opens_new_root() {
-        let (tmp, mut app) = sample();
+        let (tmp, _) = sample();
+        // As in `main`: the root is canonical (on Windows, the temporary
+        // directory comes with a short 8.3 name).
+        let root = dunce::canonicalize(tmp.path()).unwrap();
+        let mut app = App::new(root.clone());
         // Inside the current tree: just moves the cursor.
         press(&mut app, KeyCode::Char('l'));
         answer_prompt(&mut app, "sub/deep");
-        assert_eq!(app.current_path(), tmp.path().join("sub/deep"));
-        assert_eq!(app.tree.path(ROOT), tmp.path());
+        assert_eq!(app.current_path(), root.join("sub/deep"));
+        assert_eq!(app.tree.path(ROOT), root);
 
         // Outside it: the window gets a new root.
         let other = tempfile::tempdir().unwrap();
         press(&mut app, KeyCode::Char('l'));
         answer_prompt(&mut app, other.path().to_str().unwrap());
-        let canonical = fs::canonicalize(other.path()).unwrap();
+        let canonical = dunce::canonicalize(other.path()).unwrap();
         assert_eq!(app.tree.path(ROOT), canonical);
 
         press(&mut app, KeyCode::Char('l'));
@@ -2986,16 +2993,15 @@ mod tests {
         assert_eq!(names(&app).len(), 4);
     }
 
+    #[cfg(unix)]
     #[test]
     fn edit_and_execute_request_external_programs() {
         let (tmp, mut app) = sample();
         press(&mut app, KeyCode::Enter);
         press(&mut app, KeyCode::Char('e'));
         let ext = app.external.take().expect("editor requested");
-        assert_eq!(
-            ext.args.last().unwrap(),
-            tmp.path().join("a.rs").as_os_str()
-        );
+        let quoted = format!(" '{}'", tmp.path().join("a.rs").display());
+        assert!(ext.line.to_string_lossy().ends_with(&quoted));
 
         press(&mut app, KeyCode::Char('t'));
         press(&mut app, KeyCode::Char('t'));
@@ -3006,7 +3012,7 @@ mod tests {
         let a = tmp.path().join("a.rs");
         let b = tmp.path().join("b.txt");
         let expected = format!("wc -c '{}' '{}'", a.display(), b.display());
-        assert_eq!(ext.args[1], expected.as_str());
+        assert_eq!(ext.line, expected.as_str());
         assert_eq!(ext.cwd, tmp.path());
         assert!(ext.wait);
 
@@ -3168,6 +3174,8 @@ mod tests {
         let (tmp, mut app) = sample();
         write(tmp.path().join(".env"), "").unwrap();
         create_dir_all(tmp.path().join(".git")).unwrap();
+        hide(&tmp.path().join(".env"));
+        hide(&tmp.path().join(".git"));
         app.apply(Command::Relog);
         assert!(names(&app).contains(&".env".to_string()));
 
@@ -3183,6 +3191,7 @@ mod tests {
         assert!(!app.rows.iter().any(|r| app.tree.node(r.id).name == ".git"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn at_prefix_skips_history_and_is_stripped() {
         let (_tmp, mut app) = sample();
@@ -3191,7 +3200,7 @@ mod tests {
         type_text(&mut app, "@echo secret");
         press(&mut app, KeyCode::Enter);
         let ext = app.external.take().unwrap();
-        assert_eq!(ext.args[1], "echo secret");
+        assert_eq!(ext.line, "echo secret");
         assert!(!app.history.contains_key("execute"));
     }
 
@@ -3201,6 +3210,7 @@ mod tests {
         let file = tmp.path().join("cfg/config.toml");
         app.config_file = Some(file.clone());
         write(tmp.path().join(".hidden"), "").unwrap();
+        hide(&tmp.path().join(".hidden"));
         app.apply(Command::Relog);
 
         press(&mut app, KeyCode::F(12));
@@ -3453,6 +3463,19 @@ mod tests {
         (tmp, app, root)
     }
 
+    /// `/` in the expected text becomes the platform's separator.
+    fn sep(text: String) -> String {
+        text.replace('/', std::path::MAIN_SEPARATOR_STR)
+    }
+
+    /// Hides a file or directory: the dot in the name is enough on Linux; on
+    /// Windows it takes the H attribute.
+    fn hide(path: &Path) {
+        #[cfg(windows)]
+        platform::set_mode(path, 0x2).unwrap();
+        let _ = path;
+    }
+
     fn current_name(app: &App) -> String {
         app.tree
             .node(app.current())
@@ -3465,18 +3488,21 @@ mod tests {
     fn treespec_navigates_while_typing() {
         let (_tmp, mut app, root) = treespec_setup();
         press(&mut app, KeyCode::Char('\\'));
-        assert_eq!(app.prompt.as_ref().unwrap().input.text, format!("{root}/"));
+        assert_eq!(
+            app.prompt.as_ref().unwrap().input.text,
+            sep(format!("{root}/"))
+        );
         type_text(&mut app, "do");
         assert_eq!(current_name(&app), "Docs", "cursor follows the typing");
         type_text(&mut app, "/");
         assert_eq!(
             app.prompt.as_ref().unwrap().input.text,
-            format!("{root}/Docs/")
+            sep(format!("{root}/Docs/"))
         );
         type_text(&mut app, "r\\s");
         assert_eq!(
             app.prompt.as_ref().unwrap().input.text,
-            format!("{root}/Docs/rust/s")
+            sep(format!("{root}/Docs/rust/s"))
         );
         assert_eq!(current_name(&app), "src");
         press(&mut app, KeyCode::Enter);
@@ -3493,7 +3519,7 @@ mod tests {
         press(&mut app, KeyCode::Tab);
         assert_eq!(
             app.prompt.as_ref().unwrap().input.text,
-            format!("{root}/Docs")
+            sep(format!("{root}/Docs"))
         );
         press(&mut app, KeyCode::Tab);
         assert_eq!(current_name(&app), "downloads");
@@ -3512,7 +3538,10 @@ mod tests {
         ctrl(&mut app, 'u');
         type_text(&mut app, other.path().to_str().unwrap());
         press(&mut app, KeyCode::Enter);
-        assert_eq!(app.tree.path(ROOT), fs::canonicalize(other.path()).unwrap());
+        assert_eq!(
+            app.tree.path(ROOT),
+            dunce::canonicalize(other.path()).unwrap()
+        );
     }
 
     #[test]
@@ -3707,6 +3736,7 @@ mod tests {
         assert_eq!(mtime("sub").date_naive().to_string(), "2018-01-01");
     }
 
+    #[cfg(unix)]
     #[test]
     fn ctrl_b_writes_a_batch_file() {
         let (tmp, mut app) = sample();
@@ -3777,7 +3807,7 @@ mod tests {
             .list()
             .unwrap()
             .iter()
-            .map(|e| e.path.to_string_lossy().into_owned())
+            .map(|e| archive::entry_name(&e.path))
             .collect();
         names.sort();
         assert_eq!(names, ["a.rs", "b.txt", "sub/c.rs", "sub/deep/a.rs"]);
@@ -3822,7 +3852,10 @@ mod tests {
     fn slash_also_opens_treespec() {
         let (_tmp, mut app, root) = treespec_setup();
         press(&mut app, KeyCode::Char('/'));
-        assert_eq!(app.prompt.as_ref().unwrap().input.text, format!("{root}/"));
+        assert_eq!(
+            app.prompt.as_ref().unwrap().input.text,
+            sep(format!("{root}/"))
+        );
         type_text(&mut app, "dow");
         assert_eq!(current_name(&app), "downloads");
         press(&mut app, KeyCode::Esc);
