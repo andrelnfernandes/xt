@@ -1617,6 +1617,16 @@ impl App {
     pub fn after_external(&mut self, result: std::io::Result<std::process::ExitStatus>) {
         let dirs: Vec<PathBuf> = self.watched_dirs().into_iter().collect();
         self.rescan_everywhere(&dirs);
+        // Back from the editor (E in the viewer): shows the new contents.
+        if let Some(v) = &mut self.viewer
+            && v.on_disk
+            && let Err(e) = v.reload()
+        {
+            self.viewer = None;
+            self.tagged_view = None;
+            self.message = Some(format!("Cannot view file: {e}"));
+            return;
+        }
         self.message = match result {
             Ok(status) if status.success() => None,
             Ok(status) => Some(format!("Command finished with {status}")),
@@ -2098,6 +2108,18 @@ impl App {
             ViewerAction::Close => {
                 self.viewer = None;
                 self.tagged_view = None;
+            }
+            ViewerAction::Edit => {
+                let current = self.current_path();
+                let Some(v) = &mut self.viewer else {
+                    return;
+                };
+                if !v.on_disk {
+                    v.note = Some("Only files on disk can be edited".into());
+                    return;
+                }
+                let cwd = v.path.parent().map_or(current, Path::to_path_buf);
+                self.external = Some(shell::editor(&v.path, &cwd, &self.options.editor));
             }
             ViewerAction::Next | ViewerAction::Prev | ViewerAction::First | ViewerAction::Last => {
                 let Some((i, n)) = position else {
@@ -3202,6 +3224,44 @@ mod tests {
         let ext = app.external.take().unwrap();
         assert_eq!(ext.line, "echo secret");
         assert!(!app.history.contains_key("execute"));
+    }
+
+    #[test]
+    fn e_in_viewer_edits_and_reloads() {
+        let (tmp, mut app) = sample();
+        let file = tmp.path().join("a.rs");
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Char('v'));
+        assert!(app.viewer.is_some());
+        press(&mut app, KeyCode::Char('e'));
+        let ext = app.external.take().expect("editor requested");
+        assert!(ext.line.to_string_lossy().contains("a.rs"));
+        assert_eq!(ext.cwd, tmp.path());
+
+        // The "editor" changes the file; back in xt, the viewer shows it.
+        write(&file, "one\ntwo\nthree\n").unwrap();
+        app.after_external(Ok(std::process::ExitStatus::default()));
+        let v = app.viewer.as_ref().expect("still viewing");
+        assert_eq!(v.visible_lines(3), ["one", "two", "three"]);
+
+        // Deleted by the editor: the viewer closes.
+        press(&mut app, KeyCode::Char('e'));
+        app.external.take().unwrap();
+        std::fs::remove_file(&file).unwrap();
+        app.after_external(Ok(std::process::ExitStatus::default()));
+        assert!(app.viewer.is_none());
+        assert!(
+            app.message
+                .as_deref()
+                .unwrap()
+                .starts_with("Cannot view file")
+        );
+
+        // Help is not a file: E only explains.
+        press(&mut app, KeyCode::F(1));
+        press(&mut app, KeyCode::Char('e'));
+        assert!(app.external.is_none());
+        assert!(app.viewer.as_ref().unwrap().note.is_some());
     }
 
     #[test]

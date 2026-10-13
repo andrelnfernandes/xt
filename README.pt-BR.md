@@ -422,7 +422,9 @@ primeiras 20.000 linhas são coloridas, para arquivos enormes não deixarem o
 visualizador lento.
 
 **Visualizador:** setas/PgUp/PgDn/Home/End rolam, ←→ deslocam na horizontal,
-`H` alterna texto/hex, `Esc` fecha. Arquivos binários abrem em hex.
+`H` alterna texto/hex, **E** abre o arquivo no editor configurado (de volta ao
+xt, o visualizador mostra o conteúdo novo no mesmo ponto; não vale para
+arquivos dentro de pacotes), `Esc` fecha. Arquivos binários abrem em hex.
 Arquivos acima de 16 MiB mostram só o começo. Busca, como no ZTreeWin:
 **F** procura do início, **B** para trás a partir do fim, **/** (ou S) a
 partir da página atual e **\\** para trás a partir dela; **Espaço**
