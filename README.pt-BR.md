@@ -287,6 +287,14 @@ relativos à raiz da lista (o diretório atual, a raiz do Branch, ou a raiz da
 No prompt do destino, **F6** troca entre os dois modos, e o modo atual aparece
 no próprio prompt. Alt+D e Alt+A funcionam como Ctrl+D e Ctrl+A.
 
+**Escolher a pasta (F2):** em qualquer prompt que pede uma pasta (Copy, Move,
+Log e a pasta do Ctrl+B e do F5), o **F2** abre uma árvore para escolhê-la,
+como no ZTreeWin. Ela começa na pasta já digitada; as teclas da árvore
+navegam (os diretórios são lidos conforme são abertos), o **Tab** passa para
+a árvore da outra janela com a tela dividida, o **Enter** põe a pasta no
+prompt (Ctrl+B e F5 mantêm o nome do arquivo) e o **Esc** volta sem alterar
+nada. Nada é executado até você confirmar o prompt.
+
 **Tela dividida:** F8 abre uma segunda janela, começando no mesmo diretório;
 Tab alterna entre elas (sem a divisão, Tab faz o mesmo que Enter). Cada janela
 tem a sua árvore, cursor e filespec; use `L` para abrir outro diretório nela.
