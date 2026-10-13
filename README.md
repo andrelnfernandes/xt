@@ -189,8 +189,24 @@ program.
   added, `??` untracked, `R ` renamed. Unchanged files show blanks. The
   status is read again after xt's own operations, after F3, and every 10
   seconds (to catch commits made in another terminal).
+- In the viewer, **D** shows what changed in a file since the last commit
+  (its `git diff HEAD`, with colors) and **D** again goes back to the file, at
+  the same place. "Diff" appears in the footer only for files with changes;
+  **E** still edits the file, and the diff is updated on return.
 - For push, pull and other commands that use the network, use eXecute (`X`),
   e.g. `git push`.
+
+Status letters in the file list, with the Git menu open (Ctrl+G):
+
+![File list with Git status letters and the GIT menu in the footer](docs/screenshots/git-menu.png)
+
+Status in color, as in a terminal (here with the `dark` theme):
+
+![git status with staged files in green and the others in red](docs/screenshots/git-status.png)
+
+**D** in the viewer: what changed in the file since the last commit:
+
+![The viewer showing a file's git diff with colors](docs/screenshots/git-diff.png)
 
 ## Keys
 

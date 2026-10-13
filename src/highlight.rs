@@ -19,6 +19,9 @@ use syntect::parsing::SyntaxSet;
 /// Lines past this one are shown without colors.
 pub const MAX_LINES: usize = 20_000;
 
+/// Name that `for_name` colors like `git status` does in a terminal.
+pub const GIT_STATUS: &str = "git status";
+
 /// Minimum contrast ratio between text and background (WCAG uses 4.5 for
 /// body text; 3.5 keeps the theme's colors closer to the original).
 const MIN_CONTRAST: f64 = 3.5;
@@ -74,7 +77,8 @@ fn rgb_of(c: Color) -> (u8, u8, u8) {
 
 /// Highlighting state of one open file.
 pub struct Highlighter {
-    lines: HighlightLines<'static>,
+    /// `None` when all lines were colored up front (`git status`).
+    lines: Option<HighlightLines<'static>>,
     /// Colored segments of the lines already highlighted.
     done: Vec<Vec<(Color, String)>>,
     background: (u8, u8, u8),
@@ -84,6 +88,57 @@ pub struct Highlighter {
 }
 
 impl Highlighter {
+    /// Colors for `name`: a file name, or `GIT_STATUS`.
+    pub fn for_name(name: &Path, lines: &[String]) -> Option<Self> {
+        if name == Path::new(GIT_STATUS) {
+            return Self::git_status(lines);
+        }
+        Self::for_file(name, lines.first().map_or("", String::as_str))
+    }
+
+    /// `git status`, as git colors it in a terminal: the files staged in
+    /// green, the others (not staged, untracked, in conflict) in red. Git
+    /// indents the files with a tab, which the viewer turns into 8 spaces.
+    fn git_status(lines: &[String]) -> Option<Self> {
+        if !enabled() {
+            return None;
+        }
+        let background = STYLE.read().unwrap_or_else(|e| e.into_inner()).1;
+        let color = |rgb| {
+            let (r, g, b) = readable(rgb, background);
+            Color::Rgb(r, g, b)
+        };
+        let (green, red) = (color((78, 154, 6)), color((204, 0, 0)));
+        let mut section = None;
+        let done = lines
+            .iter()
+            .take(MAX_LINES)
+            .map(|line| {
+                if line.is_empty() {
+                    section = None;
+                } else if line.starts_with("Changes to be committed") {
+                    section = Some(green);
+                } else if ["Changes not staged", "Untracked files", "Unmerged paths"]
+                    .iter()
+                    .any(|h| line.starts_with(h))
+                {
+                    section = Some(red);
+                }
+                match section {
+                    Some(c) if line.starts_with("        ") => vec![(c, line.clone())],
+                    _ => Vec::new(),
+                }
+            })
+            .collect();
+        Some(Highlighter {
+            lines: None,
+            done,
+            background,
+            language: "Git status".into(),
+            failed: false,
+        })
+    }
+
     /// A highlighter for `path`, if its language is known (by extension,
     /// file name or first line, like `#!/bin/sh`).
     pub fn for_file(path: &Path, first_line: &str) -> Option<Self> {
@@ -108,7 +163,7 @@ impl Highlighter {
         let (theme_name, background) = *STYLE.read().unwrap_or_else(|e| e.into_inner());
         let theme: &'static Theme = themes().themes.get(theme_name)?;
         Some(Highlighter {
-            lines: HighlightLines::new(syntax, theme),
+            lines: Some(HighlightLines::new(syntax, theme)),
             done: Vec::new(),
             background,
             language: syntax.name.clone(),
@@ -123,8 +178,11 @@ impl Highlighter {
             return None;
         }
         while !self.failed && self.done.len() <= i {
+            let Some(highlight) = &mut self.lines else {
+                break;
+            };
             let text = format!("{}\n", lines[self.done.len()]);
-            match self.lines.highlight_line(&text, syntaxes()) {
+            match highlight.highlight_line(&text, syntaxes()) {
                 Ok(ranges) => {
                     let segments = ranges
                         .into_iter()
@@ -217,6 +275,33 @@ mod tests {
         assert_ne!(color_of("let"), color_of("x"));
         assert!(h.line(MAX_LINES, &text).is_none());
         assert!(h.line(99, &text).is_none());
+    }
+
+    #[test]
+    fn colors_git_status_like_git() {
+        let text = lines(
+            "On branch main\n\
+             Changes to be committed:\n  \
+             (use \"git restore --staged <file>...\" to unstage)\n        \
+             new file:   a.rs\n\
+             \n\
+             Changes not staged for commit:\n        \
+             modified:   b.rs\n\
+             \n\
+             Untracked files:\n        \
+             c.rs\n",
+        );
+        let mut h = Highlighter::for_name(Path::new(GIT_STATUS), &text).unwrap();
+        assert_eq!(h.language, "Git status");
+        let color = |h: &mut Highlighter, i| h.line(i, &text).unwrap().first().map(|(c, _)| *c);
+        let staged = color(&mut h, 3).expect("staged file colored");
+        let changed = color(&mut h, 6).expect("changed file colored");
+        assert_ne!(staged, changed);
+        assert_eq!(color(&mut h, 9), Some(changed), "untracked like changed");
+        // Headers and hints keep the normal color.
+        for i in [0, 1, 2, 5] {
+            assert_eq!(color(&mut h, i), None, "line {i}");
+        }
     }
 
     #[test]

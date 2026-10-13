@@ -1010,6 +1010,11 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
         .tagged_view
         .as_ref()
         .map(|tv| (tv.index + 1, tv.items.len()));
+    // D: diff of a changed file (Git on), or back from the diff.
+    let diff = app
+        .viewer
+        .as_ref()
+        .is_some_and(|v| v.behind.is_some() || (v.on_disk && app.can_diff(&v.path)));
     let Some(v) = &mut app.viewer else { return };
     let [header, body, menu] = Layout::vertical([
         Constraint::Length(1),
@@ -1061,6 +1066,9 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
         prompt_lines(frame, prompt, menu)
     } else {
         let mut words = vec!["Find", "Backward", "Hex", "Colors", "Edit"];
+        if diff {
+            words.push("Diff");
+        }
         if tagged.is_some() {
             words.extend(["Next", "Prev", "Untag"]);
         }

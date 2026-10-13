@@ -192,8 +192,24 @@ preciso ter o programa `git`.
   alteração ficam em branco. O estado é relido depois das operações do
   próprio xt, depois do F3 e a cada 10 segundos (para pegar commits feitos em
   outro terminal).
+- No visualizador, **D** mostra o que mudou no arquivo desde o último commit
+  (o `git diff HEAD` dele, com cores) e **D** de novo volta ao arquivo, no
+  mesmo ponto. "Diff" só aparece no rodapé para arquivos com alterações; o
+  **E** continua editando o arquivo, e o diff é atualizado na volta.
 - Para push, pull e outros comandos que usam a rede, use o eXecute (`X`), por
   exemplo `git push`.
+
+Letras de estado na lista de arquivos, com o menu Git aberto (Ctrl+G):
+
+![Lista de arquivos com as letras de estado do Git e o menu GIT no rodapé](docs/screenshots/git-menu.png)
+
+Status colorido, como no terminal (aqui com o tema `dark`):
+
+![git status com os arquivos no stage em verde e os demais em vermelho](docs/screenshots/git-status.png)
+
+**D** no visualizador: o que mudou no arquivo desde o último commit:
+
+![O visualizador mostrando o git diff de um arquivo, com cores](docs/screenshots/git-diff.png)
 
 ## Teclas
 
