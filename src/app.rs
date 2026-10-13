@@ -16,6 +16,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, M
 
 use crate::archive::{self, ArchiveItem, ArchiveJob};
 use crate::config::{self, Config, DateFormat, Options, PruneConfirm, Theme};
+use crate::git;
 use crate::highlight;
 use crate::info;
 use crate::input::{Command, LineEvent, LineInput};
@@ -57,6 +58,8 @@ pub enum MenuMode {
     Normal,
     Ctrl,
     Alt,
+    /// Ctrl+G: the next letter is a Git command.
+    Git,
 }
 
 /// Text field open in the footer.
@@ -296,6 +299,8 @@ pub struct App {
     pub held: Option<MenuMode>,
     /// Menu chosen with F9; the next letter receives that modifier.
     pub sticky: MenuMode,
+    /// Git status of the files on screen (when `git` is on).
+    pub git_status: git::StatusCache,
 }
 
 /// The active window.
@@ -345,6 +350,7 @@ impl App {
             quit_dir: None,
             held: None,
             sticky: MenuMode::Normal,
+            git_status: git::StatusCache::default(),
         }
     }
 
@@ -613,7 +619,7 @@ impl App {
             self.sticky = match self.sticky {
                 MenuMode::Normal => MenuMode::Ctrl,
                 MenuMode::Ctrl => MenuMode::Alt,
-                MenuMode::Alt => MenuMode::Normal,
+                MenuMode::Alt | MenuMode::Git => MenuMode::Normal,
             };
             return;
         }
@@ -623,6 +629,10 @@ impl App {
         match std::mem::take(&mut self.sticky) {
             MenuMode::Normal => {}
             _ if key.code == KeyCode::Esc => return,
+            MenuMode::Git => {
+                self.git_action(key);
+                return;
+            }
             MenuMode::Ctrl if matches!(key.code, KeyCode::Char(_)) => {
                 key.modifiers |= KeyModifiers::CONTROL;
             }
@@ -862,7 +872,9 @@ impl App {
                 self.start_job(LogJob::new(self.current(), true), AfterLog::Refresh);
             }
             Command::View => self.open_viewer(),
+            Command::Git => self.open_git_menu(),
             Command::Relog => {
+                self.git_status.invalidate();
                 let id = self.header_dir();
                 self.tree.rescan(id);
                 self.after_change();
@@ -1099,6 +1111,100 @@ impl App {
     fn rescan_everywhere<P: AsRef<Path>>(&mut self, dirs: &[P]) {
         for pane in &mut self.panes {
             pane.rescan_paths(dirs);
+        }
+        self.git_status.invalidate();
+    }
+
+    /// Reads the Git status of the repositories on screen, if it changed.
+    /// Called before drawing.
+    pub fn refresh_git(&mut self) {
+        if !self.options.git {
+            return;
+        }
+        let dirs: Vec<PathBuf> = self
+            .panes
+            .iter()
+            .filter(|p| p.archive.is_none())
+            .map(|p| p.current_path())
+            .collect();
+        self.git_status.refresh(dirs);
+    }
+
+    /// Ctrl+G: opens the Git menu, if the current directory is in a
+    /// repository.
+    fn open_git_menu(&mut self) {
+        if !self.options.git {
+            return;
+        }
+        if self.archive.is_some() || git::repo_root(&self.current_path()).is_none() {
+            self.message = Some("Not a Git repository".into());
+            return;
+        }
+        self.sticky = MenuMode::Git;
+    }
+
+    /// A letter of the Git menu: on the tagged files of the list, else the
+    /// current file, or the current directory in the tree.
+    fn git_action(&mut self, key: KeyEvent) {
+        let KeyCode::Char(c) = key.code else {
+            return;
+        };
+        let Some(action) = git::Action::from_key(c) else {
+            self.message = Some("Git: Status, Log, Diff, Blame, Add, Unstage or Commit".into());
+            return;
+        };
+        let dir = self.current_path();
+        let Some(root) = git::repo_root(&dir) else {
+            return;
+        };
+        let mut paths: Vec<PathBuf> = self.sources(true).into_iter().map(|s| s.path).collect();
+        if paths.is_empty() {
+            paths = match self.focus {
+                Focus::Files => self.sources(false).into_iter().map(|s| s.path).collect(),
+                Focus::Tree => vec![dir],
+            };
+        }
+        match action {
+            // The whole repository: what matters is the general picture.
+            git::Action::Status => paths.clear(),
+            git::Action::Blame if self.focus == Focus::Tree || paths.len() != 1 => {
+                self.message = Some("Blame works on one file".into());
+                return;
+            }
+            _ if paths.is_empty() => {
+                self.message = Some("No file".into());
+                return;
+            }
+            _ => {}
+        }
+        match action {
+            git::Action::Commit => {
+                self.external = Some(shell::command("git commit".into(), &root));
+            }
+            a if a.shows_output() => match git::report(a, &root, &paths) {
+                Ok(r) => {
+                    let size = r.text.len() as u64;
+                    self.tagged_view = None;
+                    let v = Viewer::from_bytes(r.title, size, r.text);
+                    self.viewer = Some(v.colored_as(Path::new(r.colors_of)));
+                }
+                Err(e) => self.message = Some(format!("Git: {e}")),
+            },
+            a => {
+                self.message = Some(match git::change(a, &root, &paths) {
+                    Ok(Ok(())) => {
+                        let verb = if a == git::Action::Add {
+                            "Added"
+                        } else {
+                            "Unstaged"
+                        };
+                        format!("{verb} {}", describe_paths(&paths))
+                    }
+                    Ok(Err(msg)) => format!("Git: {msg}"),
+                    Err(e) => format!("Git: {e}"),
+                });
+                self.git_status.invalidate();
+            }
         }
     }
 
@@ -2256,6 +2362,18 @@ fn fit_name(path: &Path) -> String {
 }
 
 /// "file.txt" or "3 tagged files".
+/// "a.rs", or "3 files".
+fn describe_paths(paths: &[PathBuf]) -> String {
+    match paths {
+        [one] => one
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned(),
+        many => format!("{} files", many.len()),
+    }
+}
+
 fn describe(sources: &[Source]) -> String {
     match sources {
         [one] => one
@@ -3224,6 +3342,71 @@ mod tests {
         let ext = app.external.take().unwrap();
         assert_eq!(ext.line, "echo secret");
         assert!(!app.history.contains_key("execute"));
+    }
+
+    #[test]
+    fn git_menu() {
+        let (tmp, mut app) = sample();
+        ctrl(&mut app, 'g');
+        assert_eq!(app.sticky, MenuMode::Normal, "off by default");
+
+        let config = Config {
+            options: Options {
+                git: true,
+                ..Options::default()
+            },
+            ..Config::default()
+        };
+        app.apply_config(&config).unwrap();
+        ctrl(&mut app, 'g');
+        assert_eq!(app.message.as_deref(), Some("Not a Git repository"));
+
+        let root = tmp.path();
+        git::git_ok(root, &["init", "-q"]);
+        git::git_ok(root, &["add", "a.rs"]);
+        git::git_ok(root, &["commit", "-q", "-m", "first"]);
+        write(root.join("a.rs"), "fn main() { changed() }\n").unwrap();
+
+        // Diff of the current file, in the viewer.
+        press(&mut app, KeyCode::Enter);
+        ctrl(&mut app, 'g');
+        assert_eq!(app.sticky, MenuMode::Git);
+        press(&mut app, KeyCode::Char('d'));
+        let v = app.viewer.as_ref().expect("diff shown");
+        assert!(
+            v.visible_lines(20)
+                .iter()
+                .any(|l| l.contains("+fn main() { changed() }"))
+        );
+        press(&mut app, KeyCode::Esc);
+
+        // Status letters in the list, before and after Add.
+        app.refresh_git();
+        let a = app.current_path().join("a.rs");
+        assert_eq!(app.git_status.marker(&a), Some(*b" M"));
+        ctrl(&mut app, 'g');
+        press(&mut app, KeyCode::Char('a'));
+        assert_eq!(app.message.as_deref(), Some("Added a.rs"));
+        std::thread::sleep(std::time::Duration::from_millis(600));
+        app.refresh_git();
+        assert_eq!(app.git_status.marker(&a), Some(*b"M "));
+
+        // Commit goes to git's editor, in the repository.
+        ctrl(&mut app, 'g');
+        press(&mut app, KeyCode::Char('c'));
+        let ext = app.external.take().expect("git commit");
+        assert_eq!(ext.line, "git commit");
+        assert!(ext.wait);
+
+        // Esc closes the menu; Blame needs a file.
+        ctrl(&mut app, 'g');
+        press(&mut app, KeyCode::Esc);
+        assert_eq!(app.sticky, MenuMode::Normal);
+        assert!(app.viewer.is_none());
+        press(&mut app, KeyCode::Esc);
+        ctrl(&mut app, 'g');
+        press(&mut app, KeyCode::Char('b'));
+        assert_eq!(app.message.as_deref(), Some("Blame works on one file"));
     }
 
     #[test]

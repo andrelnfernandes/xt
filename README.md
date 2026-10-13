@@ -139,7 +139,7 @@ reaches xt). It has four pages:
 
 | Page | Options |
 |---|---|
-| 1. Programs and formats | editor, date format, number format |
+| 1. Programs and formats | editor, date format, number format, Git commands |
 | 2. Display and sorting | show hidden files, initial sort order and direction, what Enter does in the file window, initial mode of the file window, syntax colors in the viewer |
 | 3. Confirmations and history | confirm on quit, Prune confirmation, don't keep entries containing `@` |
 | 4. Compare and refresh | ignore 2 s, ignore 1 h, automatic refresh |
@@ -169,6 +169,28 @@ mkdir -p ~/.config/xt && xt --default-config > ~/.config/xt/config.toml
 An error in the file does not stop xt from starting: it uses the defaults and shows the
 error in the footer (and the configuration screen will not save until the file is
 fixed, so it doesn't erase what you wrote).
+
+## Git (optional)
+
+Git is not in XTree or ZTreeWin, so it starts off: turn it on with **F12**
+(page 1, "Git commands") or `git = true` under `[options]`. It needs the `git`
+program.
+
+- **Ctrl+G** opens the Git menu in the footer; the next letter chooses:
+  - **S**tatus, **L**og, **D**iff (against HEAD: staged and unstaged together,
+    with colors) and **B**lame open in the viewer, with search.
+  - **A**dd and **U**nstage.
+  - **C**ommit opens Git's own editor, as `git commit` does.
+- The commands act on the tagged files in the list, otherwise on the current
+  file; in the tree, on the current directory. Status always covers the whole
+  repository.
+- The file list shows each file's status before its name, with the two letters
+  of `git status --short`: `M ` staged, ` M` changed but not staged, `A `
+  added, `??` untracked, `R ` renamed. Unchanged files show blanks. The
+  status is read again after xt's own operations, after F3, and every 10
+  seconds (to catch commits made in another terminal).
+- For push, pull and other commands that use the network, use eXecute (`X`),
+  e.g. `git push`.
 
 ## Keys
 
@@ -455,6 +477,7 @@ In the tree, a `+` on the connector (`├─+`) marks a collapsed directory that
 - `src/archive.rs` — ZIP/TAR reading
 - `src/watch.rs` — notifications of changes on disk (inotify)
 - `src/shell.rs` — editor and shell commands (with safe quoting)
+- `src/git.rs` — Git menu (Ctrl+G) and status markers, through the `git` program
 - `src/config.rs` — configuration file, themes and formats
 - `src/settings.rs` — configuration screen (F12)
 - `src/state.rs` — prompt history between runs
