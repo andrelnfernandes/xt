@@ -144,7 +144,7 @@ xt). Ela tem quatro páginas:
 | 1. Programas e formatos | editor, formato de data, formato de número, comandos Git |
 | 2. Exibição e ordenação | mostrar ocultos, ordenação inicial e sentido, o que o Enter faz na janela de arquivos, modo inicial da janela de arquivos, cores de sintaxe no visualizador |
 | 3. Confirmações e histórico | confirmar ao sair, confirmação do Prune, não guardar entradas com `@` |
-| 4. Compare e atualização | ignorar 2 s, ignorar 1 h, atualização automática |
+| 4. Cópia, Compare e atualização | ignorar 2 s, ignorar 1 h, atualização automática, de onde partem os caminhos do Alt+C/Alt+M |
 
 A letra da opção (ou Enter) troca o valor, PgUp/PgDn ou 1–4 mudam de página,
 **F4** escolhe o tema numa lista (com prévia na hora), **F3** grava e aplica,
@@ -281,11 +281,24 @@ As operações em grupo agem sobre os arquivos marcados **da lista atual**
 (o diretório, ou o Branch/Showall aberto).
 
 **Com ou sem caminhos:** Ctrl+C / Ctrl+M copiam ou movem os marcados todos
-direto para o destino. Alt+C / Alt+M recriam no destino os subdiretórios,
-relativos à raiz da lista (o diretório atual, a raiz do Branch, ou a raiz da
-árvore no Showall): `proj/src/model/tree.rs` → `destino/src/model/tree.rs`.
-No prompt do destino, **F6** troca entre os dois modos, e o modo atual aparece
-no próprio prompt. Alt+D e Alt+A funcionam como Ctrl+D e Ctrl+A.
+direto para o destino. Alt+C / Alt+M recriam no destino o caminho de cada
+arquivo; de onde esse caminho parte depende do modo. Para
+`/home/eu/proj/src/ops/mod.rs`, listado a partir de `src/ops` (a raiz da lista:
+o diretório atual, a raiz do Branch, ou a raiz da árvore no Showall), copiado
+para `destino`:
+
+| Modo | Resultado | |
+|---|---|---|
+| Full | `destino/home/eu/proj/src/ops/mod.rs` | desde a raiz do disco, como no ZTreeWin (padrão) |
+| Tree | `destino/src/ops/mod.rs` | desde a raiz da árvore do xt (aqui `proj`); não existe no ZTreeWin |
+| Current | `destino/ops/mod.rs` | desde a raiz da lista, incluindo o nome dela |
+| Relative | `destino/mod.rs` | só o que está abaixo da raiz da lista |
+
+No prompt do destino, **F6** troca entre com e sem caminhos e **F7** alterna os
+modos; os dois aparecem no próprio prompt. O modo com que o prompt começa é
+escolhido na página 4 da F12 (`copy_paths`). Dentro de um pacote, os caminhos
+partem no máximo da raiz do pacote. Alt+D e Alt+A funcionam como Ctrl+D e
+Ctrl+A.
 
 **Escolher a pasta (F2):** em qualquer prompt que pede uma pasta (Copy, Move,
 Log e a pasta do Ctrl+B e do F5), o **F2** abre uma árvore para escolhê-la,

@@ -815,6 +815,7 @@ fn prompt_lines(frame: &mut Frame, prompt: &app::Prompt, area: Rect) -> Vec<Line
     }
     if prompt.toggles_paths() {
         help.push(("F6", "with/without paths"));
+        help.push(("F7", "paths from"));
     }
     if prompt.is_search() {
         help.push(("F2", "match case"));
