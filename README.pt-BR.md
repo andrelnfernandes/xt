@@ -199,6 +199,18 @@ preciso ter o programa `git`.
 - Para push, pull e outros comandos que usam a rede, use o eXecute (`X`), por
   exemplo `git push`.
 
+Letras de estado na lista de arquivos, com o menu Git aberto (Ctrl+G):
+
+![Lista de arquivos com as letras de estado do Git e o menu GIT no rodapé](docs/screenshots/git-menu.png)
+
+Status colorido, como no terminal (aqui com o tema `dark`):
+
+![git status com os arquivos no stage em verde e os demais em vermelho](docs/screenshots/git-status.png)
+
+**D** no visualizador: o que mudou no arquivo desde o último commit:
+
+![O visualizador mostrando o git diff de um arquivo, com cores](docs/screenshots/git-diff.png)
+
 ## Teclas
 
 ### Navegação
