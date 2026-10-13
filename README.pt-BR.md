@@ -4,6 +4,8 @@
 
 Gerenciador de arquivos em modo texto para Linux, inspirado no XTree e no ZTreeWin.
 
+![xt: árvore de diretórios, janela de arquivos e estatísticas, no tema clássico](docs/screenshots/tree.png)
+
 ## Por que o xt?
 
 Uso alguma variação do XTree desde a década de 1990, e o ZTreeWin continua
@@ -24,6 +26,26 @@ Zedtek, Inc. (ZTreeWin) nem com os donos do XTree, nem é endossado por eles.
 Não contém código desses programas; os nomes deles aparecem só para descrever
 o que inspirou o xt e como ele se compara. XTree, ZTree e ZTreeWin são marcas
 de seus respectivos donos.
+
+## Telas
+
+**Branch** (`B`) lista os arquivos de um ramo inteiro; os arquivos marcados
+(`T`) ficam destacados e são contados à direita:
+
+![Branch com três arquivos marcados](docs/screenshots/branch-tagged.png)
+
+**Janela dividida** (F8), cada lado com seu próprio diretório:
+
+![Janela dividida: fotos à esquerda, código-fonte à direita](docs/screenshots/split.png)
+
+**Visualizador** (`V`), com cores de sintaxe:
+
+![Visualizador mostrando código Rust com cores de sintaxe](docs/screenshots/viewer.png)
+
+**Temas**: além do azul clássico, `dark`, `light`, `mono`, `norton`,
+`solarized`, `gruvbox` (abaixo) e `nord`:
+
+![O tema gruvbox](docs/screenshots/theme-gruvbox.png)
 
 ## Instalação
 
