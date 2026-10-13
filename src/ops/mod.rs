@@ -334,7 +334,7 @@ impl Operation {
             let removed = if item.is_dir {
                 fs::remove_dir(&item.src)
             } else {
-                fs::remove_file(&item.src)
+                platform::remove_file(&item.src)
             };
             match removed {
                 Ok(()) => {
@@ -498,7 +498,7 @@ impl Operation {
         let item = self.items[self.next].clone();
         let result = (|| {
             let meta = t.reader.metadata()?;
-            platform::set_file_mode(&t.writer, platform::mode(&meta) & 0o7777)?;
+            platform::set_file_mode(&t.writer, platform::unix_mode(&meta) & 0o7777)?;
             if let Ok(mtime) = meta.modified() {
                 t.writer.set_modified(mtime)?;
             }
@@ -518,7 +518,7 @@ impl Operation {
     /// Copy done; on a cross-disk Move, the source still needs to be deleted.
     fn complete_copy(&mut self, src: &Path) {
         if self.kind == OpKind::Move
-            && let Err(e) = fs::remove_file(src)
+            && let Err(e) = platform::remove_file(src)
         {
             self.errors
                 .push(format!("{}: copied but not removed: {e}", src.display()));
@@ -591,18 +591,8 @@ pub fn check_name(name: &str) -> Result<(), String> {
     } else if let Some(c) = name.chars().find(|&c| std::path::is_separator(c)) {
         Err(format!("Name cannot contain '{c}'"))
     } else {
-        Ok(())
+        platform::check_name(name)
     }
-}
-
-/// Interprets octal permissions, e.g.: "644" or "0755".
-pub fn parse_mode(text: &str) -> Result<u32, String> {
-    let text = text.trim();
-    let valid = (3..=4).contains(&text.len()) && text.chars().all(|c| ('0'..='7').contains(&c));
-    if !valid {
-        return Err("Permissions must be 3 or 4 octal digits, e.g. 644".into());
-    }
-    u32::from_str_radix(text, 8).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -951,14 +941,10 @@ mod tests {
     }
 
     #[test]
-    fn validates_names_and_modes() {
+    fn validates_names() {
         assert!(check_name("ok.txt").is_ok());
         assert!(check_name("").is_err());
         assert!(check_name("..").is_err());
         assert!(check_name("a/b").is_err());
-        assert_eq!(parse_mode("644"), Ok(0o644));
-        assert_eq!(parse_mode("4755"), Ok(0o4755));
-        assert!(parse_mode("8").is_err());
-        assert!(parse_mode("rwx").is_err());
     }
 }

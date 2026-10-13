@@ -357,7 +357,7 @@ fn add(writer: &mut Writer, item: &ArchiveItem) -> io::Result<()> {
         Writer::Zip(z) => {
             let meta = std::fs::symlink_metadata(&item.path)?;
             let mut opts = zip::write::SimpleFileOptions::default()
-                .unix_permissions(crate::platform::mode(&meta) & 0o7777);
+                .unix_permissions(crate::platform::unix_mode(&meta) & 0o7777);
             if let Ok(t) = meta.modified() {
                 use chrono::{Datelike, Timelike};
                 let t = chrono::DateTime::<Local>::from(t);

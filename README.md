@@ -73,6 +73,42 @@ xt() {
 With it, `xt` works as before; only when you quit with **Alt+Q** does the shell
 end up in the directory you were in inside xt. `Q` and F10 quit without changing anything.
 
+## Windows (experimental)
+
+xt also builds for Windows (Windows Terminal or the classic console). It
+passes the automated tests there, but has not been used day to day yet, so
+expect rough edges. It installs the same way (Rust via rustup, then
+`cargo install --git ...`); each CI run also produces an `xt.exe`.
+
+What changes on Windows:
+
+- **Attributes** (`A`) edits R, H, S and A, as in ZTreeWin: `RA` sets exactly
+  those, `+H -A` turns some on or off. The file list shows them as `r-sa`.
+- **Hidden** files and directories are the ones with the H attribute (a name
+  starting with a dot is an ordinary name).
+- **eXecute** and **Edit** go through `cmd`, with names in double quotes. A
+  `%NAME%` inside a file name is still expanded by `cmd`.
+- The default editor is `notepad`, `O` uses `start`, and Ctrl+B suggests
+  `xt-batch.bat` (starting with `@echo off`).
+- Deleting a read-only file deletes it, as `rm` does on Linux.
+- Copying symbolic links needs Developer Mode or administrator rights.
+- Configuration in `%APPDATA%\xt\config.toml`, history in
+  `%LOCALAPPDATA%\xt\`.
+
+For **Alt+Q** in PowerShell, put this in your `$PROFILE`:
+
+```powershell
+function xt {
+    $tmp = New-TemporaryFile
+    xt.exe --cwd-file $tmp @args
+    $dir = Get-Content -Raw -Encoding UTF8 $tmp
+    Remove-Item $tmp
+    if ($dir -and (Test-Path -LiteralPath $dir -PathType Container)) {
+        Set-Location -LiteralPath $dir
+    }
+}
+```
+
 ## Configuration
 
 The easiest way is the **configuration screen: F12** (or Alt+F10, as in
@@ -415,7 +451,9 @@ In the tree, a `+` on the connector (`├─+`) marks a collapsed directory that
 ### For later
 
 - `.deb` package (license and maintainer still to be decided)
-- Windows version (and maybe macOS)
+- Windows version: builds and passes the tests (see
+  [Windows (experimental)](#windows-experimental)); still to be tried in daily use.
+  Maybe macOS
 - the items under "Not implemented" below
 
 ## Comparison with ZTreeWin
@@ -442,7 +480,7 @@ screen (Alt+F10).
 | Filespec | name with its own name and extension rules, date, size, attribute, inverted filespec (Ctrl+I), labels | glob for names, date and size as in ZTreeWin (with K/M/G); no attributes, inversion or labels |
 | Viewer | Alpha, Dump, Hex, Junk and Wrap modes; character sets; hex editing; bookmarks; auto-scroll | text (UTF-8) or hex, with ZTreeWin's search (F, B, /, \\, Space, + and -), syntax colors (which ZTreeWin does not have), no line wrapping; up to 16 MiB |
 | Ctrl+S | text, hex or Unicode; searches only the ZIP index | text or hex |
-| Attributes | Windows attributes (R, A, S, H) | Unix permissions in octal (`644`); no owner/group |
+| Attributes | Windows attributes (R, A, S, H) | Unix permissions in octal (`644`); no owner/group. On Windows, R, H, S and A, as in ZTreeWin |
 | Sort | Name, Ext, Date, Time, Length, Alpha, nuMber, Size, Value, Unsorted; Charset; same/diff in split screen | Name, Ext, Date, Size, ascending/descending, Path first; each window has its own order |
 | Compare | options Identical, Unique, Newer, Older, Size, Binary, Case; display filter | tags unique, newer, older, identical, different or unique+newer; no binary comparison |
 | Prune | deletes only the subdirectories or the current one too; only empty directories; recycle bin | always deletes the whole directory, permanently; configurable confirmation |

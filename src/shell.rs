@@ -187,6 +187,20 @@ fn split_ext(name: &[u8]) -> (&[u8], &[u8]) {
     }
 }
 
+/// Default file for Ctrl+B.
+#[cfg(unix)]
+pub const BATCH_FILE: &str = "xt-batch.sh";
+#[cfg(unix)]
+pub const NEWLINE: &[u8] = b"\n";
+
+/// First line of a Batch file that is a script.
+#[cfg(unix)]
+pub fn batch_header(file: &Path) -> Option<&'static [u8]> {
+    file.extension()
+        .is_some_and(|e| e == "sh")
+        .then_some(b"#!/bin/sh\n".as_slice())
+}
+
 #[cfg(unix)]
 const DEFAULT_OPENER: &str = "xdg-open";
 #[cfg(unix)]
@@ -223,6 +237,20 @@ fn quote(s: &[u8]) -> Vec<u8> {
 fn in_path(name: &str) -> bool {
     std::env::var_os("PATH")
         .is_some_and(|paths| std::env::split_paths(&paths).any(|dir| dir.join(name).is_file()))
+}
+
+/// Default file for Ctrl+B.
+#[cfg(windows)]
+pub const BATCH_FILE: &str = "xt-batch.bat";
+#[cfg(windows)]
+pub const NEWLINE: &[u8] = b"\r\n";
+
+/// First line of a Batch file that is a script.
+#[cfg(windows)]
+pub fn batch_header(file: &Path) -> Option<&'static [u8]> {
+    file.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("bat") || e.eq_ignore_ascii_case("cmd"))
+        .then_some(b"@echo off\r\n".as_slice())
 }
 
 #[cfg(windows)]

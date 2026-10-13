@@ -46,10 +46,7 @@ Options:
                      directory to FILE, for a shell function to cd into it
   --default-config   print a commented configuration file
   -h, --help         show this help
-  -V, --version      show the version
-
-Configuration: ~/.config/xt/config.toml (or $XDG_CONFIG_HOME/xt/config.toml).
-Inside xt, press F1 for the list of keys.";
+  -V, --version      show the version";
 
 fn main() -> anyhow::Result<()> {
     let mut root = None;
@@ -62,7 +59,11 @@ fn main() -> anyhow::Result<()> {
                 None => bail!("--cwd-file needs a file name\n\n{USAGE}"),
             },
             Some("-h" | "--help") => {
-                println!("{USAGE}");
+                let config =
+                    config::Config::path().map_or_else(|| "-".into(), |p| p.display().to_string());
+                println!(
+                    "{USAGE}\n\nConfiguration: {config}\nInside xt, press F1 for the list of keys."
+                );
                 return Ok(());
             }
             Some("-V" | "--version") => {

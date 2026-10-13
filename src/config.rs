@@ -17,8 +17,8 @@ use crate::pane::FileDisplay;
 
 /// Commented example, printed by `xt --default-config`. The values are the
 /// defaults: a file with only this is the same as having no file.
-pub const DEFAULT_CONFIG: &str = r##"# xt configuration: ~/.config/xt/config.toml
-# (or $XDG_CONFIG_HOME/xt/config.toml). Everything is optional. The
+pub const DEFAULT_CONFIG: &str = r##"# xt configuration: ~/.config/xt/config.toml (or $XDG_CONFIG_HOME/xt/)
+# on Linux, %APPDATA%\xt\config.toml on Windows. Everything is optional. The
 # configuration screen (F12 inside xt) changes these values and keeps the comments.
 
 # Theme: "classic" (XTree blue), "dark", "light", "mono" (the terminal's
@@ -26,9 +26,11 @@ pub const DEFAULT_CONFIG: &str = r##"# xt configuration: ~/.config/xt/config.tom
 theme = "classic"
 
 [options]
-# Editor for the E key. Empty: $VISUAL, $EDITOR, editor or vi.
+# Editor for the E key. Empty: $VISUAL, $EDITOR, editor or vi (notepad on
+# Windows).
 editor = ""
-# Program for the O key (open with the default program). Empty: xdg-open.
+# Program for the O key (open with the default program). Empty: xdg-open
+# (start on Windows).
 opener = ""
 # Dates: "yyyy-mm-dd", "dd/mm/yyyy" or "mm/dd/yyyy".
 date_format = "yyyy-mm-dd"
@@ -124,7 +126,7 @@ impl Default for Config {
 pub struct Options {
     /// Editor for the E key; empty uses the environment variables.
     pub editor: String,
-    /// Program for the O key; empty uses xdg-open.
+    /// Program for the O key; empty uses xdg-open (start on Windows).
     pub opener: String,
     pub date_format: DateFormat,
     pub number_format: NumberFormat,
