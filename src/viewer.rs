@@ -45,6 +45,8 @@ pub enum Action {
     Last,
     /// Ctrl+V: untags the current file.
     Untag,
+    /// Opens the file in the editor.
+    Edit,
     /// Asks for the term and searches.
     Search {
         forward: bool,
@@ -89,6 +91,9 @@ pub struct Viewer {
     colors: Option<Highlighter>,
     /// Colors shown (C toggles).
     pub colors_on: bool,
+    /// Read from a file on disk (not help, an info screen or an archive
+    /// entry): it can be edited and reloaded.
+    pub on_disk: bool,
 }
 
 /// A piece of a displayed line: text, its color and whether it is part of
@@ -103,7 +108,24 @@ impl Viewer {
         let size = file.metadata()?.len();
         let mut data = Vec::new();
         file.take(limit).read_to_end(&mut data)?;
-        Ok(Self::from_bytes(path, size, data))
+        Ok(Viewer {
+            on_disk: true,
+            ..Self::from_bytes(path, size, data)
+        })
+    }
+
+    /// Reads the file again (after editing), keeping the position, the mode
+    /// and whether colors are on.
+    pub fn reload(&mut self) -> io::Result<()> {
+        let new = Self::open_limited(self.path.clone(), MAX_BYTES)?;
+        let old = std::mem::replace(self, new);
+        self.mode = old.mode;
+        self.top = old.top.min(self.line_count().saturating_sub(1));
+        self.left = old.left;
+        self.page = old.page;
+        self.width = old.width;
+        self.colors_on = old.colors_on && self.colors.is_some();
+        Ok(())
     }
 
     /// Autoview scrolling (Shift+arrows): only moves the content.
@@ -148,6 +170,7 @@ impl Viewer {
             hit: None,
             forward: true,
             note: None,
+            on_disk: false,
         }
     }
 
@@ -324,6 +347,7 @@ impl Viewer {
                 'n' => Action::Next,
                 'p' => Action::Prev,
                 'u' => Action::Untag,
+                'e' => Action::Edit,
                 _ => Action::None,
             },
             KeyCode::F(9) => Action::Search {
@@ -545,6 +569,29 @@ mod tests {
         assert!(row.ends_with("|Hello.|"));
         let data = vec![b'a'; 20];
         assert!(hex_row(&data, 16).starts_with("00000010  61 61 61 61    "));
+    }
+
+    #[test]
+    fn reload_keeps_position_and_mode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("a.txt");
+        let lines = |n: usize| (0..n).map(|i| format!("line {i}\n")).collect::<String>();
+        std::fs::write(&path, lines(100)).unwrap();
+        let mut v = Viewer::open_limited(path.clone(), MAX_BYTES).unwrap();
+        assert!(v.on_disk);
+        v.top = 50;
+        std::fs::write(&path, lines(120)).unwrap();
+        v.reload().unwrap();
+        assert_eq!((v.top, v.line_count()), (50, 120));
+        assert_eq!(v.visible_lines(1)[0], "line 50");
+
+        // Shorter file: the position stays inside it; hex stays hex.
+        press(&mut v, KeyCode::Char('h'));
+        v.top = 0;
+        std::fs::write(&path, "x").unwrap();
+        v.reload().unwrap();
+        assert_eq!((v.mode, v.top), (ViewMode::Hex, 0));
+        assert!(!viewer(b"text").on_disk, "bytes are not a file on disk");
     }
 
     #[test]

@@ -419,7 +419,9 @@ readable on the current theme's background, the classic blue included. Only
 the first 20,000 lines are colored, so huge files never slow the viewer down.
 
 **Viewer:** arrows/PgUp/PgDn/Home/End scroll, ←→ scroll horizontally,
-`H` toggles text/hex, `Esc` closes. Binary files open in hex.
+`H` toggles text/hex, **E** opens the file in the configured editor (back in
+xt, the viewer shows the new contents at the same place; not for files inside
+archives), `Esc` closes. Binary files open in hex.
 Files over 16 MiB show only the beginning. Search, as in ZTreeWin:
 **F** searches from the start, **B** backwards from the end, **/** (or S) from
 the current page and **\\** backwards from it; **Space**

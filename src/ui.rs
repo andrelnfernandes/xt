@@ -982,7 +982,7 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
     let lines = if let Some(prompt) = &app.prompt {
         prompt_lines(frame, prompt, menu)
     } else {
-        let mut words = vec!["Find", "Backward", "Hex", "Colors"];
+        let mut words = vec!["Find", "Backward", "Hex", "Colors", "Edit"];
         if tagged.is_some() {
             words.extend(["Next", "Prev", "Untag"]);
         }
