@@ -65,6 +65,9 @@ compare_ignore_2s = true
 compare_ignore_1h = false
 # Re-read the current directory by itself when another program changes it.
 auto_refresh = true
+# Git commands (Ctrl+G) and each file's Git status in the file list. Not in
+# XTree or ZTreeWin, so off by default; needs the git program.
+git = false
 
 # Individual colors, on top of the theme. Values: names ("yellow",
 # "lightblue", "darkgray"...), "#rrggbb" or an index from 0 to 255.
@@ -146,6 +149,8 @@ pub struct Options {
     pub compare_ignore_2s: bool,
     pub compare_ignore_1h: bool,
     pub auto_refresh: bool,
+    /// Git menu (Ctrl+G) and status markers in the file list.
+    pub git: bool,
 }
 
 impl Default for Options {
@@ -167,6 +172,7 @@ impl Default for Options {
             compare_ignore_2s: true,
             compare_ignore_1h: false,
             auto_refresh: true,
+            git: false,
         }
     }
 }
@@ -201,6 +207,7 @@ impl Options {
             ("compare_ignore_2s", Value::from(self.compare_ignore_2s)),
             ("compare_ignore_1h", Value::from(self.compare_ignore_1h)),
             ("auto_refresh", Value::from(self.auto_refresh)),
+            ("git", Value::from(self.git)),
         ]
     }
 

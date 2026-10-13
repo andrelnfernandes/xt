@@ -5,6 +5,7 @@
 mod app;
 mod archive;
 mod config;
+mod git;
 mod highlight;
 mod info;
 mod input;
@@ -246,6 +247,7 @@ fn run(
             };
             w.watch_only(dirs);
         }
+        app.refresh_git();
         terminal.draw(|frame| ui::draw(frame, app))?;
         // With work in progress (log, copy...), don't block waiting for a key:
         // process a chunk and redraw the progress.
