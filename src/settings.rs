@@ -4,7 +4,7 @@
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::config::{self, Choice, Config, THEMES, Theme};
+use crate::config::{self, Choice, Config, CopyPaths, THEMES, Theme};
 use crate::input::{LineEvent, LineInput};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,6 +26,7 @@ pub enum Opt {
     CompareIgnore1h,
     AutoRefresh,
     Git,
+    CopyPaths,
 }
 
 type Page = (&'static str, &'static [(char, &'static str, Opt)]);
@@ -78,7 +79,7 @@ pub const PAGES: &[Page] = &[
         ],
     ),
     (
-        "Compare and refresh",
+        "Copy, compare and refresh",
         &[
             (
                 'A',
@@ -91,6 +92,11 @@ pub const PAGES: &[Page] = &[
                 Opt::CompareIgnore1h,
             ),
             ('C', "Automatically refresh directories", Opt::AutoRefresh),
+            (
+                'D',
+                "Alt+C / Alt+M recreate paths from (F7 at the prompt)",
+                Opt::CopyPaths,
+            ),
         ],
     ),
 ];
@@ -141,6 +147,13 @@ impl Opt {
             Opt::CompareIgnore1h => yes_no(o.compare_ignore_1h),
             Opt::AutoRefresh => yes_no(o.auto_refresh),
             Opt::Git => yes_no(o.git),
+            Opt::CopyPaths => match o.copy_paths {
+                CopyPaths::Full => "Full (root of the disk)",
+                CopyPaths::Tree => "Tree (root of xt's tree)",
+                CopyPaths::Current => "Current (current directory, with its name)",
+                CopyPaths::Relative => "Relative (below the current directory)",
+            }
+            .into(),
         }
     }
 
@@ -165,6 +178,7 @@ impl Opt {
             Opt::CompareIgnore1h => o.compare_ignore_1h = !o.compare_ignore_1h,
             Opt::AutoRefresh => o.auto_refresh = !o.auto_refresh,
             Opt::Git => o.git = !o.git,
+            Opt::CopyPaths => o.copy_paths = o.copy_paths.next(),
         }
         true
     }
