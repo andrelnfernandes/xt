@@ -3887,6 +3887,15 @@ mod tests {
         })
     }
 
+    /// Waits until `path` has exactly `text`: the opener runs in the
+    /// background and may have created the file without finishing it.
+    fn wait_for_text(path: &Path, text: &str) -> bool {
+        (0..100).any(|_| {
+            std::thread::sleep(Duration::from_millis(20));
+            fs::read_to_string(path).is_ok_and(|t| t == text)
+        })
+    }
+
     #[test]
     fn o_opens_with_the_default_program() {
         let (tmp, mut app) = sample();
@@ -3911,8 +3920,7 @@ mod tests {
         alt_f5(&mut app);
         press(&mut app, KeyCode::Enter);
         press(&mut app, KeyCode::Char('o'));
-        assert!(wait_for(&out.join("README")));
-        assert_eq!(fs::read_to_string(out.join("README")).unwrap(), "leia-me");
+        assert!(wait_for_text(&out.join("README"), "leia-me"));
     }
 
     #[test]
