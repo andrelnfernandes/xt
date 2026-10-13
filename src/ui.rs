@@ -357,7 +357,9 @@ fn file_style(f: &FileEntry) -> Style {
         _ if f.tagged => Style::new().fg(theme().tagged).add_modifier(Modifier::BOLD),
         FileKind::Symlink => Style::new().fg(theme().symlink),
         FileKind::Other => Style::new().fg(theme().special),
-        FileKind::File if f.mode & 0o111 != 0 => Style::new().fg(theme().executable),
+        FileKind::File if crate::platform::is_executable(&f.name, f.mode) => {
+            Style::new().fg(theme().executable)
+        }
         FileKind::File => Style::new(),
     }
 }
@@ -426,11 +428,11 @@ fn draw_stats(frame: &mut Frame, app: &App, area: Rect) {
         Line::default(),
     ];
 
-    if let Some((total, free)) = disk_space(&app.tree.path(id)) {
+    if let Some(disk) = crate::platform::disk_space(&app.tree.path(id)) {
         lines.extend([
             label("DISK"),
-            value("Total", fmt_num(total)),
-            value("Free", fmt_num(free)),
+            value("Total", fmt_num(disk.total)),
+            value("Free", fmt_num(disk.available)),
             Line::default(),
         ]);
     }
@@ -1062,12 +1064,6 @@ fn menu_line(title: &str, entries: &[(&str, &str)]) -> Line<'static> {
     Line::from(spans)
 }
 
-fn disk_space(path: &std::path::Path) -> Option<(u64, u64)> {
-    let s = nix::sys::statvfs::statvfs(path).ok()?;
-    let frag = s.fragment_size() as u64;
-    Some((s.blocks() as u64 * frag, s.blocks_available() as u64 * frag))
-}
-
 /// Cuts or pads with spaces to fit `width` columns.
 fn fit(s: &str, width: usize) -> String {
     let len = s.chars().count();
@@ -1117,7 +1113,8 @@ fn fmt_time(t: SystemTime) -> String {
         .to_string()
 }
 
-/// Permissions in `ls -l` format, e.g.: "-rwxr-xr-x".
+/// Permissions in `ls -l` format, e.g.: "-rwxr-xr-x" (on Windows, the
+/// attributes: "-r--a").
 fn fmt_mode(mode: u32, kind: FileKind) -> String {
     let mut s = String::with_capacity(10);
     s.push(match kind {
@@ -1125,12 +1122,7 @@ fn fmt_mode(mode: u32, kind: FileKind) -> String {
         FileKind::Symlink => 'l',
         FileKind::Other => '?',
     });
-    for shift in [6, 3, 0] {
-        let bits = (mode >> shift) & 0o7;
-        s.push(if bits & 4 != 0 { 'r' } else { '-' });
-        s.push(if bits & 2 != 0 { 'w' } else { '-' });
-        s.push(if bits & 1 != 0 { 'x' } else { '-' });
-    }
+    s.push_str(&crate::platform::format_mode(mode));
     s
 }
 
@@ -1149,6 +1141,7 @@ mod tests {
         assert_eq!(group_digits(1234567, None), "1234567");
     }
 
+    #[cfg(unix)]
     #[test]
     fn formats_modes() {
         assert_eq!(fmt_mode(0o755, FileKind::File), "-rwxr-xr-x");

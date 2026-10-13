@@ -11,7 +11,7 @@ use crate::archive::{self, EntryKind};
 use crate::input::Command;
 use crate::model::filespec::Filespec;
 use crate::model::sort::{self, Sort};
-use crate::model::tree::{FileEntry, FileKind, NodeId, ROOT, Tree, VisibleRow, is_hidden};
+use crate::model::tree::{FileEntry, FileKind, NodeId, ROOT, Tree, VisibleRow};
 use crate::ops::Source;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -144,7 +144,7 @@ impl Pane {
                     name: e.path.file_name().unwrap_or_default().to_os_string(),
                     size: e.size,
                     modified: e.modified,
-                    mode: e.mode,
+                    mode: crate::platform::from_unix_mode(e.mode),
                     kind: match e.kind {
                         EntryKind::File => FileKind::File,
                         EntryKind::Symlink => FileKind::Symlink,
@@ -262,7 +262,7 @@ impl Pane {
         let mut refs = Vec::new();
         for dir in self.tree.visible_subtree(id) {
             for (idx, f) in self.tree.node(dir).files.iter().enumerate() {
-                let shown = self.tree.show_hidden || !is_hidden(&f.name);
+                let shown = self.tree.show_hidden || !f.is_hidden();
                 if shown && self.filespec.matches_entry(f) {
                     refs.push(FileRef { dir, idx });
                 }
@@ -402,7 +402,7 @@ impl Pane {
             .children
             .iter()
             .copied()
-            .filter(|&c| show_hidden || !is_hidden(&self.tree.node(c).name))
+            .filter(|&c| show_hidden || !self.tree.node(c).hidden)
             .collect()
     }
 
@@ -587,7 +587,7 @@ impl Pane {
         let mut files = Vec::new();
         for (rank, dir) in dirs.into_iter().enumerate() {
             for (idx, f) in self.tree.node(dir).files.iter().enumerate() {
-                let shown = self.tree.show_hidden || !is_hidden(&f.name);
+                let shown = self.tree.show_hidden || !f.is_hidden();
                 if shown && self.filespec.matches_entry(f) {
                     files.push((FileRef { dir, idx }, rank));
                 }
@@ -605,9 +605,10 @@ impl Pane {
     }
 }
 
-/// "/home/an" → ("/home/", "an"); "/home/" → ("/home/", "").
+/// "/home/an" → ("/home/", "an"); "/home/" → ("/home/", ""). On Windows,
+/// `\` also separates.
 fn split_partial(text: &str) -> (&str, &str) {
-    match text.rfind('/') {
+    match text.rfind(std::path::is_separator) {
         Some(i) => (&text[..=i], &text[i + 1..]),
         None => ("", text),
     }

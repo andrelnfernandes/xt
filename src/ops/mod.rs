@@ -8,11 +8,11 @@
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read, Write};
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use crate::archive;
+use crate::platform;
 
 const CHUNK: usize = 1024 * 1024;
 
@@ -334,7 +334,7 @@ impl Operation {
             let removed = if item.is_dir {
                 fs::remove_dir(&item.src)
             } else {
-                fs::remove_file(&item.src)
+                platform::remove_file(&item.src)
             };
             match removed {
                 Ok(()) => {
@@ -356,7 +356,8 @@ impl Operation {
         };
         if let Ok(dst_meta) = fs::symlink_metadata(&item.dst) {
             if let Some(src_meta) = &src_meta
-                && (dst_meta.dev(), dst_meta.ino()) == (src_meta.dev(), src_meta.ino())
+                && let Some(dst_id) = platform::file_id(&item.dst, &dst_meta)
+                && platform::file_id(&item.src, src_meta) == Some(dst_id)
             {
                 return self.fail(&item.src, "source and destination are the same file");
             }
@@ -402,7 +403,8 @@ impl Operation {
             // Copies the link, not the file it points to.
             let result = fs::read_link(&item.src).and_then(|target| {
                 let tmp = tmp_path(&item.dst);
-                std::os::unix::fs::symlink(target, &tmp)?;
+                let is_dir = fs::metadata(&item.src).is_ok_and(|m| m.is_dir());
+                platform::symlink(&target, &tmp, is_dir)?;
                 fs::rename(&tmp, &item.dst)
             });
             match result {
@@ -442,7 +444,7 @@ impl Operation {
             let mut file = File::create(&tmp)?;
             source.reader.extract(entry, &mut file, u64::MAX)?;
             if let Some(info) = &info {
-                file.set_permissions(fs::Permissions::from_mode(info.mode))?;
+                platform::set_file_mode(&file, info.mode)?;
                 if let Some(t) = info.modified {
                     file.set_modified(t)?;
                 }
@@ -496,9 +498,7 @@ impl Operation {
         let item = self.items[self.next].clone();
         let result = (|| {
             let meta = t.reader.metadata()?;
-            t.writer.set_permissions(fs::Permissions::from_mode(
-                meta.permissions().mode() & 0o7777,
-            ))?;
+            platform::set_file_mode(&t.writer, platform::unix_mode(&meta) & 0o7777)?;
             if let Ok(mtime) = meta.modified() {
                 t.writer.set_modified(mtime)?;
             }
@@ -518,7 +518,7 @@ impl Operation {
     /// Copy done; on a cross-disk Move, the source still needs to be deleted.
     fn complete_copy(&mut self, src: &Path) {
         if self.kind == OpKind::Move
-            && let Err(e) = fs::remove_file(src)
+            && let Err(e) = platform::remove_file(src)
         {
             self.errors
                 .push(format!("{}: copied but not removed: {e}", src.display()));
@@ -563,10 +563,11 @@ fn tmp_path(dst: &Path) -> PathBuf {
 /// start from `base`, and `.`/`..` are resolved in the text.
 pub fn resolve_path(input: &str, base: &Path) -> PathBuf {
     let input = input.trim();
-    let home = std::env::var_os("HOME").map(PathBuf::from);
-    let path = match (input.strip_prefix('~'), home) {
-        (Some(rest), Some(home)) if rest.is_empty() || rest.starts_with('/') => {
-            home.join(rest.trim_start_matches('/'))
+    let path = match (input.strip_prefix('~'), platform::home_dir()) {
+        (Some(rest), Some(home))
+            if rest.is_empty() || rest.starts_with(std::path::is_separator) =>
+        {
+            home.join(rest.trim_start_matches(std::path::is_separator))
         }
         _ => PathBuf::from(input),
     };
@@ -587,26 +588,19 @@ pub fn resolve_path(input: &str, base: &Path) -> PathBuf {
 pub fn check_name(name: &str) -> Result<(), String> {
     if name.is_empty() || name == "." || name == ".." {
         Err("Invalid name".into())
-    } else if name.contains('/') {
-        Err("Name cannot contain '/'".into())
+    } else if let Some(c) = name.chars().find(|&c| std::path::is_separator(c)) {
+        Err(format!("Name cannot contain '{c}'"))
     } else {
-        Ok(())
+        platform::check_name(name)
     }
-}
-
-/// Interprets octal permissions, e.g.: "644" or "0755".
-pub fn parse_mode(text: &str) -> Result<u32, String> {
-    let text = text.trim();
-    let valid = (3..=4).contains(&text.len()) && text.chars().all(|c| ('0'..='7').contains(&c));
-    if !valid {
-        return Err("Permissions must be 3 or 4 octal digits, e.g. 644".into());
-    }
-    u32::from_str_radix(text, 8).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+    #[cfg(unix)]
     use std::os::unix::fs::symlink;
 
     fn src(path: &Path) -> Source {
@@ -637,6 +631,7 @@ mod tests {
             .all(|e| !e.unwrap().file_name().to_string_lossy().ends_with(".tmp"))
     }
 
+    #[cfg(unix)]
     #[test]
     fn copies_into_directory_preserving_metadata() {
         let (_tmp, a, b) = setup();
@@ -770,6 +765,7 @@ mod tests {
         assert_eq!(fs::read_to_string(a.join("one.txt")).unwrap(), "one");
     }
 
+    #[cfg(unix)]
     #[test]
     fn overwriting_a_symlink_replaces_the_link_not_its_target() {
         let (tmp, a, b) = setup();
@@ -791,6 +787,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn copies_symlinks_as_links() {
         let (_tmp, a, b) = setup();
@@ -860,6 +857,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn extracts_from_archives_with_or_without_paths() {
         let (tmp, _a, b) = setup();
@@ -906,6 +904,7 @@ mod tests {
         assert!(no_temp_files(&b));
     }
 
+    #[cfg(unix)]
     #[test]
     fn prunes_files_then_dirs_deepest_first() {
         let (tmp, a, _b) = setup();
@@ -934,7 +933,7 @@ mod tests {
         let base = Path::new("/base");
         assert_eq!(resolve_path("sub", base), Path::new("/base/sub"));
         assert_eq!(resolve_path(" /abs ", base), Path::new("/abs"));
-        let home = PathBuf::from(std::env::var_os("HOME").unwrap());
+        let home = platform::home_dir().unwrap();
         assert_eq!(resolve_path("~", base), home);
         assert_eq!(resolve_path("~/x", base), home.join("x"));
         assert_eq!(resolve_path("~x", base), Path::new("/base/~x"));
@@ -942,14 +941,10 @@ mod tests {
     }
 
     #[test]
-    fn validates_names_and_modes() {
+    fn validates_names() {
         assert!(check_name("ok.txt").is_ok());
         assert!(check_name("").is_err());
         assert!(check_name("..").is_err());
         assert!(check_name("a/b").is_err());
-        assert_eq!(parse_mode("644"), Ok(0o644));
-        assert_eq!(parse_mode("4755"), Ok(0o4755));
-        assert!(parse_mode("8").is_err());
-        assert!(parse_mode("rwx").is_err());
     }
 }
