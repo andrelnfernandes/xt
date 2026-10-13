@@ -1143,6 +1143,53 @@ impl App {
         self.sticky = MenuMode::Git;
     }
 
+    /// The file can be compared with its last committed version (Git on,
+    /// and the file changed, staged or not; untracked files have none).
+    pub fn can_diff(&self, file: &Path) -> bool {
+        self.options.git
+            && self
+                .git_status
+                .marker(file)
+                .is_some_and(|xy| xy != *b"??" && xy != *b"!!")
+    }
+
+    /// D in the viewer: from the file to its `git diff HEAD`, and back.
+    fn toggle_diff(&mut self) {
+        let Some(v) = self.viewer.take() else {
+            return;
+        };
+        if let Some(file) = v.behind {
+            self.viewer = Some(*file);
+            return;
+        }
+        let mut v = v;
+        if !v.on_disk || !self.can_diff(&v.path) {
+            if self.options.git {
+                v.note = Some("No changes since the last commit".into());
+            }
+            self.viewer = Some(v);
+            return;
+        }
+        let root = v.path.parent().and_then(git::repo_root);
+        match root.map(|root| git::report(git::Action::Diff, &root, std::slice::from_ref(&v.path)))
+        {
+            Some(Ok(r)) => {
+                let name = v.path.file_name().unwrap_or_default().to_string_lossy();
+                let title = PathBuf::from(format!("git diff {name}"));
+                let size = r.text.len() as u64;
+                let mut diff =
+                    Viewer::from_bytes(title, size, r.text).colored_as(Path::new(r.colors_of));
+                diff.behind = Some(Box::new(v));
+                self.viewer = Some(diff);
+            }
+            Some(Err(e)) => {
+                v.note = Some(format!("Git: {e}"));
+                self.viewer = Some(v);
+            }
+            None => self.viewer = Some(v),
+        }
+    }
+
     /// A letter of the Git menu: on the tagged files of the list, else the
     /// current file, or the current directory in the tree.
     fn git_action(&mut self, key: KeyEvent) {
@@ -1723,15 +1770,29 @@ impl App {
     pub fn after_external(&mut self, result: std::io::Result<std::process::ExitStatus>) {
         let dirs: Vec<PathBuf> = self.watched_dirs().into_iter().collect();
         self.rescan_everywhere(&dirs);
-        // Back from the editor (E in the viewer): shows the new contents.
-        if let Some(v) = &mut self.viewer
-            && v.on_disk
-            && let Err(e) = v.reload()
-        {
-            self.viewer = None;
-            self.tagged_view = None;
-            self.message = Some(format!("Cannot view file: {e}"));
-            return;
+        // Back from the editor (E in the viewer): shows the new contents
+        // (in a diff, the new diff).
+        if let Some(v) = &mut self.viewer {
+            let in_diff = v.behind.is_some();
+            let file = match &mut v.behind {
+                Some(file) => &mut **file,
+                None => v,
+            };
+            if file.on_disk
+                && let Err(e) = file.reload()
+            {
+                self.viewer = None;
+                self.tagged_view = None;
+                self.message = Some(format!("Cannot view file: {e}"));
+                return;
+            }
+            if in_diff {
+                let file = self.viewer.take().and_then(|v| v.behind).map(|b| *b);
+                self.viewer = file;
+                self.git_status.invalidate();
+                self.refresh_git();
+                self.toggle_diff();
+            }
         }
         self.message = match result {
             Ok(status) if status.success() => None,
@@ -2215,10 +2276,16 @@ impl App {
                 self.viewer = None;
                 self.tagged_view = None;
             }
+            ViewerAction::Diff => self.toggle_diff(),
             ViewerAction::Edit => {
                 let current = self.current_path();
                 let Some(v) = &mut self.viewer else {
                     return;
+                };
+                // In a diff, the file it shows.
+                let v = match &mut v.behind {
+                    Some(file) => file,
+                    None => v,
                 };
                 if !v.on_disk {
                     v.note = Some("Only files on disk can be edited".into());
@@ -3407,6 +3474,66 @@ mod tests {
         ctrl(&mut app, 'g');
         press(&mut app, KeyCode::Char('b'));
         assert_eq!(app.message.as_deref(), Some("Blame works on one file"));
+    }
+
+    #[test]
+    fn d_in_viewer_shows_the_git_diff() {
+        let (tmp, mut app) = sample();
+        let config = Config {
+            options: Options {
+                git: true,
+                ..Options::default()
+            },
+            ..Config::default()
+        };
+        app.apply_config(&config).unwrap();
+        let root = tmp.path();
+        git::git_ok(root, &["init", "-q"]);
+        git::git_ok(root, &["add", "."]);
+        git::git_ok(root, &["commit", "-q", "-m", "first"]);
+        write(root.join("a.rs"), "fn main() {}\nfn new() {}\n").unwrap();
+        app.apply(Command::Relog);
+        app.refresh_git();
+
+        // b.txt did not change: no diff.
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Char('v'));
+        assert!(!app.can_diff(&app.viewer.as_ref().unwrap().path));
+        press(&mut app, KeyCode::Char('d'));
+        let v = app.viewer.as_ref().unwrap();
+        assert_eq!(v.note.as_deref(), Some("No changes since the last commit"));
+        assert!(v.behind.is_none());
+        press(&mut app, KeyCode::Esc);
+
+        // a.rs changed: D shows the diff, D again the file, where it was.
+        press(&mut app, KeyCode::Up);
+        press(&mut app, KeyCode::Char('v'));
+        app.viewer.as_mut().unwrap().top = 1;
+        press(&mut app, KeyCode::Char('d'));
+        let v = app.viewer.as_ref().unwrap();
+        assert_eq!(v.path, Path::new("git diff a.rs"));
+        assert!(v.visible_lines(20).iter().any(|l| l == "+fn new() {}"));
+        press(&mut app, KeyCode::Char('d'));
+        let v = app.viewer.as_ref().unwrap();
+        assert!(v.on_disk && v.behind.is_none());
+        assert_eq!(v.top, 1);
+
+        // E in the diff edits the file; on return, the diff is new.
+        press(&mut app, KeyCode::Char('d'));
+        press(&mut app, KeyCode::Char('e'));
+        let ext = app.external.take().expect("editor");
+        assert!(ext.line.to_string_lossy().contains("a.rs"));
+        write(root.join("a.rs"), "fn main() {}\nfn newer() {}\n").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(600));
+        app.after_external(Ok(std::process::ExitStatus::default()));
+        let v = app.viewer.as_ref().unwrap();
+        assert!(v.behind.is_some(), "still in the diff");
+        assert!(v.visible_lines(20).iter().any(|l| l == "+fn newer() {}"));
+
+        // Esc closes both.
+        press(&mut app, KeyCode::Esc);
+        assert!(app.viewer.is_none());
     }
 
     #[test]

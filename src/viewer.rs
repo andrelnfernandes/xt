@@ -47,6 +47,8 @@ pub enum Action {
     Untag,
     /// Opens the file in the editor.
     Edit,
+    /// Git diff of the file, or back to the file.
+    Diff,
     /// Asks for the term and searches.
     Search {
         forward: bool,
@@ -94,6 +96,8 @@ pub struct Viewer {
     /// Read from a file on disk (not help, an info screen or an archive
     /// entry): it can be edited and reloaded.
     pub on_disk: bool,
+    /// In a diff (D): the file it belongs to, shown again by D.
+    pub behind: Option<Box<Viewer>>,
 }
 
 /// A piece of a displayed line: text, its color and whether it is part of
@@ -171,6 +175,7 @@ impl Viewer {
             forward: true,
             note: None,
             on_disk: false,
+            behind: None,
         }
     }
 
@@ -358,6 +363,7 @@ impl Viewer {
                 'p' => Action::Prev,
                 'u' => Action::Untag,
                 'e' => Action::Edit,
+                'd' => Action::Diff,
                 _ => Action::None,
             },
             KeyCode::F(9) => Action::Search {

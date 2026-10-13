@@ -192,6 +192,10 @@ preciso ter o programa `git`.
   alteração ficam em branco. O estado é relido depois das operações do
   próprio xt, depois do F3 e a cada 10 segundos (para pegar commits feitos em
   outro terminal).
+- No visualizador, **D** mostra o que mudou no arquivo desde o último commit
+  (o `git diff HEAD` dele, com cores) e **D** de novo volta ao arquivo, no
+  mesmo ponto. "Diff" só aparece no rodapé para arquivos com alterações; o
+  **E** continua editando o arquivo, e o diff é atualizado na volta.
 - Para push, pull e outros comandos que usam a rede, use o eXecute (`X`), por
   exemplo `git push`.
 
