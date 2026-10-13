@@ -4,6 +4,8 @@
 
 Text-mode file manager for Linux, inspired by XTree and ZTreeWin.
 
+![xt: directory tree, file window and statistics, in the classic theme](docs/screenshots/tree.png)
+
 ## Why xt?
 
 I have used some flavor of XTree since the 1990s, and ZTreeWin is still, to
@@ -24,6 +26,26 @@ with, endorsed by or connected to Zedtek, Inc. (ZTreeWin) or to the owners of
 XTree. It contains no code from those programs; their names are mentioned only
 to describe what inspired xt and how it compares. XTree, ZTree and ZTreeWin
 are trademarks of their respective owners.
+
+## Screenshots
+
+**Branch** (`B`) lists the files of a whole branch; tagged files (`T`) are
+highlighted and counted on the right:
+
+![Branch view with three tagged files](docs/screenshots/branch-tagged.png)
+
+**Split window** (F8), each side with its own directory:
+
+![Split window: photos on the left, source code on the right](docs/screenshots/split.png)
+
+**Viewer** (`V`), with syntax colors:
+
+![Viewer showing Rust code with syntax colors](docs/screenshots/viewer.png)
+
+**Themes**: besides the classic blue, `dark`, `light`, `mono`, `norton`,
+`solarized`, `gruvbox` (below) and `nord`:
+
+![The gruvbox theme](docs/screenshots/theme-gruvbox.png)
 
 ## Installation
 
