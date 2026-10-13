@@ -189,6 +189,10 @@ program.
   added, `??` untracked, `R ` renamed. Unchanged files show blanks. The
   status is read again after xt's own operations, after F3, and every 10
   seconds (to catch commits made in another terminal).
+- In the viewer, **D** shows what changed in a file since the last commit
+  (its `git diff HEAD`, with colors) and **D** again goes back to the file, at
+  the same place. "Diff" appears in the footer only for files with changes;
+  **E** still edits the file, and the diff is updated on return.
 - For push, pull and other commands that use the network, use eXecute (`X`),
   e.g. `git push`.
 
