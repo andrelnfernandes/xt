@@ -307,10 +307,8 @@ fn private_dir() -> std::io::Result<PathBuf> {
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.subsec_nanos());
     let dir = crate::platform::run_dir()?.join(format!("terminal-{nanos}"));
-    let mut builder = fs::DirBuilder::new();
-    #[cfg(unix)]
-    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
-    builder.create(&dir)?;
+    // Private already: `run_dir` is readable only by the user.
+    fs::create_dir(&dir)?;
     Ok(dir)
 }
 
@@ -605,11 +603,11 @@ mod tests {
         term.write(b"echo n=${#XT_TAGGED[@]} \"${XT_TAGGED[0]##*/}\" \"$PWD\"\r");
         wait_for(&term, &format!("n=2 a b.txt {}", sub.display()));
         assert!(term.at_prompt());
-        // The script lives in a private folder, removed with the terminal.
+        // The script lives inside the run's private folder, and goes away
+        // with the terminal.
         let script = term.script.clone().unwrap();
-        let mode = fs::metadata(script.parent().unwrap())
-            .unwrap()
-            .permissions();
+        let run = script.parent().and_then(Path::parent).unwrap();
+        let mode = fs::metadata(run).unwrap().permissions();
         assert_eq!(
             std::os::unix::fs::PermissionsExt::mode(&mode) & 0o777,
             0o700
