@@ -421,7 +421,7 @@ mod tests {
 
     #[test]
     fn job_reports_matches_and_errors() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         let (a, b) = (tmp.path().join("a"), tmp.path().join("b"));
         std::fs::write(&a, "tem a palavra chave\n").unwrap();
         std::fs::write(&b, "não tem\n").unwrap();

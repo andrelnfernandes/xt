@@ -162,7 +162,7 @@ mod tests {
 
     #[test]
     fn relations() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         let other = file_at(tmp.path(), "x", "abc", 1_000_000);
         assert_eq!(relation(3, at(1_000_000), None, FAT), Relation::Unique);
         assert_eq!(

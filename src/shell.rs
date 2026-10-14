@@ -354,7 +354,7 @@ mod tests {
 
     #[test]
     fn opens_detached_with_configured_program() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         let marker = tmp.path().join("opened");
         let opener = format!("cp {} -- ", tmp.path().join("src").display());
         std::fs::write(tmp.path().join("src"), "x").unwrap();

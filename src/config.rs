@@ -74,6 +74,14 @@ auto_refresh = true
 # Git commands (Ctrl+G) and each file's Git status in the file list. Not in
 # XTree or ZTreeWin, so off by default; needs the git program.
 git = false
+# Colors of the built-in terminal (Alt+X): "native" (the colors of the
+# terminal xt runs in), "xt" (background and text of xt's theme), "solarized",
+# "gruvbox", "nord", "dracula" or "one_dark".
+terminal_theme = "native"
+# The built-in terminal keeps a shell history of its own, apart from your
+# other terminals' (in ~/.local/state/xt/, e.g. bash_history; in fish, the
+# "xt" session). Takes effect when the shell starts.
+terminal_history = true
 
 # Individual colors, on top of the theme. Values: names ("yellow",
 # "lightblue", "darkgray"...), "#rrggbb" or an index from 0 to 255.
@@ -159,6 +167,10 @@ pub struct Options {
     pub auto_refresh: bool,
     /// Git menu (Ctrl+G) and status markers in the file list.
     pub git: bool,
+    /// Colors of the built-in terminal (Alt+X).
+    pub terminal_theme: TerminalTheme,
+    /// The built-in terminal's shell keeps its own history.
+    pub terminal_history: bool,
 }
 
 impl Default for Options {
@@ -182,6 +194,8 @@ impl Default for Options {
             compare_ignore_1h: false,
             auto_refresh: true,
             git: false,
+            terminal_theme: TerminalTheme::Native,
+            terminal_history: true,
         }
     }
 }
@@ -218,6 +232,8 @@ impl Options {
             ("compare_ignore_1h", Value::from(self.compare_ignore_1h)),
             ("auto_refresh", Value::from(self.auto_refresh)),
             ("git", Value::from(self.git)),
+            ("terminal_theme", s(self.terminal_theme.as_str())),
+            ("terminal_history", Value::from(self.terminal_history)),
         ]
     }
 
@@ -311,6 +327,46 @@ impl NumberFormat {
             NumberFormat::Dot => Some('.'),
             NumberFormat::Space => Some(' '),
             NumberFormat::Plain => None,
+        }
+    }
+}
+
+/// Colors of the built-in terminal (Alt+X). The palettes themselves are in
+/// `term.rs`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TerminalTheme {
+    /// The colors of the terminal xt runs in.
+    #[default]
+    Native,
+    /// Background and text of xt's theme; the 16 colors stay the terminal's.
+    Xt,
+    Solarized,
+    Gruvbox,
+    Nord,
+    Dracula,
+    OneDark,
+}
+
+impl Choice for TerminalTheme {
+    const ALL: &'static [Self] = &[
+        TerminalTheme::Native,
+        TerminalTheme::Xt,
+        TerminalTheme::Solarized,
+        TerminalTheme::Gruvbox,
+        TerminalTheme::Nord,
+        TerminalTheme::Dracula,
+        TerminalTheme::OneDark,
+    ];
+    fn as_str(self) -> &'static str {
+        match self {
+            TerminalTheme::Native => "native",
+            TerminalTheme::Xt => "xt",
+            TerminalTheme::Solarized => "solarized",
+            TerminalTheme::Gruvbox => "gruvbox",
+            TerminalTheme::Nord => "nord",
+            TerminalTheme::Dracula => "dracula",
+            TerminalTheme::OneDark => "one_dark",
         }
     }
 }
@@ -821,7 +877,7 @@ mod tests {
 
     #[test]
     fn save_keeps_comments_and_other_sections() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         let path = tmp.path().join("xt/config.toml");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(
@@ -853,7 +909,7 @@ mod tests {
 
     #[test]
     fn save_without_file_starts_from_the_example() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         let path = tmp.path().join("new/config.toml");
         let config = Config {
             theme: "gruvbox".into(),
