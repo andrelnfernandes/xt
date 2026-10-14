@@ -1,6 +1,6 @@
 //! What depends on the operating system: permissions, file identity,
 //! disk space, mounted file systems, the machine (statistics screen) and
-//! where configuration and state live.
+//! where configuration, state and temporary files live.
 //!
 //! Each system has its own module with the same functions; the rest of xt
 //! only calls `platform::...`.
@@ -105,6 +105,32 @@ pub fn config_dir() -> Option<PathBuf> {
 /// Directory of the state kept between runs (history).
 pub fn state_dir() -> Option<PathBuf> {
     Some(state_base()?.join("xt"))
+}
+
+/// Directory of xt's temporary files (`$XDG_CACHE_HOME/xt`, `~/.cache/xt`;
+/// `%LOCALAPPDATA%\xt\cache` on Windows). Inside the user's own space, never
+/// in the shared `/tmp`.
+pub fn cache_dir() -> Option<PathBuf> {
+    cache_base()
+}
+
+/// A folder of this run of xt inside `cache_dir`, readable only by the user
+/// and removed on exit (by `main`): files extracted from ZIP/TAR, the
+/// built-in terminal's script. Created if missing.
+pub fn run_dir() -> std::io::Result<PathBuf> {
+    let base = cache_dir().ok_or_else(|| std::io::Error::other("no home directory"))?;
+    let dir = run_dir_path(&base);
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder.create(&dir)?;
+    Ok(dir)
+}
+
+/// Where `run_dir` is, without creating it (to remove it on exit).
+pub fn run_dir_path(base: &std::path::Path) -> PathBuf {
+    base.join(format!("run-{}", std::process::id()))
 }
 
 fn env_dir(name: &str) -> Option<PathBuf> {

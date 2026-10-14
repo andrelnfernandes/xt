@@ -615,7 +615,7 @@ mod tests {
     }
 
     fn setup() -> (tempfile::TempDir, PathBuf, PathBuf) {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         let a = tmp.path().join("a");
         let b = tmp.path().join("b");
         fs::create_dir(&a).unwrap();

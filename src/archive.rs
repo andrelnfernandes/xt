@@ -475,7 +475,7 @@ pub mod tests {
 
     #[test]
     fn lists_and_extracts_zip_ignoring_unsafe_entries() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         let path = tmp.path().join("t.zip");
         make_zip(&path);
         let mut r = Reader::open(&path).unwrap();
@@ -510,7 +510,7 @@ pub mod tests {
 
     #[test]
     fn lists_and_extracts_tar_and_tgz() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         for gz in [false, true] {
             let path = tmp.path().join(if gz { "t.tgz" } else { "t.tar" });
             make_tar(&path, gz);
@@ -538,7 +538,7 @@ pub mod tests {
     #[cfg(unix)]
     #[test]
     fn creates_archives_that_read_back() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         let src = tmp.path().join("src");
         std::fs::create_dir_all(src.join("sub")).unwrap();
         std::fs::write(src.join("a.txt"), "alpha").unwrap();
@@ -589,7 +589,7 @@ pub mod tests {
 
     #[test]
     fn rejects_unknown_or_broken_files() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         assert!(Reader::open(&tmp.path().join("x.txt")).is_err());
         let broken = tmp.path().join("broken.zip");
         std::fs::write(&broken, "not a zip").unwrap();

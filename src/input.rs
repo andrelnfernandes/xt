@@ -39,6 +39,12 @@ pub enum Command {
     Edit,
     /// Runs a shell command.
     Execute,
+    /// Alt+X: shows the built-in terminal (or goes back to xt).
+    Terminal,
+    /// Alt+Z: the terminal in full screen (inside it: full screen / panel).
+    TerminalFull,
+    /// Alt+O: types the tagged files in the terminal.
+    TerminalTagged,
     /// Ctrl+G: Git menu (when `git` is on in the configuration).
     Git,
     /// F1: key list.
