@@ -298,6 +298,11 @@ pub(super) fn state_base() -> Option<PathBuf> {
     env_dir("LOCALAPPDATA")
 }
 
+/// `%LOCALAPPDATA%\xt\cache`.
+pub(super) fn cache_base() -> Option<PathBuf> {
+    Some(env_dir("LOCALAPPDATA")?.join("xt").join("cache"))
+}
+
 /// The machine, from the registry and the memory and process APIs.
 pub fn system() -> System {
     const VERSION: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion";
@@ -528,7 +533,7 @@ mod tests {
 
     #[test]
     fn sets_and_reads_attributes_and_deletes_read_only() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         let f = tmp.path().join("a.txt");
         fs::write(&f, "x").unwrap();
         set_mode(&f, FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_HIDDEN).unwrap();
@@ -541,7 +546,7 @@ mod tests {
 
     #[test]
     fn file_ids() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         let (a, b) = (tmp.path().join("a"), tmp.path().join("b"));
         fs::write(&a, "a").unwrap();
         fs::write(&b, "b").unwrap();

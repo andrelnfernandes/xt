@@ -33,6 +33,7 @@ use crate::search::{self, Pattern, SearchJob, SearchSpec};
 use crate::settings::{Outcome, Settings};
 use crate::shell::{self, External};
 use crate::state::{self, History};
+use crate::term::Terminal;
 use crate::viewer::{self, Action as ViewerAction, SearchFrom, Viewer};
 
 /// Ongoing read and what to do when it finishes.
@@ -372,6 +373,16 @@ pub struct App {
     pub git_status: git::StatusCache,
     /// F2 in a prompt that asks for a folder.
     pub picker: Option<Picker>,
+    /// Alt+X: the shell of the built-in terminal, alive even while hidden.
+    pub terminal: Option<Terminal>,
+    /// The terminal is on screen and receives the keys.
+    pub terminal_focus: bool,
+    /// Alt+Z: the terminal takes the whole screen, instead of the bottom.
+    pub terminal_full: bool,
+    /// The tagged files last put in the shell's `$XT_TAGGED`.
+    terminal_tagged: Vec<PathBuf>,
+    /// Last directory of the terminal's shell seen, for the tree to follow it.
+    terminal_cwd: Option<PathBuf>,
 }
 
 /// The active window.
@@ -423,6 +434,11 @@ impl App {
             sticky: MenuMode::Normal,
             git_status: git::StatusCache::default(),
             picker: None,
+            terminal: None,
+            terminal_focus: false,
+            terminal_full: false,
+            terminal_tagged: Vec::new(),
+            terminal_cwd: None,
         }
     }
 
@@ -595,6 +611,10 @@ impl App {
             return;
         }
         if key.kind == KeyEventKind::Release {
+            return;
+        }
+        if self.terminal_focus {
+            self.terminal_key(key);
             return;
         }
         // If the Ctrl/Alt release was lost (e.g. window switch), the
@@ -854,6 +874,9 @@ impl App {
                 | Command::Log
                 | Command::Edit
                 | Command::Execute
+                | Command::Terminal
+                | Command::TerminalFull
+                | Command::TerminalTagged
                 | Command::Prune
                 | Command::NewDate { .. }
                 | Command::CreateArchive { .. }
@@ -989,6 +1012,14 @@ impl App {
                     let file = self.file_path(f);
                     let cwd = self.current_path();
                     self.external = Some(shell::editor(&file, &cwd, &self.options.editor));
+                }
+            }
+            Command::Terminal => self.show_terminal(None),
+            Command::TerminalFull => self.show_terminal(Some(true)),
+            Command::TerminalTagged => {
+                self.show_terminal(None);
+                if self.terminal_focus {
+                    self.type_tagged();
                 }
             }
             Command::Execute => {
@@ -1900,6 +1931,141 @@ impl App {
     }
 
     /// Back from an external program: the disk may have changed.
+    /// Alt+X (or Alt+Z, in full screen): shows the terminal, starting the
+    /// shell the first time. If the shell is waiting at the prompt, it goes
+    /// to the tree's directory and `$XT_TAGGED` gets the tagged files.
+    fn show_terminal(&mut self, full: Option<bool>) {
+        let dir = self.current_path();
+        let tagged: Vec<PathBuf> = self.sources(true).into_iter().map(|s| s.path).collect();
+        if self.terminal.is_none() {
+            let history = self
+                .options
+                .terminal_history
+                .then(platform::state_dir)
+                .flatten();
+            match Terminal::spawn(&dir, history.as_deref()) {
+                Ok(t) => {
+                    self.terminal = Some(t);
+                    self.terminal_cwd = Some(dir.clone());
+                    self.terminal_tagged.clear();
+                }
+                Err(e) => {
+                    self.message = Some(format!("Cannot start the shell: {e}"));
+                    return;
+                }
+            }
+        }
+        let shell_dir = self.terminal.as_ref().and_then(Terminal::cwd);
+        let shell_dir = shell_dir.or_else(|| self.terminal_cwd.clone());
+        let cd = (shell_dir.as_ref() != Some(&dir)).then_some(dir.as_path());
+        if let Some(t) = &mut self.terminal
+            && (cd.is_some() || tagged != self.terminal_tagged)
+            && t.at_prompt()
+        {
+            t.sync(cd, &tagged);
+            self.terminal_tagged = tagged;
+        }
+        self.terminal_cwd = Some(dir);
+        self.terminal_focus = true;
+        if let Some(full) = full {
+            self.terminal_full = full;
+        }
+    }
+
+    /// Keys while the terminal is on screen: everything goes to the shell,
+    /// except the terminal commands (Alt+X back to xt, Alt+Z full screen,
+    /// Alt+O types the tagged files) and Shift+PgUp/PgDn (scrollback).
+    fn terminal_key(&mut self, key: KeyEvent) {
+        match self.keymap.lookup(key, self.focus) {
+            Some(Command::Terminal) => return self.hide_terminal(),
+            Some(Command::TerminalFull) => {
+                self.terminal_full = !self.terminal_full;
+                return;
+            }
+            Some(Command::TerminalTagged) => return self.type_tagged(),
+            _ => {}
+        }
+        let shift = key.modifiers == KeyModifiers::SHIFT;
+        let Some(t) = &mut self.terminal else {
+            self.terminal_focus = false;
+            return;
+        };
+        match key.code {
+            KeyCode::PageUp if shift => t.scroll(10),
+            KeyCode::PageDown if shift => t.scroll(-10),
+            _ => t.send_key(key),
+        }
+    }
+
+    /// Types the tagged files at the cursor, quoted and relative to the
+    /// shell's directory when inside it.
+    fn type_tagged(&mut self) {
+        let tagged = self.sources(true);
+        let Some(t) = &mut self.terminal else {
+            return;
+        };
+        if tagged.is_empty() {
+            return;
+        }
+        let cwd = t.cwd().unwrap_or_default();
+        let paths: Vec<PathBuf> = tagged
+            .into_iter()
+            .map(|s| match s.path.strip_prefix(&cwd) {
+                Ok(rel) if !cwd.as_os_str().is_empty() => rel.to_path_buf(),
+                _ => s.path,
+            })
+            .collect();
+        let text = shell::expand("%t ", None, &paths, Path::new(""));
+        t.write(text.as_encoded_bytes());
+    }
+
+    fn hide_terminal(&mut self) {
+        self.terminal_focus = false;
+        // What the commands changed on disk.
+        let dirs: Vec<PathBuf> = self.watched_dirs().into_iter().collect();
+        self.rescan_everywhere(&dirs);
+    }
+
+    /// Called by the main loop: notices when the shell exits and makes the
+    /// tree follow its `cd`s. Returns whether the terminal must be redrawn.
+    pub fn terminal_tick(&mut self) -> bool {
+        let Some(t) = &mut self.terminal else {
+            return false;
+        };
+        if t.exited() {
+            self.terminal = None;
+            self.terminal_cwd = None;
+            self.terminal_tagged.clear();
+            if self.terminal_focus {
+                self.hide_terminal();
+            }
+            self.message = Some("The terminal's shell has exited".into());
+            return true;
+        }
+        let dirty = t.take_dirty();
+        if dirty {
+            t.on_output();
+        }
+        if dirty
+            && let Some(cwd) = t.cwd()
+            && self.terminal_cwd.as_ref() != Some(&cwd)
+        {
+            self.terminal_cwd = Some(cwd.clone());
+            let cwd = dunce::canonicalize(&cwd).unwrap_or(cwd);
+            self.message = None;
+            if self.current_path() != cwd && !self.goto(&cwd) {
+                // Outside the tree's root (or hidden): the tree stays where
+                // it got, and says why.
+                self.message = Some(format!(
+                    "The shell is in {}, outside the tree ({} logs another directory)",
+                    cwd.display(),
+                    self.keymap.key_for(Command::Log).unwrap_or("L".into())
+                ));
+            }
+        }
+        dirty
+    }
+
     pub fn after_external(&mut self, result: std::io::Result<std::process::ExitStatus>) {
         let dirs: Vec<PathBuf> = self.watched_dirs().into_iter().collect();
         self.rescan_everywhere(&dirs);
@@ -2543,17 +2709,11 @@ impl App {
     }
 }
 
-/// xt's temporary folder for opening files from inside ZIP/TAR.
-pub fn temp_dir() -> PathBuf {
-    std::env::temp_dir().join(format!("xt-{}", std::process::id()))
-}
-
 /// Extracts an entry of `archive` (virtual path `entry`) to the
 /// temporary folder, so an external program can open it.
 fn extract_for_opening(archive: &Path, entry: &Path) -> std::io::Result<PathBuf> {
     let rel = entry.strip_prefix(archive).unwrap_or(entry);
-    let dir = temp_dir();
-    fs::create_dir_all(&dir)?;
+    let dir = platform::run_dir()?;
     let out = dir.join(rel.file_name().unwrap_or_default());
     let mut file = fs::File::create(&out)?;
     archive::Reader::open(archive)?.extract(rel, &mut file, u64::MAX)?;
@@ -2603,7 +2763,7 @@ mod tests {
 
     /// root/{a.rs, b.txt}, root/sub/{c.rs}, root/sub/deep/{a.rs}
     fn sample() -> (tempfile::TempDir, App) {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         let p = tmp.path();
         create_dir_all(p.join("sub/deep")).unwrap();
         write(p.join("a.rs"), "fn main() {}\n").unwrap();
@@ -3206,7 +3366,7 @@ mod tests {
         assert_eq!(app.tree.path(ROOT), root);
 
         // Outside it: the window gets a new root.
-        let other = tempfile::tempdir().unwrap();
+        let other = crate::testing::tempdir();
         press(&mut app, KeyCode::Char('l'));
         answer_prompt(&mut app, other.path().to_str().unwrap());
         let canonical = dunce::canonicalize(other.path()).unwrap();
@@ -3220,7 +3380,7 @@ mod tests {
     /// Two windows: the active one in `left/`, the other in `right/`.
     fn compare_setup() -> (tempfile::TempDir, App) {
         use std::time::{Duration, SystemTime};
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         let (l, r) = (tmp.path().join("left"), tmp.path().join("right"));
         create_dir_all(l.join("sub")).unwrap();
         create_dir_all(&r).unwrap();
@@ -3918,6 +4078,10 @@ mod tests {
         press(&mut app, KeyCode::Enter);
         press(&mut app, KeyCode::Char('o'));
         assert!(wait_for_text(&out.join("README"), "leia-me"));
+        // `main` removes the run's folder on exit; here, the test does.
+        let run = platform::run_dir_path(&platform::cache_dir().unwrap());
+        let _ = fs::remove_file(run.join("README"));
+        let _ = fs::remove_dir(run);
     }
 
     #[test]
@@ -3946,7 +4110,7 @@ mod tests {
 
     /// Three files; "senha" appears in two of them, twice in the first.
     fn search_setup() -> (tempfile::TempDir, App) {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         write(
             tmp.path().join("1.txt"),
             "linha\na SENHA aqui\noutra\nsenha de novo\n",
@@ -4091,7 +4255,7 @@ mod tests {
     }
 
     fn treespec_setup() -> (tempfile::TempDir, App, String) {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         for d in ["Docs/rust/src", "Docs/notes", "downloads"] {
             create_dir_all(tmp.path().join(d)).unwrap();
         }
@@ -4171,7 +4335,7 @@ mod tests {
     #[test]
     fn treespec_outside_the_tree_logs() {
         let (_tmp, mut app, _root) = treespec_setup();
-        let other = tempfile::tempdir().unwrap();
+        let other = crate::testing::tempdir();
         press(&mut app, KeyCode::Char('\\'));
         ctrl(&mut app, 'u');
         type_text(&mut app, other.path().to_str().unwrap());
