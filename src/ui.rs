@@ -24,7 +24,7 @@ use crate::config::{self, formats, theme};
 use crate::git::StatusCache;
 use crate::model::tree::{FileEntry, FileKind};
 use crate::ops::Operation;
-use crate::pane::{FileDisplay, FileRef};
+use crate::pane::{Count, FileDisplay, FileRef};
 use crate::settings::{self, Settings};
 use crate::viewer::{self, ViewMode, Viewer};
 
@@ -209,10 +209,22 @@ fn draw_tree(frame: &mut Frame, pane: &mut Pane, active: bool, title: String, ar
         KbyteShow::None => title,
         _ => format!("{} · {} ", title.trim_end(), kbyte.describe()),
     };
+    // As in ZTreeWin: line of the cursor / lines in the tree.
+    let position = position(pane.tree_state.selected(), pane.rows.len());
     let list = List::new(items)
-        .block(panel(title, active))
+        .block(panel(title, active).title_top(position))
         .highlight_style(highlight(active));
     frame.render_stateful_widget(list, area, &mut state);
+}
+
+/// `7/2,027` on a window's border: the cursor's line and how many there are.
+fn position(selected: Option<usize>, len: usize) -> Line<'static> {
+    let at = if len == 0 {
+        0
+    } else {
+        selected.unwrap_or(0).min(len - 1) + 1
+    };
+    Line::from(format!("{}/{}", fmt_num(at as u64), fmt_num(len as u64))).right_aligned()
 }
 
 /// F2 in a prompt: the tree to pick a folder from, with the prompt's question
@@ -312,8 +324,9 @@ fn draw_files(
             .collect()
     };
 
+    let position = position(pane.file_state.selected(), pane.files.len());
     let list = List::new(items)
-        .block(panel(title, active))
+        .block(panel(title, active).title_bottom(position))
         .highlight_style(highlight(active));
     frame.render_stateful_widget(list, area, &mut state);
 }
@@ -498,61 +511,125 @@ fn file_line(
     ListItem::new(Line::from(spans))
 }
 
+/// The panel on the right, as in ZTreeWin: three boxes (FILE, DISK, DISK
+/// Statistics) separated by lines.
 fn draw_stats(frame: &mut Frame, app: &App, area: Rect) {
+    let block = panel("", false);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let width = inner.width as usize;
+
+    let label = |s: String| Span::styled(s, Style::new().fg(theme().key));
+    let bold = |s: String| Span::styled(s, Style::new().add_modifier(Modifier::BOLD));
+    // "Logged", "Current Directory"...: centered.
+    let heading = |s: &str| Line::from(label(s.to_string())).centered();
+    // Name on the left, number on the right; the number goes to the next
+    // line when both don't fit (e.g. "Available" and a disk in terabytes).
+    let value = |k: &str, v: u64| -> Vec<Line<'static>> {
+        let v = fmt_num(v);
+        let (k_len, v_len) = (k.chars().count(), v.chars().count());
+        if k_len + 1 + v_len <= width {
+            let pad = " ".repeat(width - k_len - v_len);
+            vec![Line::from(vec![Span::raw(format!("{k}{pad}")), bold(v)])]
+        } else {
+            vec![heading(k), Line::from(bold(v)).right_aligned()]
+        }
+    };
+    let count = |c: Count| [value("Files", c.files), value("Bytes", c.bytes)].concat();
+
     let id = app.header_dir();
-    let logged = app.tree.logged_totals();
-    let matching_bytes: u64 = app.files.iter().map(|&f| app.file(f).size).sum();
-    let (tagged, tagged_bytes) = app
-        .files
-        .iter()
-        .map(|&f| app.file(f))
-        .filter(|f| f.tagged)
-        .fold((0u64, 0u64), |(n, b), f| (n + 1, b + f.size));
-    let section = match app.view {
-        FileView::Dir => "DIRECTORY",
-        FileView::Branch(_) => "BRANCH",
-        FileView::Showall => "SHOWALL",
-    };
+    let path = app.tree.path(id);
+    let file = vec![Line::from(vec![
+        label("FILE ".into()),
+        bold(fit(app.filespec.text(), width.saturating_sub(5))),
+    ])];
 
-    let label = |s: &'static str| Line::from(Span::styled(s, Style::new().fg(theme().key)));
-    let value = |k: &str, v: String| {
-        Line::from(vec![
-            Span::raw(format!(" {k:<7}")),
-            Span::styled(v, Style::new().add_modifier(Modifier::BOLD)),
-        ])
-    };
-
-    let mut lines = vec![
-        label("FILE"),
-        value("Spec", fit(app.filespec.text(), STATS_WIDTH as usize - 10)),
-        Line::default(),
-    ];
-
-    if let Some(disk) = crate::platform::disk_space(&app.tree.path(id)) {
-        lines.extend([
-            label("DISK"),
-            value("Total", fmt_num(disk.total)),
-            value("Free", fmt_num(disk.available)),
-            Line::default(),
-        ]);
+    let mut disk = Vec::new();
+    let mut total_lines = 0;
+    if let Some(space) = crate::platform::disk_space(&path) {
+        let point = crate::info::mount_of(&path)
+            .map(|m| m.point.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        disk.push(Line::from(vec![
+            label("DISK ".into()),
+            Span::raw(fit_tail(&point, width.saturating_sub(5))),
+        ]));
+        disk.extend(value("Available", space.available));
+        // Lines of "Total": one, or two when the number goes below.
+        let total = value("Total", space.total);
+        total_lines = total.len();
+        disk.extend(total);
     }
 
-    lines.extend([
-        label("LOGGED"),
-        value("Dirs", fmt_num(logged.dirs)),
-        value("Files", fmt_num(logged.files)),
-        value("Bytes", fmt_num(logged.bytes)),
-        Line::default(),
-        label(section),
-        value("Match", fmt_num(app.files.len() as u64)),
-        value("Bytes", fmt_num(matching_bytes)),
-        Line::default(),
-        label("TAGGED"),
-        value("Files", fmt_num(tagged)),
-        value("Bytes", fmt_num(tagged_bytes)),
-    ]);
+    let stats = app.disk_stats();
+    let node = app.tree.node(id);
+    let here = node
+        .files
+        .iter()
+        .filter(|f| app.tree.show_hidden || !f.is_hidden())
+        .fold(Count::default(), |c, f| Count {
+            files: c.files + 1,
+            bytes: c.bytes + f.size,
+        });
+    // Just the name, also for the tree's root ("/" for the root of the disk).
+    let name = path
+        .file_name()
+        .unwrap_or(path.as_os_str())
+        .to_string_lossy()
+        .into_owned();
+    let mut statistics = vec![
+        Line::from(label("DISK Statistics".into())),
+        heading("Logged"),
+    ];
+    statistics.extend(count(stats.logged));
+    statistics.push(heading("Matching"));
+    statistics.extend(count(stats.matching));
+    statistics.push(heading("Tagged"));
+    statistics.extend(count(stats.tagged));
+    statistics.push(heading("Current Directory"));
+    statistics.push(Line::from(bold(fit(&name, width))));
+    statistics.extend(count(here));
+    if let Ok(meta) = std::fs::metadata(&path) {
+        let mode = format!(
+            "d{}",
+            crate::platform::format_mode(crate::platform::mode(&meta))
+        );
+        let k = if cfg!(windows) { "Attributes" } else { "Perms" };
+        let pad = " ".repeat(width.saturating_sub(k.len() + mode.chars().count()));
+        statistics.push(Line::from(vec![Span::raw(format!("{k}{pad}")), bold(mode)]));
+    }
 
-    frame.render_widget(Paragraph::new(lines).block(panel(" xt ", false)), area);
+    // Short screens: without the "DISK Statistics" title, then without the
+    // total size of the disk, so that the current directory still fits.
+    let needed =
+        |file: &[Line], disk: &[Line], stats: &[Line]| file.len() + disk.len() + stats.len() + 2;
+    let room = inner.height as usize;
+    if needed(&file, &disk, &statistics) > room {
+        statistics.remove(0);
+    }
+    if needed(&file, &disk, &statistics) > room {
+        disk.truncate(disk.len() - total_lines);
+    }
+
+    let separator =
+        Line::from(format!("├{}┤", "─".repeat(width))).style(Style::new().fg(theme().border));
+    let mut y = inner.y;
+    for (i, section) in [file, disk, statistics].into_iter().enumerate() {
+        if section.is_empty() || y >= inner.bottom() {
+            continue;
+        }
+        if i > 0 {
+            let row = Rect::new(area.x, y, area.width, 1);
+            frame.render_widget(separator.clone(), row);
+            y += 1;
+        }
+        let height = (section.len() as u16).min(inner.bottom().saturating_sub(y));
+        frame.render_widget(
+            Paragraph::new(section),
+            Rect::new(inner.x, y, inner.width, height),
+        );
+        y += height;
+    }
 }
 
 fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
@@ -1386,7 +1463,10 @@ mod tests {
         term.draw(|f| draw(f, &mut app)).unwrap();
         let screen = format!("{:?}", term.backend().buffer());
         assert_eq!(screen.matches("left-dir").count(), 2, "one per pane");
-        assert!(!screen.contains("LOGGED"), "no stats panel when split");
+        assert!(
+            !screen.contains("DISK Statistics"),
+            "no stats panel when split"
+        );
     }
 
     #[test]

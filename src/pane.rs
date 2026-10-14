@@ -577,6 +577,33 @@ impl Pane {
         self.tree_state.select(Some(i));
     }
 
+    /// "DISK Statistics", as in ZTreeWin: everything logged, what of it
+    /// matches the filespec and what of it is tagged.
+    pub fn disk_stats(&self) -> DiskStats {
+        let mut stats = DiskStats::default();
+        let add = |t: &mut Count, f: &FileEntry| {
+            t.files += 1;
+            t.bytes += f.size;
+        };
+        for id in self.tree.subtree(ROOT) {
+            let node = self.tree.node(id);
+            if !node.scanned {
+                continue;
+            }
+            for f in &node.files {
+                add(&mut stats.logged, f);
+                let shown = self.tree.show_hidden || !f.is_hidden();
+                if shown && self.filespec.matches_entry(f) {
+                    add(&mut stats.matching, f);
+                }
+                if f.tagged {
+                    add(&mut stats.tagged, f);
+                }
+            }
+        }
+        stats
+    }
+
     /// Rebuilds the file window list according to the view and the filespec.
     pub fn refresh_files(&mut self) {
         let dirs = match self.view {
@@ -603,6 +630,21 @@ impl Pane {
         let sel = self.file_state.selected().unwrap_or(0).min(last);
         self.file_state.select(Some(sel));
     }
+}
+
+/// Files and bytes.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct Count {
+    pub files: u64,
+    pub bytes: u64,
+}
+
+/// The "DISK Statistics" panel (see `Pane::disk_stats`).
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct DiskStats {
+    pub logged: Count,
+    pub matching: Count,
+    pub tagged: Count,
 }
 
 /// "/home/an" → ("/home/", "an"); "/home/" → ("/home/", ""). On Windows,
@@ -665,6 +707,31 @@ mod tests {
         std::fs::remove_file(tmp.path().join("d")).unwrap();
         pane.rescan_paths(&[tmp.path()]);
         assert_eq!(pane.file_state.selected(), Some(2));
+    }
+
+    #[test]
+    fn disk_stats_cover_everything_logged() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("a.rs"), "0123456789").unwrap();
+        std::fs::write(tmp.path().join("b.txt"), "01234").unwrap();
+        create_dir_all(tmp.path().join("sub")).unwrap();
+        std::fs::write(tmp.path().join("sub/c.rs"), "012").unwrap();
+        let mut pane = Pane::new(tmp.path().to_path_buf());
+        let count = |files, bytes| Count { files, bytes };
+
+        pane.filespec = Filespec::parse("*.rs").unwrap();
+        let b = pane
+            .tree
+            .node(ROOT)
+            .files
+            .iter()
+            .position(|f| f.name == "b.txt");
+        pane.tree.file_mut(ROOT, b.unwrap()).tagged = true;
+
+        let stats = pane.disk_stats();
+        assert_eq!(stats.logged, count(3, 18));
+        assert_eq!(stats.matching, count(2, 13), "a.rs and sub/c.rs");
+        assert_eq!(stats.tagged, count(1, 5), "tagged, even if not matching");
     }
 
     #[test]
