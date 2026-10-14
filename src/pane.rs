@@ -578,22 +578,32 @@ impl Pane {
     }
 
     /// "DISK Statistics", as in ZTreeWin: everything logged, what of it
-    /// matches the filespec and what of it is tagged.
+    /// matches the filespec and what of it is tagged. Matching and Tagged
+    /// count what Showall would list: not inside hidden directories (unless
+    /// they are displayed), nor hidden files.
     pub fn disk_stats(&self) -> DiskStats {
         let mut stats = DiskStats::default();
         let add = |t: &mut Count, f: &FileEntry| {
             t.files += 1;
             t.bytes += f.size;
         };
-        for id in self.tree.subtree(ROOT) {
-            let node = self.tree.node(id);
-            if !node.scanned {
-                continue;
-            }
-            for f in &node.files {
+        let scanned = |id: &NodeId| self.tree.node(*id).scanned;
+        for id in self.tree.subtree(ROOT).iter().filter(|id| scanned(id)) {
+            for f in &self.tree.node(*id).files {
                 add(&mut stats.logged, f);
-                let shown = self.tree.show_hidden || !f.is_hidden();
-                if shown && self.filespec.matches_entry(f) {
+            }
+        }
+        for id in self
+            .tree
+            .visible_subtree(ROOT)
+            .iter()
+            .filter(|id| scanned(id))
+        {
+            for f in &self.tree.node(*id).files {
+                if !self.tree.show_hidden && f.is_hidden() {
+                    continue;
+                }
+                if self.filespec.matches_entry(f) {
                     add(&mut stats.matching, f);
                 }
                 if f.tagged {
@@ -732,6 +742,17 @@ mod tests {
         assert_eq!(stats.logged, count(3, 18));
         assert_eq!(stats.matching, count(2, 13), "a.rs and sub/c.rs");
         assert_eq!(stats.tagged, count(1, 5), "tagged, even if not matching");
+
+        // A hidden directory counts as logged, but not as matching.
+        create_dir_all(tmp.path().join(".git")).unwrap();
+        std::fs::write(tmp.path().join(".git/x.rs"), "0123").unwrap();
+        pane.tree.show_hidden = false;
+        pane.tree.rescan(ROOT);
+        let git = pane.tree.find(&tmp.path().join(".git")).unwrap();
+        pane.tree.scan(git);
+        let stats = pane.disk_stats();
+        assert_eq!(stats.logged, count(4, 22));
+        assert_eq!(stats.matching, count(2, 13));
     }
 
     #[test]
