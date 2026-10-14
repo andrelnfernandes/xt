@@ -711,7 +711,7 @@ mod tests {
 
     #[test]
     fn disk_stats_cover_everything_logged() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         std::fs::write(tmp.path().join("a.rs"), "0123456789").unwrap();
         std::fs::write(tmp.path().join("b.txt"), "01234").unwrap();
         create_dir_all(tmp.path().join("sub")).unwrap();
