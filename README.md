@@ -216,6 +216,14 @@ Status in color, as in a terminal (here with the `dark` theme):
 Not in XTree or ZTreeWin: your shell (`$SHELL`) running inside xt's screen,
 in the bottom part, with the tree and the files still visible above it.
 
+A `cd` in the terminal takes the tree along:
+
+![The built-in terminal below the tree, after cd model](docs/screenshots/terminal.png)
+
+Alt+O types the tagged files at the prompt:
+
+![Three tagged photos typed into wc -c with Alt+O](docs/screenshots/terminal-tagged.png)
+
 - **Alt+X** opens the terminal and goes back to xt. The shell keeps running
   while hidden, with its history and whatever it had on screen; `exit`
   closes it.
@@ -575,6 +583,7 @@ In the tree, a `+` on the connector (`├─+`) marks a collapsed directory that
 - `src/model/compare.rs` — Compare rules
 - `src/model/filespec.rs` — file filter
 - `src/ops/` — copy, move and delete, in steps (progress, conflicts, cancellation)
+- `docs/screenshots/tools/` — regenerates the README screenshots (`run.sh`, Linux)
 
 ## Roadmap
 

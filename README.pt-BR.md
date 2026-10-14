@@ -220,6 +220,14 @@ Não existe no XTree nem no ZTreeWin: o seu shell (`$SHELL`) rodando dentro da
 tela do xt, na parte de baixo, com a árvore e os arquivos ainda visíveis em
 cima.
 
+Um `cd` no terminal leva a árvore junto:
+
+![O terminal embutido abaixo da árvore, depois de cd model](docs/screenshots/terminal.png)
+
+Alt+O digita os arquivos marcados no prompt:
+
+![Três fotos marcadas digitadas num wc -c com Alt+O](docs/screenshots/terminal-tagged.png)
+
 - **Alt+X** abre o terminal e volta ao xt. O shell continua rodando enquanto
   está escondido, com o histórico e o que estava na tela; `exit` fecha o
   shell.
@@ -582,6 +590,7 @@ Na árvore, `+` no conector (`├─+`) indica um diretório recolhido que tem s
 - `src/model/compare.rs` — regras do Compare
 - `src/model/filespec.rs` — filtro de arquivos
 - `src/ops/` — copiar, mover e apagar, em passos (progresso, conflitos, cancelamento)
+- `docs/screenshots/tools/` — refaz as capturas de tela do README (`run.sh`, Linux)
 
 ## Roteiro
 
