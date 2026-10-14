@@ -101,7 +101,7 @@ mod tests {
 
     #[test]
     fn browses_and_chooses() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         let root = tmp.path().to_path_buf();
         fs::create_dir_all(root.join("a/deep")).unwrap();
         fs::create_dir_all(root.join("b")).unwrap();
@@ -134,7 +134,7 @@ mod tests {
 
     #[test]
     fn tab_switches_between_windows() {
-        let (one, two) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let (one, two) = (crate::testing::tempdir(), crate::testing::tempdir());
         let (one, two) = (one.path().to_path_buf(), two.path().to_path_buf());
         let windows = [
             (one.clone(), one.clone(), true),

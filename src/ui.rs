@@ -20,16 +20,21 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Clear, List, ListItem, ListState, Paragraph};
 
 use crate::app::{self, App, FileView, Focus, KbyteShow, MenuMode, Pane};
+use crate::config::TerminalTheme;
 use crate::config::{self, formats, theme};
 use crate::git::StatusCache;
+use crate::input::Command;
 use crate::model::tree::{FileEntry, FileKind};
 use crate::ops::Operation;
 use crate::pane::{Count, FileDisplay, FileRef};
 use crate::settings::{self, Settings};
+use crate::term::{self, Terminal};
 use crate::viewer::{self, ViewMode, Viewer};
 
 const STATS_WIDTH: u16 = 28;
 const SMALL_FILE_WINDOW: u16 = 8;
+/// Below this height, the tree is shown without the small file window.
+const MIN_TREE_WITH_FILES: u16 = 2 * SMALL_FILE_WINDOW;
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let base = Style::new().fg(theme().text).bg(theme().background);
@@ -58,6 +63,23 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     }
     draw_menu(frame, app, menu);
     let git = app.options.git.then_some(&app.git_status);
+
+    // Alt+X: the terminal takes the bottom of the screen; the tree stays
+    // above it, following the shell's `cd`s. Alt+Z: the whole screen.
+    let main = if app.terminal_focus
+        && let Some(term) = &mut app.terminal
+    {
+        if app.terminal_full {
+            draw_terminal(frame, term, app.options.terminal_theme, main);
+            return;
+        }
+        let [top, bottom] =
+            Layout::vertical([Constraint::Percentage(45), Constraint::Percentage(55)]).areas(main);
+        draw_terminal(frame, term, app.options.terminal_theme, bottom);
+        top
+    } else {
+        main
+    };
 
     if app.autoview.is_some() {
         // F7: list on the left, contents of the selected file on the right.
@@ -102,28 +124,32 @@ fn draw_pane(
     area: Rect,
     git: Option<&StatusCache>,
 ) {
-    match pane.focus {
-        Focus::Tree => {
-            let [tree, files] =
-                Layout::vertical([Constraint::Min(3), Constraint::Length(SMALL_FILE_WINDOW)])
-                    .areas(area);
-            let title = if split {
-                let width = tree.width.saturating_sub(4) as usize;
-                format!(
-                    " {} ",
-                    fit_tail(&pane.current_path().to_string_lossy(), width)
-                )
-            } else if let Some(archive) = &pane.archive {
-                let name = archive.file_name().unwrap_or_default().to_string_lossy();
-                format!(" Archive: {name} (read-only) ")
-            } else {
-                " Tree ".to_string()
-            };
-            draw_tree(frame, pane, active, title, tree);
-            draw_files(frame, pane, false, files, git);
-        }
-        Focus::Files => draw_files(frame, pane, active, area, git),
+    if pane.focus == Focus::Files {
+        draw_files(frame, pane, active, area, git);
+        return;
     }
+    let width = area.width.saturating_sub(4) as usize;
+    let title = if split {
+        format!(
+            " {} ",
+            fit_tail(&pane.current_path().to_string_lossy(), width)
+        )
+    } else if let Some(archive) = &pane.archive {
+        let name = archive.file_name().unwrap_or_default().to_string_lossy();
+        format!(" Archive: {name} (read-only) ")
+    } else {
+        " Tree ".to_string()
+    };
+    // Too low for both (e.g. above the terminal's panel): the tree alone,
+    // rather than a tree of one or two lines.
+    if area.height < MIN_TREE_WITH_FILES {
+        draw_tree(frame, pane, active, title, area);
+        return;
+    }
+    let [tree, files] =
+        Layout::vertical([Constraint::Min(3), Constraint::Length(SMALL_FILE_WINDOW)]).areas(area);
+    draw_tree(frame, pane, active, title, tree);
+    draw_files(frame, pane, false, files, git);
 }
 
 fn panel(title: impl Into<Line<'static>>, active: bool) -> Block<'static> {
@@ -636,6 +662,42 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
     let bold = Style::new().add_modifier(Modifier::BOLD);
     let lines = if let Some(prompt) = &app.prompt {
         prompt_lines(frame, prompt, area)
+    } else if app.terminal_focus {
+        let key_for = |cmd| app.keymap.key_for(cmd).unwrap_or_default();
+        vec![
+            menu_line(
+                "TERMINAL",
+                &[
+                    (&key_for(Command::Terminal), "back to xt"),
+                    (
+                        &key_for(Command::TerminalFull),
+                        if app.terminal_full {
+                            "panel"
+                        } else {
+                            "full screen"
+                        },
+                    ),
+                    (&key_for(Command::TerminalTagged), "type the tagged files"),
+                    ("Shift+PgUp/PgDn", "scroll back"),
+                ],
+            ),
+            match &app.message {
+                // E.g. the shell went outside the tree.
+                Some(msg) => Line::from(Span::styled(
+                    format!("{:9}{msg}", ""),
+                    Style::new()
+                        .fg(theme().message)
+                        .add_modifier(Modifier::BOLD),
+                )),
+                None => menu_line(
+                    "",
+                    &[(
+                        "",
+                        "the tree follows the shell's cd; $XT_TAGGED has the tagged files; exit closes the shell",
+                    )],
+                ),
+            },
+        ]
     } else if let Some(job) = &app.archive_job {
         vec![
             Line::from(vec![
@@ -1231,6 +1293,32 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
 }
 
 /// The viewer contents in a frame (also used by Autoview).
+fn draw_terminal(frame: &mut Frame, term: &mut Terminal, colors: TerminalTheme, area: Rect) {
+    let block = panel(" Terminal ", true);
+    let inner = block.inner(area);
+    term.resize(inner.height, inner.width);
+    // Starts from the terminal's own colors, so that `apply_theme` sees the
+    // cells the shell has not painted as default ones.
+    frame.render_widget(Clear, inner);
+    let parser = term.parser();
+    let screen = parser.screen();
+    let mut cursor = tui_term::widget::Cursor::default();
+    cursor.hide();
+    frame.render_widget(
+        tui_term::widget::PseudoTerminal::new(screen)
+            .block(block)
+            .cursor(cursor),
+        area,
+    );
+    let t = theme();
+    term::apply_theme(frame.buffer_mut(), inner, colors, t.text, t.background);
+    // The real cursor, where the shell left it (not while looking back).
+    if !screen.hide_cursor() && screen.scrollback() == 0 {
+        let (row, col) = screen.cursor_position();
+        frame.set_cursor_position((inner.x + col, inner.y + row));
+    }
+}
+
 fn draw_viewer_body(frame: &mut Frame, v: &mut Viewer, title: String, area: Rect) {
     let inner = panel("", false).inner(area);
     v.page = inner.height as usize;
@@ -1411,7 +1499,7 @@ mod tests {
     #[test]
     fn footer_shows_menu_for_mode() {
         use ratatui::{Terminal, backend::TestBackend};
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         let mut app = App::new(tmp.path().to_path_buf());
         let footer = |app: &mut App| {
             let mut term = Terminal::new(TestBackend::new(100, 20)).unwrap();
@@ -1430,7 +1518,7 @@ mod tests {
     #[test]
     fn renders_files_in_columns() {
         use ratatui::{Terminal, backend::TestBackend};
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         for name in ["aa", "bb", "cc", "dd", "ee"] {
             std::fs::write(tmp.path().join(name), "").unwrap();
         }
@@ -1451,7 +1539,7 @@ mod tests {
     #[test]
     fn renders_split_panes() {
         use ratatui::{Terminal, backend::TestBackend};
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         std::fs::create_dir(tmp.path().join("left-dir")).unwrap();
         let mut app = App::new(tmp.path().to_path_buf());
         app.apply(crate::input::Command::Split);
@@ -1472,7 +1560,7 @@ mod tests {
     #[test]
     fn renders_without_panicking() {
         use ratatui::{Terminal, backend::TestBackend};
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         std::fs::create_dir(tmp.path().join("sub")).unwrap();
         std::fs::write(tmp.path().join("file.txt"), "hi").unwrap();
 

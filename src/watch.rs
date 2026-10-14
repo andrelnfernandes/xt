@@ -84,7 +84,7 @@ mod tests {
 
     #[test]
     fn reports_changes_in_watched_dirs_only() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         let (a, b) = (tmp.path().join("a"), tmp.path().join("b"));
         std::fs::create_dir(&a).unwrap();
         std::fs::create_dir(&b).unwrap();

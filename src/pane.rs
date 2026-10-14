@@ -691,7 +691,7 @@ mod tests {
 
     #[test]
     fn after_change_keeps_cursor_on_same_file() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         for f in ["b", "d"] {
             std::fs::write(tmp.path().join(f), "").unwrap();
         }
@@ -736,7 +736,7 @@ mod tests {
 
     #[test]
     fn treespec_follows_what_is_typed() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         for d in ["Docs/rust", "Docs/notes", "downloads", ".config/xt"] {
             create_dir_all(tmp.path().join(d)).unwrap();
         }
@@ -775,7 +775,7 @@ mod tests {
 
     #[test]
     fn shift_letter_jumps_with_wraparound() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         for d in ["alpha", "beta", "bravo"] {
             create_dir_all(tmp.path().join(d)).unwrap();
         }
@@ -793,7 +793,7 @@ mod tests {
 
     #[test]
     fn arrows_move_by_column_in_multi_column_modes() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         for i in 0..10 {
             std::fs::write(tmp.path().join(format!("f{i}")), "").unwrap();
         }
@@ -828,7 +828,7 @@ mod tests {
 
     #[test]
     fn goto_opens_the_path() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         create_dir_all(tmp.path().join("a/b/c")).unwrap();
         let mut pane = Pane::new(tmp.path().to_path_buf());
 
