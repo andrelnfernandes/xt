@@ -157,6 +157,12 @@ pub(super) fn state_base() -> Option<PathBuf> {
     env_dir("XDG_STATE_HOME").or_else(|| Some(home_dir()?.join(".local").join("state")))
 }
 
+/// `$XDG_CACHE_HOME/xt` or `~/.cache/xt`.
+pub(super) fn cache_base() -> Option<PathBuf> {
+    let base = env_dir("XDG_CACHE_HOME").or_else(|| Some(home_dir()?.join(".cache")))?;
+    Some(base.join("xt"))
+}
+
 /// The machine, from `/proc` and `/etc/os-release` (Linux; elsewhere most
 /// of it stays empty).
 pub fn system() -> System {

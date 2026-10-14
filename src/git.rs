@@ -53,8 +53,18 @@ impl Action {
 /// (a directory, or a file in worktrees and submodules).
 pub fn repo_root(dir: &Path) -> Option<PathBuf> {
     dir.ancestors()
-        .find(|d| d.join(".git").exists())
+        .find(|d| is_git_dir(&d.join(".git")))
         .map(Path::to_path_buf)
+}
+
+/// Whether `.git` is really a repository's, as Git checks it: a directory
+/// with `HEAD`, or a file pointing to one (`gitdir: ...`). A stray empty
+/// `.git` (e.g. `/tmp/.git`, created by someone else) is not.
+fn is_git_dir(git: &Path) -> bool {
+    if git.is_dir() {
+        return git.join("HEAD").is_file();
+    }
+    std::fs::read(git).is_ok_and(|text| text.starts_with(b"gitdir:"))
 }
 
 /// `git` in `root`, without pager or colors, with names as they are
@@ -303,7 +313,7 @@ mod tests {
     /// Repository with `a.txt` committed and changed, `new/b.txt` untracked
     /// and `c.txt` staged.
     fn sample() -> tempfile::TempDir {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         let p = tmp.path();
         git_ok(p, &["init", "-q"]);
         fs::write(p.join("a.txt"), "one\n").unwrap();
@@ -343,6 +353,24 @@ mod tests {
     }
 
     #[test]
+    fn a_stray_git_folder_is_not_a_repository() {
+        let tmp = crate::testing::tempdir();
+        let root = tmp.path();
+        let sub = root.join("sub");
+        std::fs::create_dir_all(sub.join(".git")).unwrap();
+        assert_eq!(repo_root(&sub), None, "empty .git");
+        std::fs::write(sub.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+        assert_eq!(repo_root(&sub.join("x")), Some(sub.clone()));
+
+        let worktree = root.join("wt");
+        std::fs::create_dir(&worktree).unwrap();
+        std::fs::write(worktree.join(".git"), "gitdir: /elsewhere\n").unwrap();
+        assert_eq!(repo_root(&worktree), Some(worktree.clone()));
+        std::fs::write(worktree.join(".git"), "junk").unwrap();
+        assert_eq!(repo_root(&worktree), None);
+    }
+
+    #[test]
     fn markers_follow_the_repository() {
         let tmp = sample();
         let root = dunce::canonicalize(tmp.path()).unwrap();
@@ -371,7 +399,7 @@ mod tests {
         cache.refresh([root.clone()]);
         assert_eq!(cache.marker(&root.join("a.txt")), Some(*b" M"));
 
-        let outside = tempfile::tempdir().unwrap();
+        let outside = crate::testing::tempdir();
         cache.refresh([outside.path().to_path_buf()]);
         assert!(!cache.in_repo(outside.path()));
         assert_eq!(cache.marker(&root.join("a.txt")), None, "no longer shown");

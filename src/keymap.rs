@@ -177,6 +177,21 @@ const COMMANDS: &[(&str, Command, &str)] = &[
     ("edit", Command::Edit, "edit file"),
     ("execute", Command::Execute, "execute a shell command"),
     (
+        "terminal",
+        Command::Terminal,
+        "built-in terminal (the same key goes back to xt)",
+    ),
+    (
+        "terminal_full",
+        Command::TerminalFull,
+        "built-in terminal in full screen (inside it: full screen / panel)",
+    ),
+    (
+        "terminal_tagged",
+        Command::TerminalTagged,
+        "type the tagged files in the built-in terminal",
+    ),
+    (
         "git",
         Command::Git,
         "Git menu: status, log, diff, blame, add, unstage, commit",
@@ -329,6 +344,9 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("t", Any, "tag"),
     ("u", Any, "untag"),
     ("x", Any, "execute"),
+    ("alt+x", Any, "terminal"),
+    ("alt+z", Any, "terminal_full"),
+    ("alt+o", Any, "terminal_tagged"),
     ("ctrl+a", Any, "attributes_tagged"),
     ("ctrl+c", Any, "copy_tagged"),
     ("ctrl+d", Any, "delete_tagged"),
@@ -574,6 +592,19 @@ impl Keymap {
         None
     }
 
+    /// The key bound to `cmd` in both windows, as shown on screen (`Alt+X`).
+    pub fn key_for(&self, cmd: Command) -> Option<String> {
+        let mut keys: Vec<String> = self
+            .maps
+            .get(&Any)?
+            .iter()
+            .filter(|(_, c)| **c == Some(cmd))
+            .map(|(k, _)| k.to_string())
+            .collect();
+        keys.sort_by_key(|k| (k.len(), k.clone()));
+        keys.into_iter().next()
+    }
+
     /// Help text (F1): the keys currently in effect, per window.
     pub fn help_text(&self) -> String {
         let mut out = String::from(
@@ -609,6 +640,12 @@ impl Keymap {
              F2                      in prompts that ask for a folder: pick it in a tree\n  \
              ↑, ↓                    in prompts: history\n  \
              F2, F4                  in search prompts: match case, text/hex\n\n\
+             TERMINAL (Alt+X; Alt+Z in full screen)\n  \
+             (keys)                  go to the shell, except the terminal commands above\n  \
+             Shift+PgUp / PgDn       scroll back through what went off the screen\n  \
+             $XT_TAGGED              the tagged files, set on entering the terminal\n  \
+                                     (bash: \"${XT_TAGGED[@]}\"; zsh, fish: $XT_TAGGED)\n  \
+             exit                    closes the shell\n\n\
              VIEWER (V, Ctrl+V)\n  \
              F / B                   find from the start / backward from the end\n  \
              /, S / \\                find from this page forward / backward\n  \

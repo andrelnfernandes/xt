@@ -356,7 +356,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn file_info_has_the_basics() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         let f = tmp.path().join("a.txt");
         fs::write(&f, "12345").unwrap();
         std::os::unix::fs::symlink("nope", tmp.path().join("broken")).unwrap();
@@ -413,7 +413,7 @@ mod tests {
 
     #[test]
     fn disk_of_a_directory() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         let text = disk(tmp.path());
         assert!(text.contains("free,") && text.contains("used of"), "{text}");
     }

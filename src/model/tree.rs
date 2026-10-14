@@ -534,7 +534,7 @@ mod tests {
     use std::fs::{create_dir_all, write};
 
     fn sample() -> (tempfile::TempDir, Tree) {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         let p = tmp.path();
         create_dir_all(p.join("b/deep/deeper")).unwrap();
         create_dir_all(p.join("a")).unwrap();
@@ -764,7 +764,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn symlinks_are_not_followed() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         create_dir_all(tmp.path().join("real")).unwrap();
         std::os::unix::fs::symlink(tmp.path(), tmp.path().join("loop")).unwrap();
         let mut tree = Tree::new(tmp.path().to_path_buf());

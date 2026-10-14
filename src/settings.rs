@@ -4,7 +4,7 @@
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::config::{self, Choice, Config, CopyPaths, THEMES, Theme};
+use crate::config::{self, Choice, Config, CopyPaths, THEMES, TerminalTheme, Theme};
 use crate::input::{LineEvent, LineInput};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,6 +27,8 @@ pub enum Opt {
     AutoRefresh,
     Git,
     CopyPaths,
+    TerminalTheme,
+    TerminalHistory,
 }
 
 type Page = (&'static str, &'static [(char, &'static str, Opt)]);
@@ -64,6 +66,7 @@ pub const PAGES: &[Page] = &[
             ('D', "Enter in the file window", Opt::EnterViews),
             ('E', "Initial file display (Alt+F)", Opt::FileDisplay),
             ('F', "Syntax colors in the viewer", Opt::SyntaxColors),
+            ('G', "Built-in terminal colors (Alt+X)", Opt::TerminalTheme),
         ],
     ),
     (
@@ -75,6 +78,11 @@ pub const PAGES: &[Page] = &[
                 'C',
                 "Entries starting with @ are not saved in history",
                 Opt::HistorySkipAt,
+            ),
+            (
+                'D',
+                "Built-in terminal keeps a shell history of its own",
+                Opt::TerminalHistory,
             ),
         ],
     ),
@@ -143,6 +151,7 @@ impl Opt {
                 _ => "Y".into(),
             },
             Opt::HistorySkipAt => yes_no(o.history_skip_at),
+            Opt::TerminalHistory => yes_no(o.terminal_history),
             Opt::CompareIgnore2s => yes_no(o.compare_ignore_2s),
             Opt::CompareIgnore1h => yes_no(o.compare_ignore_1h),
             Opt::AutoRefresh => yes_no(o.auto_refresh),
@@ -152,6 +161,16 @@ impl Opt {
                 CopyPaths::Tree => "Tree (root of xt's tree)",
                 CopyPaths::Current => "Current (current directory, with its name)",
                 CopyPaths::Relative => "Relative (below the current directory)",
+            }
+            .into(),
+            Opt::TerminalTheme => match o.terminal_theme {
+                TerminalTheme::Native => "Native (the terminal's own)",
+                TerminalTheme::Xt => "xt (background and text of the theme)",
+                TerminalTheme::Solarized => "Solarized",
+                TerminalTheme::Gruvbox => "Gruvbox",
+                TerminalTheme::Nord => "Nord",
+                TerminalTheme::Dracula => "Dracula",
+                TerminalTheme::OneDark => "One Dark",
             }
             .into(),
         }
@@ -174,11 +193,13 @@ impl Opt {
             Opt::ConfirmQuit => o.confirm_quit = !o.confirm_quit,
             Opt::PruneConfirmation => o.prune_confirmation = o.prune_confirmation.next(),
             Opt::HistorySkipAt => o.history_skip_at = !o.history_skip_at,
+            Opt::TerminalHistory => o.terminal_history = !o.terminal_history,
             Opt::CompareIgnore2s => o.compare_ignore_2s = !o.compare_ignore_2s,
             Opt::CompareIgnore1h => o.compare_ignore_1h = !o.compare_ignore_1h,
             Opt::AutoRefresh => o.auto_refresh = !o.auto_refresh,
             Opt::Git => o.git = !o.git,
             Opt::CopyPaths => o.copy_paths = o.copy_paths.next(),
+            Opt::TerminalTheme => o.terminal_theme = o.terminal_theme.next(),
         }
         true
     }

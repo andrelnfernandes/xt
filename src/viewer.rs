@@ -589,7 +589,7 @@ mod tests {
 
     #[test]
     fn reload_keeps_position_and_mode() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         let path = tmp.path().join("a.txt");
         let lines = |n: usize| (0..n).map(|i| format!("line {i}\n")).collect::<String>();
         std::fs::write(&path, lines(100)).unwrap();
@@ -640,7 +640,7 @@ mod tests {
 
     #[test]
     fn opens_real_file_and_reports_truncation() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         let path = tmp.path().join("f.txt");
         std::fs::write(&path, "abc").unwrap();
         let v = Viewer::open_limited(path, MAX_BYTES).unwrap();
