@@ -226,18 +226,22 @@ fn network(out: &mut String, net: &platform::Network) {
     }
 }
 
+/// The file system that contains `path`: the deepest mount point containing
+/// it (the last one wins when a point is mounted over).
+pub fn mount_of(path: &Path) -> Option<platform::Mount> {
+    platform::mounts()
+        .into_iter()
+        .filter(|m| path.starts_with(&m.point))
+        .max_by_key(|m| m.point.as_os_str().len())
+}
+
 /// The disk of `path`: where its file system is mounted, free and used.
 pub fn disk(path: &Path) -> String {
     let Some(d) = platform::disk_space(path) else {
         return String::new();
     };
     let mut out = String::new();
-    // The deepest mount point containing the path (the last one wins when a
-    // point is mounted over).
-    let mount = platform::mounts()
-        .into_iter()
-        .filter(|m| path.starts_with(&m.point))
-        .max_by_key(|m| m.point.as_os_str().len());
+    let mount = mount_of(path);
     let used = d.total.saturating_sub(d.free);
     let pct = (used * 100).checked_div(used + d.available).unwrap_or(0);
     let usage = format!(
