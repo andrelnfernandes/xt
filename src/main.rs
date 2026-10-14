@@ -19,13 +19,16 @@ mod search;
 mod settings;
 mod shell;
 mod state;
+mod term;
+#[cfg(test)]
+mod testing;
 mod ui;
 mod viewer;
 mod watch;
 
 use std::io::{Write, stdout};
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, bail};
 use ratatui::DefaultTerminal;
@@ -110,8 +113,10 @@ fn main() -> anyhow::Result<()> {
     let result = run(&mut terminal, &mut app, &mut keyboard);
     keyboard.restore();
     ratatui::restore();
-    // Files extracted from ZIP/TAR to open with O.
-    let _ = std::fs::remove_dir_all(app::temp_dir());
+    // Files extracted from ZIP/TAR to open with O, the terminal's script.
+    if let Some(base) = platform::cache_dir() {
+        let _ = std::fs::remove_dir_all(platform::run_dir_path(&base));
+    }
     // Alt+Q: leaves the directory for the shell function to cd into.
     if let Some(dir) = &app.quit_dir {
         match &cwd_file {
@@ -172,7 +177,8 @@ impl Keyboard {
 
     /// Enables full mode outside prompts and disables it inside them.
     fn sync(&mut self, app: &mut App) -> std::io::Result<()> {
-        let want_full = self.supported && app.prompt.is_none();
+        // In the terminal, typing must reach the shell as usual (accents, dead keys).
+        let want_full = self.supported && app.prompt.is_none() && !app.terminal_focus;
         if want_full == self.full {
             return Ok(());
         }
@@ -238,6 +244,8 @@ fn run(
     // Without inotify (limit exhausted, unsupported system), there is just no
     // automatic refresh.
     let mut watcher = watch::Watcher::new().ok();
+    let mut redraw = true;
+    let mut last_fs_check = Instant::now();
     while !app.should_quit {
         keyboard.sync(app)?;
         if let Some(w) = &mut watcher {
@@ -249,7 +257,11 @@ fn run(
             w.watch_only(dirs);
         }
         app.refresh_git();
-        terminal.draw(|frame| ui::draw(frame, app))?;
+        redraw |= app.terminal_tick();
+        if redraw {
+            terminal.draw(|frame| ui::draw(frame, app))?;
+        }
+        redraw = true;
         // With work in progress (log, copy...), don't block waiting for a key:
         // process a chunk and redraw the progress.
         if app.busy() && !event::poll(Duration::ZERO)? {
@@ -259,9 +271,17 @@ fn run(
         // Idle, wait for a key for up to half a second; in the meantime,
         // apply the changes seen on disk (batched, so a large copy
         // done by another program doesn't trigger a reread per file).
-        if !event::poll(Duration::from_millis(500))? {
-            if let Some(w) = &watcher {
-                app.fs_changed(w.changed_dirs());
+        // With the terminal on screen, wake up often to show what the
+        // shell writes, but redraw only when it writes something.
+        let wait = if app.terminal_focus { 15 } else { 500 };
+        if !event::poll(Duration::from_millis(wait))? {
+            redraw = !app.terminal_focus;
+            if last_fs_check.elapsed() >= Duration::from_millis(500) {
+                last_fs_check = Instant::now();
+                if let Some(w) = &watcher {
+                    app.fs_changed(w.changed_dirs());
+                }
+                redraw = true;
             }
             continue;
         }

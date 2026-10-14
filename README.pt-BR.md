@@ -118,6 +118,9 @@ O que muda no Windows:
   administrador.
 - Configuração em `%APPDATA%\xt\config.toml`, histórico em
   `%LOCALAPPDATA%\xt\`.
+- O terminal embutido (Alt+X) roda o `cmd` (`%COMSPEC%`). Ao entrar nele, o
+  shell ainda vai para o diretório da árvore, mas a árvore não acompanha os
+  `cd`s do shell, e não há `$XT_TAGGED`.
 
 Para o **Alt+Q** no PowerShell, coloque isto no seu `$PROFILE`:
 
@@ -142,8 +145,8 @@ xt). Ela tem quatro páginas:
 | Página | Opções |
 |---|---|
 | 1. Programas e formatos | editor, formato de data, formato de número, comandos Git |
-| 2. Exibição e ordenação | mostrar ocultos, ordenação inicial e sentido, o que o Enter faz na janela de arquivos, modo inicial da janela de arquivos, cores de sintaxe no visualizador |
-| 3. Confirmações e histórico | confirmar ao sair, confirmação do Prune, não guardar entradas com `@` |
+| 2. Exibição e ordenação | mostrar ocultos, ordenação inicial e sentido, o que o Enter faz na janela de arquivos, modo inicial da janela de arquivos, cores de sintaxe no visualizador, cores do terminal embutido |
+| 3. Confirmações e histórico | confirmar ao sair, confirmação do Prune, não guardar entradas com `@`, histórico próprio do terminal embutido |
 | 4. Cópia, Compare e atualização | ignorar 2 s, ignorar 1 h, atualização automática, de onde partem os caminhos do Alt+C/Alt+M |
 
 A letra da opção (ou Enter) troca o valor, PgUp/PgDn ou 1–4 mudam de página,
@@ -211,6 +214,52 @@ Status colorido, como no terminal (aqui com o tema `dark`):
 
 ![O visualizador mostrando o git diff de um arquivo, com cores](docs/screenshots/git-diff.png)
 
+## Terminal embutido (Alt+X)
+
+Não existe no XTree nem no ZTreeWin: o seu shell (`$SHELL`) rodando dentro da
+tela do xt, na parte de baixo, com a árvore e os arquivos ainda visíveis em
+cima.
+
+- **Alt+X** abre o terminal e volta ao xt. O shell continua rodando enquanto
+  está escondido, com o histórico e o que estava na tela; `exit` fecha o
+  shell.
+- **Alt+Z** abre em tela cheia; dentro dele, alterna entre tela cheia e
+  painel. Depois, o Alt+X reabre do jeito que estava.
+- **A árvore acompanha o shell:** um `cd` no terminal leva o cursor da árvore
+  para o mesmo diretório (Linux).
+- **O shell acompanha a árvore:** ao entrar no terminal a partir de outro
+  diretório, ele vai para lá. Isso só acontece com o shell parado no prompt;
+  com um programa rodando (vim, less...), nada é digitado.
+- **`$XT_TAGGED`** tem os arquivos marcados, atualizada ao entrar no terminal.
+  É um array: no bash, use `"${XT_TAGGED[@]}"` (`cp "${XT_TAGGED[@]}" ~/backup`);
+  no zsh e no fish, `$XT_TAGGED`. Com outros shells (sh, dash), só há o `cd`.
+- **Alt+O** digita os arquivos marcados no cursor, entre aspas e relativos ao
+  diretório do shell (`wc -l 'a.txt' 'b c.txt'`). Na árvore ou na janela de
+  arquivos, abre o terminal e digita os nomes.
+- **Shift+PgUp/PgDn** rolam pelo que saiu da tela.
+- Ao sair do terminal, os diretórios abertos são relidos.
+- **Histórico próprio:** os comandos digitados nele vão para um histórico do
+  shell separado do dos seus outros terminais:
+  `~/.local/state/xt/bash_history` (`zsh_history`...), via `HISTFILE`; no fish,
+  a sessão `xt` (`fish_history`). Se o seu arquivo rc define `HISTFILE` sem
+  condição, vale o dele. Desligue na **F12** (página 3) ou com
+  `terminal_history = false`.
+- Programas de tela cheia (vim, htop, less) funcionam dentro dele; todas as
+  teclas vão para eles, menos Alt+X, Alt+Z e Alt+O.
+
+As teclas podem ser trocadas em `[keys.any]` (`terminal`, `terminal_full`,
+`terminal_tagged`): o Alt+T, por exemplo, é o menu "Terminal" em alguns
+terminais. As cores são escolhidas na **F12** (página 2) ou em
+`terminal_theme`, em `[options]`: `native` (as do terminal onde o xt roda),
+`xt` (fundo e texto do tema do xt), `solarized`, `gruvbox`, `nord`, `dracula`
+ou `one_dark`.
+
+Para mudar o diretório e o `$XT_TAGGED`, o xt grava um pequeno script numa
+pasta própria (em `~/.cache/xt/`, legível só por você) e digita
+` . script` no prompt; o espaço no início deixa a linha fora do histórico no
+bash (`ignorespace`) e no zsh (`HIST_IGNORE_SPACE`). Dentro do terminal,
+`XT_TERMINAL=1`, para prompts e scripts que queiram saber.
+
 ## Teclas
 
 ### Navegação
@@ -242,6 +291,9 @@ Status colorido, como no terminal (aqui com o tema `dark`):
 | Alt+F5 | | abre um ZIP/TAR como diretório |
 | `E` | | abre o arquivo no editor |
 | `X` | executa um comando do shell | idem |
+| Alt+X | terminal embutido (e volta ao xt) | idem |
+| Alt+Z | terminal embutido em tela cheia | idem |
+| Alt+O | terminal embutido, digitando os arquivos marcados | idem |
 | `L` | Log: abre outro diretório na janela | |
 | `C` | Compare: compara com a outra janela e marca | |
 | F8 | divide a tela em duas janelas (ou volta a uma) | idem |
@@ -522,6 +574,7 @@ Na árvore, `+` no conector (`├─+`) indica um diretório recolhido que tem s
 - `src/archive.rs` — leitura de ZIP/TAR
 - `src/watch.rs` — avisos de mudanças no disco (inotify)
 - `src/shell.rs` — editor e comandos do shell (com aspas seguras)
+- `src/term.rs` — terminal embutido (pseudoterminal, códigos de teclas, cores)
 - `src/git.rs` — menu Git (Ctrl+G) e marcadores de estado, pelo programa `git`
 - `src/config.rs` — arquivo de configuração, temas e formatos
 - `src/settings.rs` — tela de configuração (F12)
@@ -578,7 +631,7 @@ configuração (Alt+F10).
 | Prune | apaga só os subdiretórios ou também o atual; só diretórios vazios; lixeira | apaga sempre o diretório inteiro, permanentemente; confirmação configurável |
 | Delete | lixeira opcional | apaga de vez |
 | Log | vários drives logados, Global, troca de drive | uma raiz por janela; `L` abre outro diretório |
-| eXecute | parâmetros de batch `%1`–`%8`, nova janela (NTW) | `sh` com `%f`, `%t` e `%d`; sempre no terminal do xt |
+| eXecute | parâmetros de batch `%1`–`%8`, nova janela (NTW) | `sh` com `%f`, `%t` e `%d`; sempre no terminal do xt; também um terminal embutido (Alt+X) |
 | Histórico | janela de histórico com marcadores | ↑/↓ no prompt, um histórico por tipo, salvo entre execuções |
 | Configuração | 7 páginas, editor de cores (F4) por elemento, Alt-Export | 4 páginas com as opções que fazem sentido no Linux; F4 escolhe entre 8 temas prontos; cores individuais no `config.toml` |
 | Arquivos compactados | qualquer formato com archiver externo, criar (F5), extrair (Alt-F5) | ZIP/JAR/WAR/APK/TAR/TGZ: abrir (Alt+F5), extrair com Copy, criar com F5 (ZIP, TAR e TAR.GZ) |

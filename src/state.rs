@@ -55,7 +55,7 @@ mod tests {
 
     #[test]
     fn saves_and_loads_privately() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         let path = tmp.path().join("xt/history.toml");
         assert!(load_history(&path).is_empty());
 
@@ -76,7 +76,7 @@ mod tests {
 
     #[test]
     fn ignores_broken_files() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::testing::tempdir();
         let path = tmp.path().join("history.toml");
         fs::write(&path, "not [valid").unwrap();
         assert!(load_history(&path).is_empty());

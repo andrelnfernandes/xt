@@ -17,12 +17,15 @@ dunce = "1.0.5"
 flate2 = "1.1.10"
 globset = "0.4.20"
 notify = { version = "8.2.0", default-features = false }
+portable-pty = "0.9.0"
 ratatui = "0.30.2"
 serde = { version = "1.0.229", features = ["derive"] }
 syntect = { version = "5.3.0", default-features = false, features = ["default-syntaxes", "default-themes", "regex-fancy", "parsing"] }
 tar = "0.4.46"
 toml = "1.1.8"
 toml_edit = "0.25.17"
+tui-term = "0.3.4"
+vt100 = "0.16.2"
 zip = { version = "9.0.2", default-features = false, features = ["deflate"] }
 
 [target.'cfg(unix)'.dependencies]
