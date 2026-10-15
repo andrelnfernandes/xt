@@ -13,7 +13,8 @@
 #   ~/.cache/xt-screenshots/venv/bin/pip install pyte pillow
 #   PYTHON=~/.cache/xt-screenshots/venv/bin/python docs/screenshots/tools/run.sh
 #
-# Usage: run.sh [shot...]   (default: all; e.g. run.sh tree terminal)
+# Usage: run.sh [shot...]   (default: all; e.g. run.sh tree terminal demo)
+# The PNGs go to docs/screenshots/, the animation (demo) to docs/demo.gif.
 set -e
 TOOLS=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$TOOLS/../../.." && pwd)
@@ -39,16 +40,22 @@ up() { n=$1; s=""; while [ $n -gt 0 ]; do s="$s$U"; n=$((n-1)); done; printf %s 
 WANT="$*"
 run() { name=$1; cfg=$2; shift 2
   [ -z "$WANT" ] || case " $WANT " in *" $name "*) ;; *) return 0;; esac
+  case $name in demo) file=docs/demo.gif;; *) file=docs/screenshots/$name.png;; esac
   HOME=/home/user SHELL=/bin/bash XDG_CONFIG_HOME=$W/root/config/$cfg \
   XDG_STATE_HOME=/mnt/tmp/state XDG_CACHE_HOME=/mnt/tmp/cache \
-  "$PY" -I "$T/shot.py" "$X/docs/screenshots/$name.png" "$X/target/release/xt" \
-    /home/user/projects "$@"
-  echo "docs/screenshots/$name.png"; }
+  "$PY" -I "$T/shot.py" "$X/$file" "$X/target/release/xt" /home/user/projects "$@"
+  echo "$file"; }
 run tree classic "*" sleep:1 "$(down 12)"
 run theme-gruvbox gruvbox "*" sleep:1 "$(down 12)"
 run branch-tagged classic "*" sleep:1 "$(down 3)" b "$D" t "$D$D" t t "$D$D"
 run git-menu git "*" sleep:1 "$(down 12)" "\r" "$(down 7)" "\007"
 run split classic "*" sleep:1 "$(down 12)" "\033[19~" "$(up 8)"
 run terminal classic "*" sleep:1 "$(down 12)" "\033x" sleep:1.5 "cd model && ls\r" sleep:1
+# The animation at the top of the README: the built-in terminal with the
+# tree following a cd; then Branch, tags, and Alt+O typing the tagged files.
+run demo classic hold:1.5 "*" hold:1 "\033x" hold:1 "type:cd xt/src" hold:.4 "\r" hold:2.5 \
+  "\033x" hold:1 "$(up 9)" hold:.8 b hold:1.2 "$D" hold:.4 t hold:.5 "$D" hold:.3 "$D" hold:.4 \
+  t hold:.5 t hold:1.5 "send:\033x" "\014" hold:.6 "type:wc -c " hold:.4 "\033o" hold:1 \
+  "\r" hold:2.5 "\033x" hold:3
 run terminal-tagged classic "*" sleep:1 "$(down 3)" b "$D" t "$D$D" t t "\033x" sleep:1.5 "\014" "wc -c " "\033o" "\r" sleep:1
 ' sh "$HOME" "$TOOLS" "$REPO" "$WORK" "$PYTHON" "$@"

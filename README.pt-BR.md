@@ -4,7 +4,7 @@
 
 Gerenciador de arquivos em modo texto para Linux, inspirado no XTree e no ZTreeWin.
 
-![xt: árvore de diretórios, janela de arquivos e estatísticas, no tema clássico](docs/screenshots/tree.png)
+![O xt em uso: o terminal embutido com a árvore acompanhando um cd, arquivos marcados num Branch e digitados num comando com Alt+O](docs/demo.gif)
 
 ## Por que o xt?
 
@@ -28,6 +28,10 @@ o que inspirou o xt e como ele se compara. XTree, ZTree e ZTreeWin são marcas
 de seus respectivos donos.
 
 ## Telas
+
+A árvore de diretórios, a janela de arquivos e as estatísticas, no tema clássico:
+
+![xt: árvore de diretórios, janela de arquivos e estatísticas, no tema clássico](docs/screenshots/tree.png)
 
 **Branch** (`B`) lista os arquivos de um ramo inteiro; os arquivos marcados
 (`T`) ficam destacados e são contados à direita:
