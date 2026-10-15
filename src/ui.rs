@@ -821,7 +821,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
             menu_words(
                 "ARCHIVE",
                 &[
-                    "Branch", "Compare", "Filespec", "Invert", "Showall", "Tag", "Untag", "copY",
+                    "Branch", "Compare", "Filespec", "Invert", "Showall", "Tag", "Untag", "Yank",
                     "Quit",
                 ],
             ),
@@ -842,7 +842,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                 "DIR",
                 &[
                     "Branch", "Compare", "Delete", "Filespec", "Invert", "Log", "Makedir",
-                    "Rename", "Showall", "Tag", "Untag", "copY", "eXecute", "Quit",
+                    "Rename", "Showall", "Tag", "Untag", "Yank", "eXecute", "Quit",
                 ],
             ),
             menu_line(
@@ -876,7 +876,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                     "Untag",
                     "View",
                     "Edit",
-                    "copY",
+                    "Yank",
                     "eXecute",
                     "Quit",
                 ],
@@ -903,7 +903,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                         "Move",
                         "Tag",
                         "Untag",
-                        "copY",
+                        "Yank",
                     ]
                 } else {
                     &[
@@ -914,7 +914,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                         "Open",
                         "Tag",
                         "Untag",
-                        "copY",
+                        "Yank",
                     ]
                 },
             ),
@@ -924,9 +924,9 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                     (
                         "",
                         if tree {
-                            "on tagged files here · Tag/Untag: all logged · copY: paths to clipboard"
+                            "on tagged files here · Tag/Untag: all logged · Yank: paths to clipboard"
                         } else {
-                            "on tagged files in list · Copy/Move: no paths · copY: paths to clipboard"
+                            "on tagged files in list · Copy/Move: no paths · Yank: paths to clipboard"
                         },
                     ),
                     hint,
