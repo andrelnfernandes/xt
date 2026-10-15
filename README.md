@@ -4,7 +4,7 @@
 
 Text-mode file manager for Linux, inspired by XTree and ZTreeWin.
 
-![xt: directory tree, file window and statistics, in the classic theme](docs/screenshots/tree.png)
+![xt in use: the built-in terminal with the tree following a cd, tagging files in a Branch and typing them into a command with Alt+O](docs/demo.gif)
 
 ## Why xt?
 
@@ -28,6 +28,10 @@ to describe what inspired xt and how it compares. XTree, ZTree and ZTreeWin
 are trademarks of their respective owners.
 
 ## Screenshots
+
+The directory tree, the file window and the statistics, in the classic theme:
+
+![xt: directory tree, file window and statistics, in the classic theme](docs/screenshots/tree.png)
 
 **Branch** (`B`) lists the files of a whole branch; tagged files (`T`) are
 highlighted and counted on the right:
