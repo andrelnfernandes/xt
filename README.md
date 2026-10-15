@@ -680,6 +680,7 @@ The keys follow ZTreeWin's. The exceptions:
 | F12 | macros (not implemented) | configuration |
 | `/` | same as `?` (statistics) | Treespec, like `\` (`?` still shows the statistics) |
 | Ctrl+C, Ctrl+M in the tree | (nothing) | Copy/Move of the current directory's tagged files |
+| Copy path to clipboard | Ctrl+Insert | Y or Ctrl+Insert (Ctrl+Y for tagged; works via OSC 52 and system clipboard) |
 
 All keys can be rebound under `[keys]` in `config.toml`.
 
@@ -693,10 +694,9 @@ All keys can be rebound under `[keys]` in `config.toml`.
   Treespec in edit mode (F5, wildcards) and special folders (F6), type-ahead
   search with prompt (`|`) and active mode, drive switching (`<` and `>`).
 - **Files:** Open in a new terminal window (Alt+O), Batch of the current file (Alt+B), JFC (J, compare the contents of two files), ZAAP
-  (Y), sHortcut (H), Print (P), Rename with mask, find and replace and case change,
+  (external archiver), sHortcut (H), Print (P), Rename with mask, find and replace and case change,
   owner/group (chown), Megaview (Ctrl+F7 in the file window), merge tagged files between
-  windows (Ctrl+F6), Partial Untag (Ctrl+F8), copy path to the
-  clipboard (Ctrl+Insert).
+  windows (Ctrl+F6), Partial Untag (Ctrl+F8).
 - **General:** macros (F12), applications menu (F9), bookmarks (F11, `[`
   and `]`), Quit and shell (Ctrl+Q), saving and
   loading the log (Zlist, Ctrl/Alt+Z), recycle bin, colors by name and attribute

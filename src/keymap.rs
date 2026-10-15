@@ -256,6 +256,16 @@ const COMMANDS: &[(&str, Command, &str)] = &[
         Command::CreateArchive { tagged: true },
         "create a zip/tar archive with the tagged files",
     ),
+    (
+        "clip",
+        Command::Clipboard { tagged: false },
+        "copy path to clipboard",
+    ),
+    (
+        "clip_tagged",
+        Command::Clipboard { tagged: true },
+        "copy paths of tagged files to clipboard",
+    ),
     ("info", Command::Info, "details of the file or directory"),
     (
         "avail",
@@ -343,6 +353,9 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("s", Any, "showall"),
     ("t", Any, "tag"),
     ("u", Any, "untag"),
+    ("y", Any, "clip"),
+    ("ctrl+insert", Any, "clip"),
+    ("ctrl+y", Any, "clip_tagged"),
     ("x", Any, "execute"),
     ("alt+x", Any, "terminal"),
     ("alt+z", Any, "terminal_full"),
@@ -653,7 +666,8 @@ impl Keymap {
              N / P, Alt+Home/End     next / previous / first / last tagged file\n  \
              U                       untag the file being viewed\n  \
              H                       hex / text\n  \
-             E                       edit the file in the configured editor\n\n\
+             E                       edit the file in the configured editor\n  \
+             Y, Ctrl+Insert          copy file path to clipboard\n\n\
              NAVIGATION\n  \
              Shift+letter, 0-9       next directory / file starting with it\n",
         );

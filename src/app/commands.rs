@@ -474,6 +474,7 @@ impl App {
                 let label = format!("MAKE DIRECTORY in {}: ", self.tree.path(id).display());
                 self.open_prompt(PromptKind::MakeDir(id), label, "");
             }
+            Command::Clipboard { tagged } => self.clip(tagged),
             _ => match self.focus {
                 Focus::Tree => self.apply_tree(cmd),
                 Focus::Files => self.apply_files(cmd),

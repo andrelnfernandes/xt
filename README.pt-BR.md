@@ -687,6 +687,7 @@ As teclas seguem as do ZTreeWin. As exceções:
 | F12 | macros (não implementadas) | configuração |
 | `/` | o mesmo que `?` (estatísticas) | Treespec, como `\` (`?` continua mostrando as estatísticas) |
 | Ctrl+C, Ctrl+M na árvore | (nada) | Copy/Move dos marcados do diretório atual |
+| Copiar caminho para área de transferência | Ctrl+Insert | Y ou Ctrl+Insert (Ctrl+Y para marcados; suporta OSC 52 e clipboard do sistema) |
 
 Todas as teclas podem ser trocadas em `[keys]` no `config.toml`.
 
@@ -700,10 +701,9 @@ Todas as teclas podem ser trocadas em `[keys]` no `config.toml`.
   Treespec em modo de edição (F5, curingas) e pastas especiais (F6), busca
   ao digitar com prompt (`|`) e modo ativo, troca de drive (`<` e `>`).
 - **Arquivos:** Open em nova janela de terminal (Alt+O), Batch do arquivo atual (Alt+B), JFC (J, comparar o conteúdo de dois arquivos), ZAAP
-  (Y), sHortcut (H), Print (P), Rename com máscara, localizar e trocar e mudança de maiúsculas,
+  (descompactador externo), sHortcut (H), Print (P), Rename com máscara, localizar e trocar e mudança de maiúsculas,
   dono/grupo (chown), Megaview (Ctrl+F7 na janela de arquivos), juntar marcados entre as
-  janelas (Ctrl+F6), Partial Untag (Ctrl+F8), copiar caminho para a área de
-  transferência (Ctrl+Insert).
+  janelas (Ctrl+F6), Partial Untag (Ctrl+F8).
 - **Geral:** macros (F12), menu de aplicativos (F9), marcadores (F11, `[`
   e `]`), Quit and shell (Ctrl+Q), salvar e
   carregar o log (Zlist, Ctrl/Alt+Z), lixeira, cores por nome e atributo
