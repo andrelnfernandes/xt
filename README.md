@@ -53,22 +53,36 @@ highlighted and counted on the right:
 
 ## Installation
 
-Requires Rust (via [rustup](https://rustup.rs)). To install straight from
-GitHub:
+**Ready-made binary:** download the archive for your system from the
+[Releases](https://github.com/andrelnfernandes/xt/releases) page: Linux
+x86_64 or ARM64 (static, runs on any distribution) or Windows x86_64.
+Extract it and put `xt` (`xt.exe`) somewhere on your `PATH`, e.g.:
+
+```bash
+tar xzf xt-v0.1.0-x86_64-unknown-linux-musl.tar.gz
+install -m 755 xt-v0.1.0-x86_64-unknown-linux-musl/xt ~/.local/bin/
+```
+
+Each archive has a `.sha256` next to it, to check with `sha256sum -c`.
+
+**With Cargo** (needs Rust, via [rustup](https://rustup.rs)), from
+[crates.io](https://crates.io/crates/xt-fm), where xt is called `xt-fm`
+(the name `xt` was taken); the command is still `xt`:
+
+```bash
+cargo install xt-fm
+```
+
+Or the latest code, straight from GitHub, or from a clone of the
+repository (in the project folder):
 
 ```bash
 cargo install --git https://github.com/andrelnfernandes/xt
-```
-
-Or, from a clone of the repository, in the project folder:
-
-```bash
 cargo install --path .
 ```
 
 The binary goes to `~/.cargo/bin/xt` (which rustup already puts on your `PATH`).
-To update after code changes, run the same command again;
-to remove it, `cargo uninstall xt`.
+To update, run the same command again; to remove it, `cargo uninstall xt-fm`.
 
 ## Usage
 
@@ -103,8 +117,8 @@ end up in the directory you were in inside xt. `Q` and F10 quit without changing
 
 xt also builds for Windows (Windows Terminal or the classic console). It
 passes the automated tests there, but has not been used day to day yet, so
-expect rough edges. It installs the same way (Rust via rustup, then
-`cargo install --git ...`); each CI run also produces an `xt.exe`.
+expect rough edges. Each release has a ready-made `xt.exe` (see
+[Installation](#installation)), or install it with Cargo, the same way.
 
 What changes on Windows:
 
