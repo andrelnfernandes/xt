@@ -22,13 +22,14 @@ pub fn set_clipboard(text: &str) -> io::Result<()> {
     let _ = out.write_all(osc52.as_bytes());
     let _ = out.flush();
 
-    // 2. Spawn clipboard daemon to keep the selection alive even after xt exits
-    spawn_daemon(text);
+    // 2. Spawn clipboard daemon to keep the selection alive even after xt exits.
+    // When spawned, it runs detached with stdout/stderr directed to null (no TUI pollution).
+    if !spawn_daemon(text) {
+        // Fallback when daemon process cannot be spawned (e.g. inside cargo test)
+        serve_in_thread(text);
+    }
 
-    // 3. Also serve in a local background thread while xt is running
-    serve_in_thread(text);
-
-    // 4. Also run native clipboard tool as fallback in background
+    // 3. Also run native clipboard tool as fallback in background
     let _ = set_native_clipboard(text);
 
     Ok(())
@@ -61,17 +62,30 @@ pub fn run_daemon() -> io::Result<()> {
     Ok(())
 }
 
-fn spawn_daemon(text: &str) {
-    if let Ok(exe) = std::env::current_exe()
-        && let Ok(mut child) = Command::new(exe)
+fn spawn_daemon(text: &str) -> bool {
+    #[cfg(test)]
+    {
+        let _ = text;
+        false
+    }
+    #[cfg(not(test))]
+    {
+        let Ok(exe) = std::env::current_exe() else {
+            return false;
+        };
+        if let Ok(mut child) = Command::new(exe)
             .arg("--clipboard-daemon")
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
-        && let Some(mut stdin) = child.stdin.take()
-    {
-        let _ = stdin.write_all(text.as_bytes());
+            && let Some(mut stdin) = child.stdin.take()
+        {
+            let _ = stdin.write_all(text.as_bytes());
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -82,10 +96,6 @@ fn serve_in_thread(text: &str) {
             #[cfg(target_os = "linux")]
             {
                 use arboard::{LinuxClipboardKind, SetExtLinux};
-                let _ = cb
-                    .set()
-                    .clipboard(LinuxClipboardKind::Primary)
-                    .text(text.clone());
                 let _ = cb
                     .set()
                     .clipboard(LinuxClipboardKind::Clipboard)
