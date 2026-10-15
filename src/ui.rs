@@ -821,7 +821,8 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
             menu_words(
                 "ARCHIVE",
                 &[
-                    "Branch", "Compare", "Filespec", "Invert", "Showall", "Tag", "Untag", "Quit",
+                    "Branch", "Compare", "Filespec", "Invert", "Showall", "Tag", "Untag", "copY",
+                    "Quit",
                 ],
             ),
             menu_line(
@@ -830,6 +831,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                     ("Esc", "close archive"),
                     ("←→", "close/open"),
                     ("Enter", "files (Copy extracts)"),
+                    ("Alt+X", "terminal"),
                     ("F8", "split"),
                     ("F9", "Ctrl/Alt menus"),
                 ],
@@ -840,7 +842,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                 "DIR",
                 &[
                     "Branch", "Compare", "Delete", "Filespec", "Invert", "Log", "Makedir",
-                    "Rename", "Showall", "Tag", "Untag", "eXecute", "Quit",
+                    "Rename", "Showall", "Tag", "Untag", "copY", "eXecute", "Quit",
                 ],
             ),
             menu_line(
@@ -850,8 +852,9 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                     ("*", "log branch"),
                     ("F3", "relog"),
                     ("Enter", "files"),
+                    ("Alt+X", "terminal"),
                     ("F8", "split"),
-                    ("F9", "Ctrl/Alt menus"),
+                    ("F9", "menus"),
                 ],
             ),
         ),
@@ -873,6 +876,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                     "Untag",
                     "View",
                     "Edit",
+                    "copY",
                     "eXecute",
                     "Quit",
                 ],
@@ -882,6 +886,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                 &[
                     ("F3", "relog"),
                     ("Esc", "tree"),
+                    ("Alt+X", "terminal"),
                     ("F8", "split"),
                     ("F9", "Ctrl/Alt menus"),
                 ],
@@ -891,7 +896,15 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
             menu_words(
                 "CTRL",
                 if tree {
-                    &["Attributes", "Copy", "Delete", "Move", "Tag", "Untag"]
+                    &[
+                        "Attributes",
+                        "Copy",
+                        "Delete",
+                        "Move",
+                        "Tag",
+                        "Untag",
+                        "copY",
+                    ]
                 } else {
                     &[
                         "Attributes",
@@ -901,6 +914,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                         "Open",
                         "Tag",
                         "Untag",
+                        "copY",
                     ]
                 },
             ),
@@ -910,9 +924,9 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                     (
                         "",
                         if tree {
-                            "on tagged files here · Tag/Untag: all logged files"
+                            "on tagged files here · Tag/Untag: all logged · copY: paths to clipboard"
                         } else {
-                            "on tagged files in the list · Copy/Move without paths"
+                            "on tagged files in list · Copy/Move: no paths · copY: paths to clipboard"
                         },
                     ),
                     hint,
@@ -923,18 +937,43 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
             menu_words(
                 "ALT",
                 if tree {
-                    &["Attributes", "Compare branch", "Delete", "Prune", "Sort"]
+                    &[
+                        "Attributes",
+                        "Compare branch",
+                        "Delete",
+                        "Info",
+                        "Kbyte",
+                        "Prune",
+                        "Sort",
+                        "eXecute",
+                    ]
                 } else {
-                    &["Attributes", "Copy", "Delete", "Move", "Sort"]
+                    &[
+                        "Attributes",
+                        "Copy",
+                        "Delete",
+                        "File display",
+                        "Info",
+                        "Move",
+                        "Open terminal",
+                        "Sort",
+                        "eXecute",
+                    ]
                 },
             ),
             menu_line(
                 "",
                 &[
                     if tree {
-                        ("", "Attributes/Delete: tagged files here")
+                        (
+                            "Alt+X",
+                            "terminal (Alt+Z full) · Attributes/Delete: tagged files",
+                        )
                     } else {
-                        ("F5", "open archive · Copy/Move: tagged with paths")
+                        (
+                            "Alt+X",
+                            "terminal · F5: archive · Alt+O: tagged · Copy/Move: with paths",
+                        )
                     },
                     hint,
                 ],
