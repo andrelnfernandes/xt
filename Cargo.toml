@@ -20,6 +20,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.104"
+arboard = { version = "3.7.0", default-features = false, features = ["wayland-data-control"] }
 chrono = "0.4.45"
 dunce = "1.0.5"
 flate2 = "1.1.10"

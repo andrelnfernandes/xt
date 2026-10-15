@@ -60,6 +60,10 @@ fn main() -> anyhow::Result<()> {
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
         match arg.to_str() {
+            Some("--clipboard-daemon") => {
+                let _ = clipboard::run_daemon();
+                return Ok(());
+            }
             Some("--cwd-file") => match args.next() {
                 Some(file) => cwd_file = Some(PathBuf::from(file)),
                 None => bail!("--cwd-file needs a file name\n\n{USAGE}"),

@@ -7,10 +7,14 @@
 //! Additionally, native clipboard utilities (`wl-copy` on Wayland, `xclip`/`xsel`
 //! on X11, `pbcopy` on macOS, `clip` on Windows) are attempted as fallback.
 
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::process::{Command, Stdio};
 
-/// Copies text to the system clipboard using OSC 52 and native clipboard tools.
+/// Copies text to the system clipboard using:
+/// 1. OSC 52 escape sequence to stdout (works across SSH, tmux, etc.)
+/// 2. Background daemon (`xt --clipboard-daemon`) to serve X11/Wayland selections even after exit
+/// 3. In-process worker thread to serve X11/Wayland selections while xt is running
+/// 4. Native platform clipboard commands as fallback (`wl-copy`, `xclip`, `xsel`, `pbcopy`, `clip`)
 pub fn set_clipboard(text: &str) -> io::Result<()> {
     // 1. Send OSC 52 escape sequence directly to stdout (works across SSH, tmux, etc.)
     let osc52 = format_osc52(text);
@@ -18,10 +22,82 @@ pub fn set_clipboard(text: &str) -> io::Result<()> {
     let _ = out.write_all(osc52.as_bytes());
     let _ = out.flush();
 
-    // 2. Also run native clipboard tool as fallback in background
+    // 2. Spawn clipboard daemon to keep the selection alive even after xt exits
+    spawn_daemon(text);
+
+    // 3. Also serve in a local background thread while xt is running
+    serve_in_thread(text);
+
+    // 4. Also run native clipboard tool as fallback in background
     let _ = set_native_clipboard(text);
 
     Ok(())
+}
+
+/// Runs the background daemon process (`xt --clipboard-daemon`).
+/// Reads text from stdin and serves clipboard requests until replaced.
+pub fn run_daemon() -> io::Result<()> {
+    let mut text = String::new();
+    io::stdin().read_to_string(&mut text)?;
+    if let Ok(mut cb) = arboard::Clipboard::new() {
+        #[cfg(target_os = "linux")]
+        {
+            use arboard::{LinuxClipboardKind, SetExtLinux};
+            let _ = cb
+                .set()
+                .clipboard(LinuxClipboardKind::Primary)
+                .text(text.clone());
+            let _ = cb
+                .set()
+                .clipboard(LinuxClipboardKind::Clipboard)
+                .wait()
+                .text(text);
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = cb.set_text(text);
+        }
+    }
+    Ok(())
+}
+
+fn spawn_daemon(text: &str) {
+    if let Ok(exe) = std::env::current_exe()
+        && let Ok(mut child) = Command::new(exe)
+            .arg("--clipboard-daemon")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+        && let Some(mut stdin) = child.stdin.take()
+    {
+        let _ = stdin.write_all(text.as_bytes());
+    }
+}
+
+fn serve_in_thread(text: &str) {
+    let text = text.to_owned();
+    std::thread::spawn(move || {
+        if let Ok(mut cb) = arboard::Clipboard::new() {
+            #[cfg(target_os = "linux")]
+            {
+                use arboard::{LinuxClipboardKind, SetExtLinux};
+                let _ = cb
+                    .set()
+                    .clipboard(LinuxClipboardKind::Primary)
+                    .text(text.clone());
+                let _ = cb
+                    .set()
+                    .clipboard(LinuxClipboardKind::Clipboard)
+                    .wait()
+                    .text(text);
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                let _ = cb.set_text(text);
+            }
+        }
+    });
 }
 
 /// Formats the OSC 52 escape sequence for clipboard copy.
@@ -132,6 +208,16 @@ mod tests {
         assert!(osc.contains("aGVsbG8="));
         if std::env::var_os("TMUX").is_none() {
             assert_eq!(osc, "\x1b]52;c;aGVsbG8=\x07");
+        }
+    }
+
+    #[test]
+    fn test_set_clipboard_e2e() {
+        if let Ok(mut cb) = arboard::Clipboard::new() {
+            set_clipboard("TEST_E2E_CLIPBOARD").unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            let text = cb.get_text().unwrap();
+            assert_eq!(text, "TEST_E2E_CLIPBOARD");
         }
     }
 }
