@@ -594,7 +594,7 @@ Na árvore, `+` no conector (`├─+`) indica um diretório recolhido que tem s
 ## Estrutura
 
 - `src/model/` — árvore de diretórios em memória (arena), sem dependência da UI
-- `src/app.rs` — estado global (prompts, operações) e execução de comandos
+- `src/app/` — estado global (prompts, operações) e execução de comandos
 - `src/pane.rs` — uma janela: árvore, lista de arquivos, cursores e filespec
 - `src/input.rs` — comandos e o campo de texto dos prompts
 - `src/keymap.rs` — teclas padrão, trocas da configuração e ajuda (F1)

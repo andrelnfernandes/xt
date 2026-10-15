@@ -1,0 +1,555 @@
+use super::*;
+
+impl App {
+    /// F2: picks the prompt's folder in a tree, starting at the one typed.
+    pub(crate) fn open_picker(&mut self) {
+        let Some(prompt) = &self.prompt else {
+            return;
+        };
+        let base = self.outer.as_deref().unwrap_or(self).current_path();
+        let typed = ops::resolve_path(&prompt.input.text, &base);
+        let start = match prompt.kind.folder() {
+            Some(true) => typed.parent().map_or(base, Path::to_path_buf),
+            _ => typed,
+        };
+        // Archives are read-only: their window offers the disk behind them.
+        let windows: Vec<(PathBuf, PathBuf, bool)> = self
+            .panes
+            .iter()
+            .map(|p| {
+                let p = p.outer.as_deref().unwrap_or(p);
+                (p.tree.path(ROOT), p.current_path(), p.tree.show_hidden)
+            })
+            .collect();
+        self.picker = Some(Picker::new(&windows, self.active, &start));
+    }
+
+    pub(crate) fn picker_key(&mut self, key: KeyEvent) {
+        let Some(picker) = &mut self.picker else {
+            return;
+        };
+        match picker.handle_key(key, &self.keymap) {
+            PickerOutcome::Stay => {}
+            PickerOutcome::Cancel => self.picker = None,
+            PickerOutcome::Chosen(dir) => {
+                self.picker = None;
+                let Some(prompt) = &mut self.prompt else {
+                    return;
+                };
+                // Ctrl+B and F5 keep the typed file name.
+                let path = match prompt.kind.folder() {
+                    Some(true) => match Path::new(&prompt.input.text).file_name() {
+                        Some(name) => dir.join(name),
+                        None => dir,
+                    },
+                    _ => dir,
+                };
+                prompt.input.set_text(path.to_string_lossy().into_owned());
+            }
+        }
+    }
+
+    /// Tags, in the active window's list, the files that have the requested
+    /// relation to their counterpart in the other window's directory. In Branch
+    /// and Showall, the counterpart follows the path relative to the list root
+    /// (`src/a.rs` → `<other>/src/a.rs`).
+    pub(crate) fn compare(&mut self, mode: CompareMode) {
+        let Some(other_base) = self.other().map(Pane::current_path) else {
+            return;
+        };
+        let base = self.tree.path(self.view_root());
+        let files = self.files.clone();
+        let mut count = 0;
+        for &f in &files {
+            let path = self.file_path(f);
+            let rel = path.strip_prefix(&base).unwrap_or(&path);
+            let target = fs::symlink_metadata(other_base.join(rel)).ok();
+            let entry = self.file(f);
+            let tolerance = compare::Tolerance {
+                two_seconds: self.options.compare_ignore_2s,
+                one_hour: self.options.compare_ignore_1h,
+            };
+            let tag = mode.matches(compare::relation(
+                entry.size,
+                entry.modified,
+                target.as_ref(),
+                tolerance,
+            ));
+            count += usize::from(tag);
+            self.set_tags(&[f], |_| tag);
+        }
+        self.message = Some(format!(
+            "Tagged {count} of {} files: {} (compared with {})",
+            files.len(),
+            mode.describe(),
+            other_base.display()
+        ));
+    }
+
+    /// `O`: opens the ZIP/TAR under the cursor as if it were a directory.
+    pub(crate) fn open_archive(&mut self) {
+        let Some(f) = self.selected_file() else {
+            return;
+        };
+        let path = self.file_path(f);
+        if self.archive.is_some() {
+            self.message = Some("Archives inside archives are not supported".into());
+        } else if archive::Kind::detect(&path).is_none() {
+            self.message = Some("Not an archive (zip, jar, tar, tar.gz, tgz)".into());
+        } else {
+            match Pane::from_archive(&path) {
+                Ok(pane) => {
+                    let outer = std::mem::replace(self.deref_mut(), pane);
+                    self.outer = Some(Box::new(outer));
+                }
+                Err(e) => self.message = Some(format!("Cannot open archive: {e}")),
+            }
+        }
+    }
+
+    /// `\`: opens the Treespec prompt with the current path. In Branch and
+    /// Showall, goes straight to the selected file's directory.
+    pub(crate) fn start_treespec(&mut self) {
+        if self.view != FileView::Dir {
+            if let Some(f) = self.selected_file() {
+                let name = self.file(f).name.clone();
+                self.view = FileView::Dir;
+                self.show_node(f.dir);
+                self.refresh_files();
+                if let Some(i) = self.files.iter().position(|&r| self.file(r).name == name) {
+                    self.file_state.select(Some(i));
+                }
+            }
+            return;
+        }
+        let mut text = self.current_path().to_string_lossy().into_owned();
+        if !text.ends_with(std::path::is_separator) {
+            text.push(std::path::MAIN_SEPARATOR);
+        }
+        let origin = self.current();
+        self.open_prompt(PromptKind::Treespec { origin }, "TREESPEC: ".into(), &text);
+    }
+
+    /// Keys in the Treespec prompt: `/` or `\` complete and go down one
+    /// level, Tab/Shift+Tab complete and then switch siblings, Esc goes back.
+    pub(crate) fn treespec_key(&mut self, key: KeyEvent, origin: NodeId) {
+        let Some(prompt) = &mut self.prompt else {
+            return;
+        };
+        let text = prompt.input.text.clone();
+        let new_text = match key.code {
+            KeyCode::Char('/' | '\\') => {
+                let mut t = self.treespec_complete(&text).unwrap_or(text.clone());
+                if !t.ends_with(std::path::is_separator) {
+                    t.push(std::path::MAIN_SEPARATOR);
+                }
+                Some(t)
+            }
+            KeyCode::Tab | KeyCode::BackTab => {
+                let forward = key.code == KeyCode::Tab;
+                match self.treespec_complete(&text) {
+                    Some(t) if t != text => Some(t),
+                    _ => self.treespec_sibling(&text, forward),
+                }
+            }
+            _ => None,
+        };
+        let Some(prompt) = &mut self.prompt else {
+            return;
+        };
+        let text = match new_text {
+            Some(t) => {
+                prompt.input = LineInput::new(&t).with_history(prompt.input.history());
+                t
+            }
+            None => match prompt.input.handle_key(key) {
+                LineEvent::Submit => {
+                    let prompt = self.prompt.take().unwrap();
+                    self.submit(prompt.kind, prompt.input.text);
+                    return;
+                }
+                LineEvent::Cancel => {
+                    self.prompt = None;
+                    self.show_node(origin);
+                    return;
+                }
+                LineEvent::Editing => prompt.input.text.clone(),
+            },
+        };
+        if let Some(id) = self.treespec_target(&text) {
+            self.show_node(id);
+        }
+    }
+
+    /// Shows a text in the viewer (Info, Avail, statistics).
+    pub(crate) fn show_text(&mut self, title: &str, text: String) {
+        let data = text.into_bytes();
+        self.tagged_view = None;
+        self.viewer = Some(Viewer::from_bytes(title.into(), data.len() as u64, data));
+    }
+
+    /// Alt+I: the file under the cursor or, in the tree, the directory (with what
+    /// is logged in it and in its branch).
+    pub(crate) fn info_text(&self) -> String {
+        let in_files = self.focus == Focus::Files;
+        match self.selected_file().filter(|_| in_files) {
+            Some(f) if self.archive.is_none() => info::path_info(&self.file_path(f)),
+            Some(f) => {
+                let e = self.file(f);
+                format!(
+                    "INFO  {} (inside an archive)\n\n  Size          {} bytes\n  Permissions   {:04o}\n",
+                    self.file_path(f).display(),
+                    info::group(e.size),
+                    e.mode
+                )
+            }
+            None => {
+                let id = self.current();
+                let mut text = if self.archive.is_some() {
+                    format!(
+                        "INFO  {} (inside an archive)\n",
+                        self.current_path().display()
+                    )
+                } else {
+                    info::path_info(&self.current_path())
+                };
+                let dir = self.tree.dir_totals(false, false)[id];
+                let branch = self.tree.dir_totals(true, false)[id];
+                let subdirs = self.tree.visible_subtree(id).len() - 1;
+                text.push_str(&format!(
+                    "\nLOGGED\n  {:<14}{} files, {} bytes\n  {:<14}{} files, {} bytes, {} subdirectories\n",
+                    "Directory",
+                    info::group(dir.0),
+                    info::group(dir.1),
+                    "Branch",
+                    info::group(branch.0),
+                    info::group(branch.1),
+                    info::group(subdirs as u64)
+                ));
+                text
+            }
+        }
+    }
+
+    /// ?: statistics of the active window.
+    pub(crate) fn stats_text(&self) -> String {
+        let g = info::group;
+        let logged = self.tree.logged_totals();
+        let listed: u64 = self.files.iter().map(|&f| self.file(f).size).sum();
+        let (tagged, tagged_bytes) = self
+            .files
+            .iter()
+            .map(|&f| self.file(f))
+            .filter(|f| f.tagged)
+            .fold((0u64, 0u64), |(n, b), f| (n + 1, b + f.size));
+        let view = match self.view {
+            FileView::Dir => "directory",
+            FileView::Branch(_) => "branch",
+            FileView::Showall => "showall",
+        };
+        let mut text = format!("STATISTICS  {}\n\n", self.tree.path(ROOT).display());
+        let mut row = |k: &str, v: String| text.push_str(&format!("  {k:<14}{v}\n"));
+        row(
+            "Logged",
+            format!(
+                "{} dirs, {} files, {} bytes",
+                g(logged.dirs),
+                g(logged.files),
+                g(logged.bytes)
+            ),
+        );
+        row("Filespec", self.filespec.text().to_string());
+        row("Sort", self.sort.label());
+        row(
+            "Listing",
+            format!(
+                "{view}: {} files, {} bytes",
+                g(self.files.len() as u64),
+                g(listed)
+            ),
+        );
+        row(
+            "Tagged",
+            format!("{} files, {} bytes", g(tagged), g(tagged_bytes)),
+        );
+        text.push_str(&info::disk(&self.current_path()));
+        text.push('\n');
+        text.push_str(&info::system());
+        text
+    }
+
+    /// Writes the Batch file: one line per tagged file. A script (`.sh`, or
+    /// `.bat`/`.cmd` on Windows) gets its header and execute permission.
+    pub(crate) fn write_batch(&mut self, file: &Path, mask: &str) -> Result<(), String> {
+        if mask.trim().is_empty() {
+            return Err("Batch cancelled: empty line mask".into());
+        }
+        let sources = self.sources(true);
+        let header = shell::batch_header(file);
+        let script = header.is_some();
+        let mut data = header.unwrap_or_default().to_vec();
+        for s in &sources {
+            data.extend(shell::batch_line(mask, &s.path, s.size));
+            data.extend_from_slice(shell::NEWLINE);
+        }
+        let mut out = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(file)
+            .map_err(|e| format!("Cannot create {}: {e}", file.display()))?;
+        std::io::Write::write_all(&mut out, &data).map_err(|e| e.to_string())?;
+        if script {
+            let _ = platform::set_file_mode(&out, 0o755);
+        }
+        if let Some(dir) = file.parent() {
+            self.rescan_everywhere(&[dir]);
+        }
+        self.message = Some(format!(
+            "Wrote {} lines to {}",
+            sources.len(),
+            file.display()
+        ));
+        Ok(())
+    }
+
+    /// Applies the typed date. Without a time, each file keeps its own.
+    pub(crate) fn new_date(&mut self, paths: &[PathBuf], text: &str) -> Result<(), String> {
+        let (date, time) = filespec::parse_date_time(text, self.date_order())
+            .ok_or_else(|| format!("Invalid date: {text}"))?;
+        let mut errors = Vec::new();
+        let mut changed = 0;
+        for path in paths {
+            let result = (|| -> Result<(), String> {
+                let meta = fs::symlink_metadata(path).map_err(|e| e.to_string())?;
+                if meta.is_symlink() {
+                    return Err("symbolic link skipped (the date would change its target)".into());
+                }
+                let old = chrono::DateTime::<chrono::Local>::from(
+                    meta.modified().map_err(|e| e.to_string())?,
+                );
+                let when = date
+                    .and_time(time.unwrap_or(old.time()))
+                    .and_local_timezone(chrono::Local)
+                    .earliest()
+                    .ok_or("time does not exist (daylight saving change)")?;
+                platform::set_modified(path, when.into()).map_err(|e| e.to_string())
+            })();
+            match result {
+                Ok(()) => changed += 1,
+                Err(e) => errors.push(format!("{}: {e}", path.display())),
+            }
+        }
+        let dirs: Vec<&Path> = paths.iter().filter_map(|p| p.parent()).collect();
+        self.rescan_everywhere(&dirs);
+        let mut msg = format!("New date set on {changed} of {}", paths.len());
+        if let Some(e) = errors.first() {
+            msg.push_str(&format!(". Error: {e}"));
+        }
+        self.message = Some(msg);
+        Ok(())
+    }
+
+    /// `O`: opens the file (or the tagged files) in the system's default program.
+    /// Inside an archive, extracts first to a temporary folder
+    /// (deleted when xt exits).
+    pub(crate) fn open_with(&mut self, tagged: bool) {
+        let Some(sources) = self.sources_or_warn(tagged) else {
+            return;
+        };
+        let mut errors = Vec::new();
+        let mut opened = 0;
+        for source in sources {
+            let path = match &self.archive {
+                Some(root) => match extract_for_opening(root, &source.path) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        errors.push(format!("{}: {e}", source.path.display()));
+                        continue;
+                    }
+                },
+                None => source.path,
+            };
+            match shell::open_detached(&path, &self.options.opener) {
+                Ok(()) => opened += 1,
+                Err(e) => errors.push(format!("{}: {e}", path.display())),
+            }
+        }
+        self.message = Some(match errors.first() {
+            None => format!("Opened {opened} file(s)"),
+            Some(e) => format!("Opened {opened} file(s). Error: {e}"),
+        });
+    }
+
+    /// Esc in an archive's tree: goes back to where it was.
+    pub(crate) fn close_archive(&mut self) {
+        if let Some(outer) = self.outer.take() {
+            *self.deref_mut() = *outer;
+            // The disk may have changed while the archive was open.
+            let current = self.current();
+            self.tree.rescan(current);
+            self.after_change();
+        }
+    }
+
+    /// Log: opens `path` in the active window. If it is inside the current tree,
+    /// just moves the cursor there; otherwise, the window gets `path` as its root.
+    pub(crate) fn log(&mut self, text: &str) -> Result<(), String> {
+        let path = ops::resolve_path(text, &self.current_path());
+        let path = dunce::canonicalize(&path).map_err(|e| format!("Cannot log {text}: {e}"))?;
+        if !path.is_dir() {
+            return Err(format!("{} is not a directory", path.display()));
+        }
+        if !self.goto(&path) {
+            let (sort, display) = (self.sort, self.display);
+            *self.deref_mut() = self.new_pane(path);
+            self.display = display;
+            self.set_sort(sort);
+        }
+        Ok(())
+    }
+
+    /// `sources`, warning when there is nothing to operate on.
+    pub(crate) fn sources_or_warn(&mut self, tagged: bool) -> Option<Vec<Source>> {
+        let sources = self.sources(tagged);
+        if sources.is_empty() {
+            if tagged {
+                self.message = Some("No tagged files".into());
+            }
+            return None;
+        }
+        Some(sources)
+    }
+
+    pub(crate) fn rename_file(&mut self, path: &Path, name: &str) -> Result<(), String> {
+        ops::check_name(name)?;
+        let new = path.with_file_name(name);
+        if new == path {
+            return Ok(());
+        }
+        if fs::symlink_metadata(&new).is_ok() {
+            return Err(format!("{name} already exists"));
+        }
+        fs::rename(path, &new).map_err(|e| format!("Cannot rename: {e}"))?;
+        if let Some(dir) = path.parent() {
+            self.rescan_everywhere(&[dir]);
+        }
+        // Keep the cursor on the renamed file.
+        if let Some(i) = self.files.iter().position(|&f| self.file_path(f) == new) {
+            self.file_state.select(Some(i));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn rename_dir(&mut self, id: NodeId, name: &str) -> Result<(), String> {
+        ops::check_name(name)?;
+        let path = self.tree.path(id);
+        let new = path.with_file_name(name);
+        if new == path {
+            return Ok(());
+        }
+        if fs::symlink_metadata(&new).is_ok() {
+            return Err(format!("{name} already exists"));
+        }
+        fs::rename(&path, &new).map_err(|e| format!("Cannot rename: {e}"))?;
+        let parent = self.tree.node(id).parent.unwrap_or(ROOT);
+        self.tree.rescan(parent);
+        let keep = self.tree.find(&new).unwrap_or(parent);
+        self.tree.scan(keep);
+        self.refresh_rows(keep);
+        self.refresh_files();
+        if let Some(dir) = path.parent() {
+            self.rescan_everywhere(&[dir]);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn make_dir(&mut self, id: NodeId, name: &str) -> Result<(), String> {
+        ops::check_name(name)?;
+        let path = self.tree.path(id).join(name);
+        fs::create_dir(&path).map_err(|e| format!("Cannot create directory: {e}"))?;
+        self.tree.rescan(id);
+        self.tree.expand(id);
+        self.refresh_rows(id);
+        self.rescan_everywhere(&[&path]);
+        self.message = Some(format!("Created {}", path.display()));
+        Ok(())
+    }
+
+    /// Permissions (Linux) or attributes (Windows, where `+R -A` changes
+    /// each file's own attributes).
+    pub(crate) fn chmod(&mut self, paths: &[PathBuf], text: &str) -> Result<(), String> {
+        platform::parse_mode(text, 0)?;
+        let mut errors = Vec::new();
+        let mut changed = 0;
+        for path in paths {
+            let meta = match fs::symlink_metadata(path) {
+                // Symbolic links have no permissions of their own on Linux.
+                Ok(m) if m.is_symlink() => continue,
+                Ok(m) => m,
+                Err(e) => {
+                    errors.push(format!("{}: {e}", path.display()));
+                    continue;
+                }
+            };
+            let mode = platform::parse_mode(text, platform::mode(&meta))?;
+            match platform::set_mode(path, mode) {
+                Ok(()) => changed += 1,
+                Err(e) => errors.push(format!("{}: {e}", path.display())),
+            }
+        }
+        let mut dirs: Vec<&Path> = paths.iter().filter_map(|p| p.parent()).collect();
+        dirs.dedup();
+        self.rescan_everywhere(&dirs);
+        let what = platform::describe_mode(0).0;
+        let mut msg = format!("{what} set to {} on {changed} files", text.trim());
+        if let Some(e) = errors.first() {
+            msg.push_str(&format!(". {} errors, first: {e}", errors.len()));
+        }
+        self.message = Some(msg);
+        Ok(())
+    }
+}
+
+/// Extracts an entry of `archive` (virtual path `entry`) to the
+/// temporary folder, so an external program can open it.
+pub(crate) fn extract_for_opening(archive: &Path, entry: &Path) -> std::io::Result<PathBuf> {
+    let rel = entry.strip_prefix(archive).unwrap_or(entry);
+    let dir = platform::run_dir()?;
+    let out = dir.join(rel.file_name().unwrap_or_default());
+    let mut file = fs::File::create(&out)?;
+    archive::Reader::open(archive)?.extract(rel, &mut file, u64::MAX)?;
+    Ok(out)
+}
+
+/// Last component of a path, for short messages.
+pub(crate) fn fit_name(path: &Path) -> String {
+    path.file_name()
+        .unwrap_or(path.as_os_str())
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// "file.txt" or "3 tagged files".
+/// "a.rs", or "3 files".
+pub(crate) fn describe_paths(paths: &[PathBuf]) -> String {
+    match paths {
+        [one] => one
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned(),
+        many => format!("{} files", many.len()),
+    }
+}
+
+pub(crate) fn describe(sources: &[Source]) -> String {
+    match sources {
+        [one] => one
+            .path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned(),
+        many => format!("{} tagged files", many.len()),
+    }
+}

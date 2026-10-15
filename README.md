@@ -587,7 +587,7 @@ In the tree, a `+` on the connector (`├─+`) marks a collapsed directory that
 ## Structure
 
 - `src/model/` — in-memory directory tree (arena), independent of the UI
-- `src/app.rs` — global state (prompts, operations) and command execution
+- `src/app/` — global state (prompts, operations) and command execution
 - `src/pane.rs` — one window: tree, file list, cursors and filespec
 - `src/input.rs` — commands and the prompts' text field
 - `src/keymap.rs` — default keys, configuration overrides and help (F1)
