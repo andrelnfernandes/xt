@@ -181,6 +181,13 @@ impl App {
                 self.viewer = None;
                 self.tagged_view = None;
             }
+            ViewerAction::CopyPath => {
+                if let Some(v) = &mut self.viewer {
+                    let text = v.path.to_string_lossy().into_owned();
+                    let _ = crate::clipboard::set_clipboard(&text);
+                    v.note = Some(format!("Copied to clipboard: {text}"));
+                }
+            }
             ViewerAction::Diff => self.toggle_diff(),
             ViewerAction::Edit => {
                 let current = self.current_path();

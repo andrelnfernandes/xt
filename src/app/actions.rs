@@ -508,6 +508,37 @@ impl App {
         self.message = Some(msg);
         Ok(())
     }
+
+    /// Copies path(s) to the system clipboard (OSC 52 and native clipboard).
+    pub(crate) fn clip(&mut self, tagged: bool) {
+        if tagged {
+            let sources = self.sources(true);
+            if sources.is_empty() {
+                self.message = Some("No tagged files to copy".into());
+                return;
+            }
+            let text = sources
+                .iter()
+                .map(|s| s.path.to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("\n");
+            let _ = crate::clipboard::set_clipboard(&text);
+            let count = sources.len();
+            let plural = if count == 1 { "path" } else { "paths" };
+            self.message = Some(format!("Copied {count} {plural} to clipboard"));
+        } else {
+            let path = if self.focus == Focus::Files
+                && let Some(f) = self.selected_file()
+            {
+                self.file_path(f)
+            } else {
+                self.current_path()
+            };
+            let text = path.to_string_lossy().into_owned();
+            let _ = crate::clipboard::set_clipboard(&text);
+            self.message = Some(format!("Copied to clipboard: {text}"));
+        }
+    }
 }
 
 /// Extracts an entry of `archive` (virtual path `entry`) to the

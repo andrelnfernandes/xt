@@ -125,6 +125,10 @@ pub enum Command {
     },
     Rename,
     MakeDir,
+    /// Copies path(s) to the system clipboard (OSC 52 / native tools).
+    Clipboard {
+        tagged: bool,
+    },
     Quit,
 }
 

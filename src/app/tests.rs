@@ -1941,3 +1941,73 @@ fn slash_also_opens_treespec() {
     press(&mut app, KeyCode::Char('?'));
     assert!(app.viewer.is_some(), "? still shows statistics");
 }
+
+#[test]
+fn test_alt_x_opens_terminal() {
+    let (_tmp, mut app) = sample();
+    assert!(!app.terminal_focus);
+    alt(&mut app, 'x');
+    assert!(
+        app.terminal_focus,
+        "terminal_focus should be true after alt+x"
+    );
+    assert!(app.terminal.is_some(), "terminal should be spawned");
+}
+
+#[test]
+fn test_clipboard_copy_tree_dir() {
+    let (tmp, mut app) = sample();
+    assert_eq!(app.focus, Focus::Tree);
+    press(&mut app, KeyCode::Char('y'));
+    let msg = app.message.expect("message expected after y in tree");
+    assert!(msg.starts_with("Copied to clipboard:"), "{msg}");
+    let path = tmp.path().to_string_lossy();
+    assert!(msg.contains(path.as_ref()), "{msg}");
+}
+
+#[test]
+fn test_clipboard_copy_file() {
+    let (_tmp, mut app) = sample();
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(app.focus, Focus::Files);
+    // Ctrl+Insert also works
+    app.handle_key(KeyEvent::new(KeyCode::Insert, KeyModifiers::CONTROL));
+    let msg = app
+        .message
+        .expect("message expected after Ctrl+Insert in files");
+    assert!(msg.starts_with("Copied to clipboard:"), "{msg}");
+    assert!(msg.ends_with("a.rs"), "{msg}");
+}
+
+#[test]
+fn test_clipboard_copy_tagged() {
+    let (_tmp, mut app) = sample();
+    press(&mut app, KeyCode::Enter);
+    // No tagged files initially
+    ctrl(&mut app, 'y');
+    assert_eq!(app.message.as_deref(), Some("No tagged files to copy"));
+
+    // Tag the file under cursor
+    press(&mut app, KeyCode::Char('t'));
+    ctrl(&mut app, 'y');
+    let msg = app.message.expect("message expected after Ctrl+Y");
+    assert_eq!(msg, "Copied 1 path to clipboard");
+}
+
+#[test]
+fn test_clipboard_viewer_copy() {
+    let (_tmp, mut app) = sample();
+    press(&mut app, KeyCode::Enter);
+    press(&mut app, KeyCode::Char('v'));
+    assert!(app.viewer.is_some());
+    press(&mut app, KeyCode::Char('y'));
+    let note = app
+        .viewer
+        .as_ref()
+        .unwrap()
+        .note
+        .as_ref()
+        .expect("viewer note");
+    assert!(note.starts_with("Copied to clipboard:"), "{note}");
+    assert!(note.ends_with("a.rs"), "{note}");
+}
