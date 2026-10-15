@@ -249,6 +249,9 @@ Alt+O digita os arquivos marcados no prompt:
 - **Alt+X** abre o terminal e volta ao xt. O shell continua rodando enquanto
   está escondido, com o histórico e o que estava na tela; `exit` fecha o
   shell.
+- **Sair do xt encerra o shell** e o que estiver rodando nele. Se houver um
+  programa rodando ali (um `vim`, por exemplo), Q e Alt+Q perguntam antes,
+  mesmo com `confirm_quit` desligado (Linux e macOS).
 - **Alt+Z** abre em tela cheia; dentro dele, alterna entre tela cheia e
   painel. Depois, o Alt+X reabre do jeito que estava.
 - **A árvore acompanha o shell:** um `cd` no terminal leva o cursor da árvore

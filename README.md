@@ -245,6 +245,9 @@ Alt+O types the tagged files at the prompt:
 - **Alt+X** opens the terminal and goes back to xt. The shell keeps running
   while hidden, with its history and whatever it had on screen; `exit`
   closes it.
+- **Quitting xt ends the shell** and whatever runs in it. If a program is
+  running there (say, `vim`), Q and Alt+Q ask first, even with
+  `confirm_quit` off (Linux and macOS).
 - **Alt+Z** opens it in full screen; inside, it switches between full screen
   and the panel. Alt+X then reopens it the way it was.
 - **The tree follows the shell:** a `cd` in the terminal moves the tree's
