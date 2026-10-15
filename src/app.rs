@@ -1506,11 +1506,22 @@ impl App {
         }
         // Inside an archive, the new window shows the disk.
         let base = self.outer.as_deref().unwrap_or(self);
-        let mut pane = Pane::new(base.tree.path(ROOT));
+        let mut pane = self.new_pane(base.tree.path(ROOT));
         pane.sort = self.sort;
         pane.display = self.display;
         pane.goto(&base.current_path());
         self.panes.push(pane);
+    }
+
+    /// A new window (F8, Log) rooted at `root`, with the options that
+    /// apply to every window (show hidden files).
+    fn new_pane(&self, root: PathBuf) -> Pane {
+        let mut pane = Pane::new(root);
+        if pane.tree.show_hidden != self.options.show_hidden {
+            pane.tree.show_hidden = self.options.show_hidden;
+            pane.after_change();
+        }
+        pane
     }
 
     /// `O`: opens the ZIP/TAR under the cursor as if it were a directory.
@@ -1887,7 +1898,7 @@ impl App {
         }
         if !self.goto(&path) {
             let (sort, display) = (self.sort, self.display);
-            *self.deref_mut() = Pane::new(path);
+            *self.deref_mut() = self.new_pane(path);
             self.display = display;
             self.set_sort(sort);
         }
@@ -3409,6 +3420,34 @@ mod tests {
         app.log(r.to_str().unwrap()).unwrap();
         app.active = 0;
         (tmp, app)
+    }
+
+    #[test]
+    fn new_windows_keep_hidden_files_hidden() {
+        let tmp = crate::testing::tempdir();
+        fs::create_dir_all(tmp.path().join(".git")).unwrap();
+        fs::create_dir_all(tmp.path().join("src")).unwrap();
+        let mut app = App::new(tmp.path().to_path_buf());
+        let mut config = Config::default();
+        config.options.show_hidden = false;
+        app.apply_config(&config).unwrap();
+
+        app.apply(Command::Split);
+        let names = |pane: &Pane| -> Vec<String> {
+            pane.rows
+                .iter()
+                .map(|r| pane.tree.node(r.id).name.to_string_lossy().into_owned())
+                .collect()
+        };
+        assert!(!app.panes[1].tree.show_hidden);
+        assert!(!names(&app.panes[1]).contains(&".git".to_string()));
+
+        // Log of a directory outside the tree: a new tree, same option.
+        let other = crate::testing::tempdir();
+        fs::create_dir_all(other.path().join(".cache")).unwrap();
+        app.log(other.path().to_str().unwrap()).unwrap();
+        assert!(!app.tree.show_hidden);
+        assert!(!names(&app).contains(&".cache".to_string()));
     }
 
     fn compare_with(app: &mut App, key: char) -> Vec<String> {
