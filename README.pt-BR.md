@@ -53,22 +53,36 @@ A árvore de diretórios, a janela de arquivos e as estatísticas, no tema clás
 
 ## Instalação
 
-Requer Rust (via [rustup](https://rustup.rs)). Para instalar direto do
-GitHub:
+**Binário pronto:** baixe o arquivo do seu sistema na página de
+[Releases](https://github.com/andrelnfernandes/xt/releases): Linux x86_64 ou
+ARM64 (estático, roda em qualquer distribuição) ou Windows x86_64. Extraia e
+coloque o `xt` (`xt.exe`) numa pasta do `PATH`, por exemplo:
+
+```bash
+tar xzf xt-v0.1.0-x86_64-unknown-linux-musl.tar.gz
+install -m 755 xt-v0.1.0-x86_64-unknown-linux-musl/xt ~/.local/bin/
+```
+
+Cada arquivo tem um `.sha256` ao lado, para conferir com `sha256sum -c`.
+
+**Com o Cargo** (requer Rust, via [rustup](https://rustup.rs)), a partir do
+[crates.io](https://crates.io/crates/xt-fm), onde o xt se chama `xt-fm` (o
+nome `xt` já era de outro projeto); o comando continua sendo `xt`:
+
+```bash
+cargo install xt-fm
+```
+
+Ou o código mais recente, direto do GitHub, ou a partir de um clone do
+repositório (na pasta do projeto):
 
 ```bash
 cargo install --git https://github.com/andrelnfernandes/xt
-```
-
-Ou, a partir de um clone do repositório, na pasta do projeto:
-
-```bash
 cargo install --path .
 ```
 
 O binário vai para `~/.cargo/bin/xt` (que o rustup já coloca no `PATH`).
-Para atualizar depois de mudanças no código, rode o mesmo comando de novo;
-para remover, `cargo uninstall xt`.
+Para atualizar, rode o mesmo comando de novo; para remover, `cargo uninstall xt-fm`.
 
 ## Uso
 
@@ -103,8 +117,8 @@ diretório em que você estava no xt. `Q` e F10 saem sem mudar nada.
 
 O xt também compila para Windows (Windows Terminal ou o console clássico).
 Ele passa nos testes automáticos lá, mas ainda não foi usado no dia a dia,
-então espere arestas. A instalação é a mesma (Rust via rustup, depois
-`cargo install --git ...`); cada execução do CI também gera um `xt.exe`.
+então espere arestas. Cada release tem um `xt.exe` pronto (veja
+[Instalação](#instalação)), ou instale com o Cargo, do mesmo jeito.
 
 O que muda no Windows:
 

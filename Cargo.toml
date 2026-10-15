@@ -1,5 +1,6 @@
 [package]
-name = "xt"
+# On crates.io "xt" belongs to another project; the command is still `xt`.
+name = "xt-fm"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
@@ -9,6 +10,13 @@ description = "Text-mode file manager inspired by XTree and ZTreeWin"
 readme = "README.md"
 keywords = ["file-manager", "xtree", "ztree", "tui", "terminal"]
 categories = ["command-line-utilities", "filesystem"]
+# What goes to crates.io: the code, the license and the READMEs (the
+# screenshots stay on GitHub, where the READMEs' images point).
+include = ["/src/**/*.rs", "/Cargo.toml", "/Cargo.lock", "/LICENSE", "/README.md", "/README.pt-BR.md"]
+
+[[bin]]
+name = "xt"
+path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.104"
