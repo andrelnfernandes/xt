@@ -275,6 +275,23 @@ impl Terminal {
         false
     }
 
+    /// The program started from the shell that is in the foreground (e.g.
+    /// `vim`), which quitting xt would end: `None` at the prompt. Its name
+    /// comes from /proc; elsewhere it is just "a program".
+    pub fn foreground_program(&mut self) -> Option<String> {
+        #[cfg(unix)]
+        {
+            if self.exited() || self.at_prompt() {
+                return None;
+            }
+            let pgid = self.master.process_group_leader()?;
+            let comm = fs::read_to_string(format!("/proc/{pgid}/comm"));
+            Some(comm.map_or("a program".into(), |c| c.trim().to_string()))
+        }
+        #[cfg(not(unix))]
+        None
+    }
+
     /// The shell's current directory, to make the tree follow it.
     pub fn cwd(&self) -> Option<PathBuf> {
         let pid = self.child.process_id()?;
@@ -614,6 +631,23 @@ mod tests {
         );
         drop(term);
         assert!(!script.exists());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn names_the_program_running_in_the_foreground() {
+        let dir = crate::testing::tempdir();
+        let mut term = bash(dir.path());
+        term.write(b"echo READY\r");
+        wait_for(&term, "READY");
+        assert_eq!(term.foreground_program(), None);
+        term.write(b"sleep 30\r");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while term.foreground_program().is_none() {
+            assert!(std::time::Instant::now() < deadline, "sleep did not start");
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert_eq!(term.foreground_program().as_deref(), Some("sleep"));
     }
 
     #[test]

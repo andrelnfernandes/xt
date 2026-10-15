@@ -886,14 +886,24 @@ impl App {
             return;
         }
         match cmd {
-            Command::Quit if !self.options.confirm_quit => self.should_quit = true,
-            Command::Quit => self.ask(ConfirmKind::Quit, "Quit xt?".into()),
+            Command::Quit => match self.terminal_program() {
+                Some(prog) => {
+                    let q = format!("The terminal is running {prog}. Quit xt anyway?");
+                    self.ask(ConfirmKind::Quit, q);
+                }
+                None if self.options.confirm_quit => self.ask(ConfirmKind::Quit, "Quit xt?".into()),
+                None => self.should_quit = true,
+            },
             Command::QuitChangeDir => {
                 // Inside a ZIP/TAR, the real directory is where it is located.
                 let base = self.outer.as_deref().unwrap_or(self);
                 let dir = base.current_path();
-                if self.options.confirm_quit {
-                    let q = format!("Quit xt and change to {}?", dir.display());
+                let running = self.terminal_program();
+                if self.options.confirm_quit || running.is_some() {
+                    let mut q = format!("Quit xt and change to {}?", dir.display());
+                    if let Some(prog) = running {
+                        q = format!("The terminal is running {prog}. {q}");
+                    }
                     self.ask(ConfirmKind::QuitChangeDir(dir), q);
                 } else {
                     self.quit_dir = Some(dir);
@@ -2109,6 +2119,12 @@ impl App {
             Ok(status) => Some(format!("Command finished with {status}")),
             Err(e) => Some(format!("Cannot run command: {e}")),
         };
+    }
+
+    /// A program running in the built-in terminal (not just the shell at its
+    /// prompt), which quitting would end, maybe with unsaved work.
+    fn terminal_program(&mut self) -> Option<String> {
+        self.terminal.as_mut()?.foreground_program()
     }
 
     fn ask(&mut self, kind: ConfirmKind, question: String) {
