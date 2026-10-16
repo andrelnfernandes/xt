@@ -167,7 +167,16 @@ const COMMANDS: &[(&str, Command, &str)] = &[
         Command::Attributes { tagged: true },
         "change permissions of tagged files",
     ),
-    ("rename", Command::Rename, "rename file or directory"),
+    (
+        "rename",
+        Command::Rename { tagged: false },
+        "rename file or directory",
+    ),
+    (
+        "rename_tagged",
+        Command::Rename { tagged: true },
+        "rename tagged files with mask",
+    ),
     ("make_dir", Command::MakeDir, "make a subdirectory"),
     (
         "prune",
@@ -329,6 +338,21 @@ const COMMANDS: &[(&str, Command, &str)] = &[
         Command::QuitChangeDir,
         "quit leaving the shell in the current directory (see README)",
     ),
+    (
+        "bookmarks",
+        Command::Bookmarks,
+        "directory bookmarks list / manager",
+    ),
+    (
+        "bookmark_jump",
+        Command::BookmarkJump,
+        "quick jump to directory bookmark",
+    ),
+    (
+        "bookmark_set",
+        Command::BookmarkSet,
+        "save bookmark for current directory",
+    ),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -352,6 +376,7 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("enter", Any, "switch_window"),
     ("tab", Any, "switch_pane"),
     ("f1", Any, "help"),
+    ("alt+h", Any, "help"),
     ("f3", Any, "relog"),
     ("f2", Any, "relog"),
     ("space", Any, "down"),
@@ -381,6 +406,8 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("q", Any, "quit"),
     ("alt+q", Any, "quit_cd"),
     ("r", Any, "rename"),
+    ("ctrl+r", Any, "rename_tagged"),
+    ("alt+r", Any, "rename_tagged"),
     ("s", Any, "showall"),
     ("t", Any, "tag"),
     ("u", Any, "untag"),
@@ -443,6 +470,11 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("m", Files, "move"),
     ("o", Files, "open"),
     ("v", Files, "view"),
+    ("f11", Any, "bookmarks"),
+    ("alt+b", Any, "bookmarks"),
+    ("'", Any, "bookmark_jump"),
+    ("ctrl+f11", Any, "bookmark_set"),
+    ("ctrl+b", Tree, "bookmark_set"),
 ];
 
 /// A key with modifiers, already normalized: lowercase letters, and only
@@ -503,6 +535,7 @@ impl KeySpec {
             "space" => KeyCode::Char(' '),
             "plus" => KeyCode::Char('+'),
             "minus" => KeyCode::Char('-'),
+            "quote" | "apostrophe" => KeyCode::Char('\''),
             k if k.len() > 1 && k.starts_with('f') => match k[1..].parse() {
                 Ok(n @ 1..=24) => KeyCode::F(n),
                 _ => return Err(format!("unknown key '{text}'")),
@@ -664,10 +697,10 @@ impl Keymap {
         keys.into_iter().next()
     }
 
-    /// Help text (F1): the keys currently in effect, per window.
+    /// Help text (F1 / Alt+H): the keys currently in effect, per window.
     pub fn help_text(&self) -> String {
         let mut out = String::from(
-            "xt - keys in use (F1 shows this; Esc closes)\n\
+            "xt - keys in use (F1 / Alt+H shows this; Esc closes)\n\
              Change them in ~/.config/xt/config.toml, see xt --default-config.\n",
         );
         for (scope, title) in [
@@ -698,12 +731,20 @@ impl Keymap {
              F7                      in Alt+C/Alt+M: paths from the disk root / tree root / current / below it\n  \
              F2                      in prompts that ask for a folder: pick it in a tree\n  \
              ↑, ↓                    in prompts: history\n  \
-             F2, F4                  in search prompts: match case, text/hex\n\n\
+             F2, F4                  in search prompts: match case, text/hex\n  \
+             F2                      in tagged rename: cycles case (lower, upper, title)\n\n\
+             BOOKMARKS (Alt+B, F11, ')\n  \
+             ' + 0-9 / a-z           instant jump to bookmark\n  \
+             ' + ' / Enter           open bookmarks manager\n  \
+             ' + + / Ins             bookmark current directory\n  \
+             Alt+B / F11             open bookmarks manager\n  \
+             Ctrl+B (in tree)        bookmark current directory\n  \
+             (in manager) Ins / +: add · Del / d: remove · Enter / key: jump\n\n\
              TERMINAL (Alt+X; Alt+Z in full screen)\n  \
              (keys)                  go to the shell, except the terminal commands above\n  \
              Shift+PgUp / PgDn       scroll back through what went off the screen\n  \
              $XT_TAGGED              the tagged files, set on entering the terminal\n  \
-                                     (bash: \"${XT_TAGGED[@]}\"; zsh, fish: $XT_TAGGED)\n  \
+             (bash: \"${XT_TAGGED[@]}\"; zsh, fish: $XT_TAGGED)\n  \
              exit                    closes the shell\n\n\
              VIEWER (V, Ctrl+V)\n  \
              F / B                   find from the start / backward from the end\n  \
@@ -831,6 +872,58 @@ mod tests {
             map(KeyCode::Char(' '), none, Focus::Files),
             Some(Command::Down)
         );
+        assert_eq!(
+            map(KeyCode::F(11), none, Focus::Tree),
+            Some(Command::Bookmarks)
+        );
+        assert_eq!(
+            map(KeyCode::F(11), none, Focus::Files),
+            Some(Command::Bookmarks)
+        );
+        assert_eq!(
+            map(KeyCode::Char('\''), none, Focus::Tree),
+            Some(Command::BookmarkJump)
+        );
+        assert_eq!(
+            map(KeyCode::F(11), KeyModifiers::CONTROL, Focus::Tree),
+            Some(Command::BookmarkSet)
+        );
+        assert_eq!(
+            map(KeyCode::Char('h'), KeyModifiers::ALT, Focus::Tree),
+            Some(Command::Help)
+        );
+        assert_eq!(
+            map(KeyCode::Char('h'), KeyModifiers::ALT, Focus::Files),
+            Some(Command::Help)
+        );
+        assert_eq!(
+            map(KeyCode::Char('b'), KeyModifiers::ALT, Focus::Tree),
+            Some(Command::Bookmarks)
+        );
+        assert_eq!(
+            map(KeyCode::Char('b'), KeyModifiers::ALT, Focus::Files),
+            Some(Command::Bookmarks)
+        );
+        assert_eq!(
+            map(KeyCode::Char('b'), KeyModifiers::CONTROL, Focus::Tree),
+            Some(Command::BookmarkSet)
+        );
+        assert_eq!(
+            map(KeyCode::Char('b'), KeyModifiers::CONTROL, Focus::Files),
+            Some(Command::Batch)
+        );
+        assert_eq!(
+            map(KeyCode::Char('r'), none, Focus::Files),
+            Some(Command::Rename { tagged: false })
+        );
+        assert_eq!(
+            map(KeyCode::Char('r'), KeyModifiers::CONTROL, Focus::Files),
+            Some(Command::Rename { tagged: true })
+        );
+        assert_eq!(
+            map(KeyCode::Char('r'), KeyModifiers::ALT, Focus::Files),
+            Some(Command::Rename { tagged: true })
+        );
     }
 
     #[test]
@@ -839,6 +932,11 @@ mod tests {
         assert_eq!(k("ctrl+r").to_string(), "Ctrl+R");
         assert_eq!(k("Alt+Shift+X").to_string(), "Alt+X");
         assert_eq!(k("F12").to_string(), "F12");
+        assert_eq!(k("F11").to_string(), "F11");
+        assert_eq!(k("ctrl+f11").to_string(), "Ctrl+F11");
+        assert_eq!(k("'").to_string(), "'");
+        assert_eq!(k("quote"), k("'"));
+        assert_eq!(k("apostrophe"), k("'"));
         assert_eq!(k("+"), k("plus"));
         assert_eq!(k("ctrl++").to_string(), "Ctrl++");
         assert_eq!(k("pgdn"), k("pagedown"));

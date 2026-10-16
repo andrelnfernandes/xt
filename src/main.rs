@@ -110,7 +110,9 @@ fn main() -> anyhow::Result<()> {
     app.message = config_error;
     app.history_file = state::history_path();
     if let Some(path) = &app.history_file {
-        app.history = state::load_history(path);
+        let state = state::load_state(path);
+        app.history = state.history;
+        app.bookmarks = state.bookmarks;
     }
     // `init` also installs a panic hook that restores the terminal.
     let mut terminal = ratatui::init();

@@ -21,6 +21,10 @@ pub(crate) enum PromptKind {
     },
     RenameFile(PathBuf),
     RenameDir(NodeId),
+    RenameTagged {
+        sources: Vec<Source>,
+        case_mode: CaseMode,
+    },
     MakeDir(NodeId),
     Chmod(Vec<PathBuf>),
     Log,
@@ -56,6 +60,10 @@ pub(crate) enum PromptKind {
         files: Vec<Source>,
         dirs: Vec<PathBuf>,
     },
+    /// Quick jump to a directory bookmark (').
+    BookmarkJump,
+    /// Set a directory bookmark for the current directory (Ctrl+F11).
+    BookmarkSet,
 }
 
 impl PromptKind {
@@ -72,9 +80,14 @@ impl PromptKind {
             PromptKind::CreateArchive(_) => "archive",
             PromptKind::Execute => "execute",
             PromptKind::MakeDir(_) => "mkdir",
+            PromptKind::RenameTagged { .. } => "rename_mask",
             PromptKind::SearchTagged { .. } | PromptKind::ViewerSearch { .. } => "search",
             PromptKind::Chmod(_) => "chmod",
-            PromptKind::RenameFile(_) | PromptKind::RenameDir(_) | PromptKind::Prune { .. } => {
+            PromptKind::RenameFile(_)
+            | PromptKind::RenameDir(_)
+            | PromptKind::Prune { .. }
+            | PromptKind::BookmarkJump
+            | PromptKind::BookmarkSet => {
                 return None;
             }
         })
@@ -135,6 +148,18 @@ impl Prompt {
             self.kind,
             PromptKind::SearchTagged { .. } | PromptKind::ViewerSearch { .. }
         )
+    }
+
+    pub fn is_bookmark_jump(&self) -> bool {
+        matches!(self.kind, PromptKind::BookmarkJump)
+    }
+
+    pub fn is_bookmark_set(&self) -> bool {
+        matches!(self.kind, PromptKind::BookmarkSet)
+    }
+
+    pub fn is_rename_tagged(&self) -> bool {
+        matches!(self.kind, PromptKind::RenameTagged { .. })
     }
 }
 
@@ -575,8 +600,43 @@ impl App {
             }
             PromptKind::RenameFile(path) => self.rename_file(&path, &text),
             PromptKind::RenameDir(id) => self.rename_dir(id, &text),
+            PromptKind::RenameTagged { sources, case_mode } => {
+                self.rename_tagged(sources, case_mode, &text);
+                Ok(())
+            }
             PromptKind::MakeDir(id) => self.make_dir(id, &text),
             PromptKind::Chmod(paths) => self.chmod(&paths, &text),
+            PromptKind::BookmarkJump => {
+                let trimmed = text.trim();
+                if trimmed.is_empty() {
+                    self.open_bookmarks();
+                    Ok(())
+                } else {
+                    let key = trimmed
+                        .chars()
+                        .next()
+                        .unwrap()
+                        .to_ascii_lowercase()
+                        .to_string();
+                    if let Some(bm) = self.bookmarks.get(&key).cloned() {
+                        self.jump_to_path(&bm.path)
+                    } else {
+                        Err(format!("Bookmark '{key}' not found"))
+                    }
+                }
+            }
+            PromptKind::BookmarkSet => {
+                let trimmed = text.trim();
+                if let Some(c) = trimmed.chars().next().filter(|c| c.is_ascii_alphanumeric()) {
+                    let key = c.to_ascii_lowercase().to_string();
+                    let path = self.current_path();
+                    self.set_bookmark(key.clone(), path.clone());
+                    self.message = Some(format!("Bookmark '{key}' set to {}", path.display()));
+                    Ok(())
+                } else {
+                    Err("Bookmark key must be 0-9 or a-z".into())
+                }
+            }
         };
         if let Err(e) = result {
             self.message = Some(e);

@@ -332,7 +332,10 @@ bash (`ignorespace`) e no zsh (`HIST_IGNORE_SPACE`). Dentro do terminal,
 | Alt+I | Info: detalhes do diretório (e o que está logado nele) | Info: detalhes do arquivo |
 | `A` | Avail: sistemas de arquivos montados e espaço livre | |
 | `?` | estatísticas da janela | idem |
-| F1 | ajuda: lista das teclas em vigor | idem |
+| F1 / Alt+H | ajuda: lista das teclas em vigor | idem |
+| F11 / Alt+B | gerenciador de marcadores de diretório (bookmarks) | idem |
+| `'` | salto rápido para marcador (`0`-`9`, `a`-`z`, ou `'`/Enter para lista, `+` para adicionar) | idem |
+| Ctrl+F11 / Ctrl+B | salvar marcador para a pasta atual | (na árvore: Ctrl+B / Ctrl+F11) |
 | F12 / Alt+F10 | tela de configuração | idem |
 | `Q` / F10 | sair (pede confirmação) | sair |
 | Alt+Q | sai deixando o shell no diretório atual (veja acima) | idem |
@@ -352,6 +355,7 @@ bash (`ignorespace`) e no zsh (`HIST_IGNORE_SPACE`). Dentro do terminal,
 | `O` (árvore) / Ctrl+Z | restaura arquivo da lixeira (Oops!) | restaura arquivo da lixeira (Oops!) |
 | Alt+P | Prune: apaga o diretório com tudo dentro | |
 | `R` | renomeia o diretório | renomeia o arquivo |
+| Ctrl+R / Alt+R | | renomeia os arquivos marcados por máscara/padrão |
 | `A` | | permissões (octal, ex.: `644`) |
 | `N` | muda a data do diretório | muda a data do arquivo (Ctrl+N: dos marcados) |
 | Ctrl+B | | Batch: cria um script ou lista com uma linha por marcado |
@@ -390,6 +394,13 @@ navegam (os diretórios são lidos conforme são abertos), o **Tab** passa para
 a árvore da outra janela com a tela dividida, o **Enter** põe a pasta no
 prompt (Ctrl+B e F5 mantêm o nome do arquivo) e o **Esc** volta sem alterar
 nada. Nada é executado até você confirmar o prompt.
+
+**Renomeação em lote por máscara (Ctrl+R / Alt+R):** renomeia todos os arquivos marcados usando padrões:
+- **Curingas (Wildcards):** `*.jpg` (muda a extensão), `prefixo_*.*`, `*_sufixo.*`, `???.*` (máscara de caracteres).
+- **Localizar e substituir:** `s/antigo/novo/` ou `s/antigo/novo/i` (substitui `antigo` por `novo`, `/i` ignora maiúsculas/minúsculas).
+- **Numeração incremental:** `%03d`, `%02d`, `%d`, `<001>`, `<01>`, ou `<#>` (numera os arquivos marcados em sequência).
+- **Conversão de maiúsculas/minúsculas:** pressione **F2** no prompt para alternar entre Nenhuma, minúsculas, MAIÚSCULAS e Iniciais Maiúsculas (Title Case), ou use as tags `<lower>`, `<upper>`, `<title>`.
+
 
 **Tela dividida:** F8 abre uma segunda janela, começando no mesmo diretório;
 Tab alterna entre elas (sem a divisão, Tab faz o mesmo que Enter). Cada janela
@@ -681,7 +692,9 @@ As teclas seguem as do ZTreeWin. As exceções:
 
 | Função | ZTreeWin | xt |
 |---|---|---|
+| Ajuda | F1 | F1 ou Alt+H (no GNOME Terminal, F1 abre a ajuda do terminal) |
 | Configuração | Alt+F10 | F12 ou Alt+F10 (no GNOME, Alt+F10 maximiza a janela e não chega ao xt) |
+| Marcadores | F11 | F11, Alt+B ou apóstrofo `'` (no GNOME Terminal, F11 alterna tela cheia) |
 | Mover marcados | Ctrl+M | Ctrl+M em terminais com o protocolo do kitty; nos outros, `F9` `M` (ou Alt+M e F6) |
 | `-` na árvore | descarrega o ramo da memória | só recolhe (continua logado) |
 | F2 | (nada) | relê o diretório, igual ao F3 |
@@ -703,11 +716,10 @@ Todas as teclas podem ser trocadas em `[keys]` no `config.toml`.
   Treespec em modo de edição (F5, curingas) e pastas especiais (F6), busca
   ao digitar com prompt (`|`) e modo ativo, troca de drive (`<` e `>`).
 - **Arquivos:** Open em nova janela de terminal (Alt+O), Batch do arquivo atual (Alt+B), JFC (J, comparar o conteúdo de dois arquivos), ZAAP
-  (descompactador externo), sHortcut (H), Print (P), Rename com máscara, localizar e trocar e mudança de maiúsculas,
+  (descompactador externo), sHortcut (H), Print (P),
   dono/grupo (chown), Megaview (Ctrl+F7 na janela de arquivos), juntar marcados entre as
   janelas (Ctrl+F6), Partial Untag (Ctrl+F8).
-- **Geral:** macros (F12), menu de aplicativos (F9), marcadores (F11, `[`
-  e `]`), Quit and shell (Ctrl+Q), salvar e
+- **Geral:** macros (F12), menu de aplicativos (F9), Quit and shell (Ctrl+Q), salvar e
   carregar o log (Zlist, Ctrl/Alt+Z), lixeira, cores por nome e atributo
   (ZCOLORS.INI), mouse, opções de linha de comando do ZTreeWin, comandos de
   vídeo (Alt+F6–F9).

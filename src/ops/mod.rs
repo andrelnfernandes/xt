@@ -23,6 +23,7 @@ pub enum OpKind {
     Delete,
     /// Deletes a branch: files and then directories, deepest first.
     Prune,
+    Rename,
 }
 
 impl OpKind {
@@ -32,6 +33,7 @@ impl OpKind {
             OpKind::Move => "Moving",
             OpKind::Delete => "Deleting",
             OpKind::Prune => "Pruning",
+            OpKind::Rename => "Renaming",
         }
     }
 
@@ -41,6 +43,7 @@ impl OpKind {
             OpKind::Move => "Moved",
             OpKind::Delete => "Deleted",
             OpKind::Prune => "Pruned",
+            OpKind::Rename => "Renamed",
         }
     }
 }
@@ -195,6 +198,20 @@ impl Operation {
             ));
         };
         Ok(Self::new(kind, items))
+    }
+
+    /// Prepares a batch rename operation from pairs of (source, destination, size).
+    pub fn rename_batch(items: Vec<(PathBuf, PathBuf, u64)>) -> Self {
+        let items = items
+            .into_iter()
+            .map(|(src, dst, size)| Item {
+                src,
+                dst,
+                size,
+                is_dir: false,
+            })
+            .collect();
+        Self::new(OpKind::Rename, items)
     }
 
     fn new(kind: OpKind, items: Vec<Item>) -> Self {
@@ -399,13 +416,13 @@ impl Operation {
             return self.extract_item(&item);
         };
 
-        if self.kind == OpKind::Move {
+        if self.kind == OpKind::Move || self.kind == OpKind::Rename {
             match self.rename(&item.src, &item.dst) {
                 Ok(()) => {
                     self.done_bytes += item.size;
                     return self.finish_item();
                 }
-                Err(e) if e.kind() == ErrorKind::CrossesDevices => {} // copy and delete
+                Err(e) if e.kind() == ErrorKind::CrossesDevices && self.kind == OpKind::Move => {} // copy and delete
                 Err(e) => return self.fail(&item.src, e),
             }
         }

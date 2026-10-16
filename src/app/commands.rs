@@ -60,6 +60,10 @@ impl App {
             }
             return;
         }
+        if self.bookmarks_view.is_some() {
+            self.bookmarks_key(key);
+            return;
+        }
         if let Some(op) = &mut self.op {
             if op.conflict.is_some() {
                 let answer = match key.code {
@@ -129,6 +133,64 @@ impl App {
             return;
         }
         if let Some(prompt) = &mut self.prompt {
+            if prompt.is_bookmark_jump() {
+                match key.code {
+                    KeyCode::Esc => {
+                        self.prompt = None;
+                    }
+                    KeyCode::Char('\'') | KeyCode::Enter => {
+                        self.prompt = None;
+                        self.open_bookmarks();
+                    }
+                    KeyCode::Insert | KeyCode::Char('+') => {
+                        self.prompt = None;
+                        self.start_bookmark_set();
+                    }
+                    KeyCode::Char(c) if c.is_ascii_alphanumeric() => {
+                        self.prompt = None;
+                        let key_str = c.to_ascii_lowercase().to_string();
+                        if let Some(bm) = self.bookmarks.get(&key_str).cloned() {
+                            if let Err(e) = self.jump_to_path(&bm.path) {
+                                self.message = Some(e);
+                            }
+                        } else if c == 'm' || c == 'M' || c == 'a' || c == 'A' {
+                            self.start_bookmark_set();
+                        } else {
+                            self.message = Some(format!("Bookmark '{c}' not found"));
+                        }
+                    }
+                    _ => {}
+                }
+                return;
+            }
+            if prompt.is_bookmark_set() {
+                match key.code {
+                    KeyCode::Esc => {
+                        self.prompt = None;
+                    }
+                    KeyCode::Char(c) if c.is_ascii_alphanumeric() => {
+                        self.prompt = None;
+                        let key_str = c.to_ascii_lowercase().to_string();
+                        let path = self.current_path();
+                        self.set_bookmark(key_str.clone(), path.clone());
+                        self.message = Some(format!("Bookmark '{key_str}' set to {}", path.display()));
+                    }
+                    _ => {}
+                }
+                return;
+            }
+            if matches!(key.code, KeyCode::F(2))
+                && let PromptKind::RenameTagged { case_mode, sources } = &mut prompt.kind
+            {
+                *case_mode = case_mode.next();
+                let count = sources.len();
+                let case_suffix = match *case_mode {
+                    CaseMode::None => String::new(),
+                    other => format!(" [{}]", other.label()),
+                };
+                prompt.label = format!("RENAME {count} tagged files (mask{case_suffix}): ");
+                return;
+            }
             if matches!(key.code, KeyCode::F(2) | KeyCode::F(4))
                 && let Some(spec) = prompt.kind.search_spec_mut()
             {
@@ -229,7 +291,7 @@ impl App {
             Command::Move { .. }
                 | Command::Delete { .. }
                 | Command::Oops
-                | Command::Rename
+                | Command::Rename { .. }
                 | Command::Attributes { .. }
                 | Command::MakeDir
                 | Command::Log
@@ -461,14 +523,35 @@ impl App {
             }
             Command::Oops => self.ask_oops(),
             Command::Attributes { tagged } => self.prompt_chmod(tagged),
-            Command::Rename if in_files => {
+            Command::Rename { tagged: true } => {
+                if let Some(sources) = self.sources_or_warn(true) {
+                    let count = sources.len();
+                    let case_mode = CaseMode::None;
+                    let label = format!("RENAME {count} tagged files (mask): ");
+                    self.open_prompt(
+                        PromptKind::RenameTagged {
+                            sources,
+                            case_mode,
+                        },
+                        label,
+                        "*.*",
+                    );
+                }
+            }
+            Command::Rename { tagged: false } if in_files => {
                 if let Some(f) = self.selected_file() {
                     let name = self.file(f).name.to_string_lossy().into_owned();
-                    let label = format!("RENAME {name} to: ");
+                    let tagged_count = self.sources(true).len();
+                    let hint = if tagged_count > 0 {
+                        format!(" (Ctrl+R / Alt+R to rename {tagged_count} tagged files)")
+                    } else {
+                        String::new()
+                    };
+                    let label = format!("RENAME {name}{hint} to: ");
                     self.open_prompt(PromptKind::RenameFile(self.file_path(f)), label, &name);
                 }
             }
-            Command::Rename => {
+            Command::Rename { tagged: false } => {
                 let id = self.current();
                 if id == ROOT {
                     self.message = Some("Cannot rename the root directory".into());
@@ -484,6 +567,9 @@ impl App {
                 self.open_prompt(PromptKind::MakeDir(id), label, "");
             }
             Command::Clipboard { tagged } => self.clip(tagged),
+            Command::Bookmarks => self.open_bookmarks(),
+            Command::BookmarkJump => self.start_bookmark_jump(),
+            Command::BookmarkSet => self.start_bookmark_set(),
             _ => match self.focus {
                 Focus::Tree => self.apply_tree(cmd),
                 Focus::Files => self.apply_files(cmd),
