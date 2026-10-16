@@ -122,13 +122,40 @@ const COMMANDS: &[(&str, Command, &str)] = &[
     ),
     (
         "delete",
-        Command::Delete { tagged: false },
+        Command::Delete {
+            tagged: false,
+            permanent: false,
+        },
         "delete file (in the tree: empty directory)",
     ),
     (
         "delete_tagged",
-        Command::Delete { tagged: true },
+        Command::Delete {
+            tagged: true,
+            permanent: false,
+        },
         "delete tagged files",
+    ),
+    (
+        "delete_permanent",
+        Command::Delete {
+            tagged: false,
+            permanent: true,
+        },
+        "permanently delete file (without trash)",
+    ),
+    (
+        "delete_tagged_permanent",
+        Command::Delete {
+            tagged: true,
+            permanent: true,
+        },
+        "permanently delete tagged files (without trash)",
+    ),
+    (
+        "oops",
+        Command::Oops,
+        "restore recently deleted file from trash (Oops!)",
     ),
     (
         "attributes",
@@ -345,6 +372,10 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("alt+f10", Any, "settings"),
     ("b", Any, "branch"),
     ("d", Any, "delete"),
+    ("del", Any, "delete"),
+    ("delete", Any, "delete"),
+    ("shift+del", Any, "delete_permanent"),
+    ("shift+delete", Any, "delete_permanent"),
     ("f", Any, "filespec"),
     ("i", Any, "invert"),
     ("q", Any, "quit"),
@@ -368,6 +399,12 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("ctrl+u", Any, "untag_all"),
     ("alt+a", Any, "attributes_tagged"),
     ("alt+d", Any, "delete_tagged"),
+    ("ctrl+shift+del", Any, "delete_tagged_permanent"),
+    ("ctrl+shift+delete", Any, "delete_tagged_permanent"),
+    ("alt+shift+del", Any, "delete_tagged_permanent"),
+    ("alt+shift+delete", Any, "delete_tagged_permanent"),
+    ("ctrl+z", Any, "oops"),
+    ("o", Tree, "oops"),
     ("alt+t", Any, "tag_all"),
     ("alt+u", Any, "untag_all"),
     ("alt+s", Any, "sort"),
@@ -409,7 +446,7 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
 ];
 
 /// A key with modifiers, already normalized: lowercase letters, and only
-/// Ctrl and Alt count (Shift is already part of the letter).
+/// Ctrl and Alt count (Shift is already part of the letter, except for Delete).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct KeySpec {
     code: KeyCode,
@@ -422,14 +459,15 @@ impl KeySpec {
             KeyCode::Char(c) => KeyCode::Char(c.to_ascii_lowercase()),
             other => other,
         };
-        KeySpec {
-            code,
-            mods: key.modifiers & (KeyModifiers::CONTROL | KeyModifiers::ALT),
+        let mut mods = key.modifiers & (KeyModifiers::CONTROL | KeyModifiers::ALT);
+        if code == KeyCode::Delete && key.modifiers.contains(KeyModifiers::SHIFT) {
+            mods |= KeyModifiers::SHIFT;
         }
+        KeySpec { code, mods }
     }
 
-    /// `"x"`, `"F3"`, `"ctrl+r"`, `"alt+shift+x"` (Shift is ignored),
-    /// `"plus"` for `+`.
+    /// `"x"`, `"F3"`, `"ctrl+r"`, `"alt+shift+x"` (Shift is ignored on letters),
+    /// `"shift+del"`, `"plus"` for `+`.
     pub fn parse(text: &str) -> Result<Self, String> {
         let lower = text.trim().to_lowercase();
         let (mods_part, key) = match lower.as_str() {
@@ -442,7 +480,7 @@ impl KeySpec {
             match m {
                 "ctrl" | "control" => mods |= KeyModifiers::CONTROL,
                 "alt" | "meta" => mods |= KeyModifiers::ALT,
-                "shift" => {}
+                "shift" => mods |= KeyModifiers::SHIFT,
                 other => return Err(format!("unknown modifier '{other}' in '{text}'")),
             }
         }
@@ -477,6 +515,9 @@ impl KeySpec {
                 }
             }
         };
+        if code != KeyCode::Delete {
+            mods.remove(KeyModifiers::SHIFT);
+        }
         Ok(KeySpec { code, mods })
     }
 }
@@ -489,6 +530,9 @@ impl fmt::Display for KeySpec {
         if self.mods.contains(KeyModifiers::ALT) {
             f.write_str("Alt+")?;
         }
+        if self.mods.contains(KeyModifiers::SHIFT) {
+            f.write_str("Shift+")?;
+        }
         match self.code {
             KeyCode::Char(' ') => f.write_str("Space"),
             KeyCode::Char(c) => write!(f, "{}", c.to_ascii_uppercase()),
@@ -496,6 +540,8 @@ impl fmt::Display for KeySpec {
             KeyCode::Enter => f.write_str("Enter"),
             KeyCode::Esc => f.write_str("Esc"),
             KeyCode::Tab => f.write_str("Tab"),
+            KeyCode::BackTab => f.write_str("BackTab"),
+            KeyCode::Delete => f.write_str("Del"),
             KeyCode::PageUp => f.write_str("PgUp"),
             KeyCode::PageDown => f.write_str("PgDn"),
             KeyCode::Up => f.write_str("↑"),

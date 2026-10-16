@@ -229,6 +229,85 @@ fn delete_asks_for_confirmation() {
 }
 
 #[test]
+fn delete_to_trash_and_oops_restore() {
+    let (tmp, mut app) = sample();
+    app.options.delete_to_trash = true;
+    press(&mut app, KeyCode::Enter);
+    press(&mut app, KeyCode::Char('d'));
+    assert!(app.confirm.is_some());
+    let prompt_q = app.confirm.as_ref().unwrap().question.clone();
+    assert!(prompt_q.starts_with("MOVE a.rs to trash?"));
+    press(&mut app, KeyCode::Char('y'));
+    while app.busy() {
+        app.tick(Duration::from_millis(50));
+    }
+    assert!(!tmp.path().join("a.rs").exists());
+    assert_eq!(app.message.as_deref(), Some("Trashed 1 of 1 files"));
+
+    // Oops: restores the file
+    ctrl(&mut app, 'z');
+    assert!(app.confirm.is_some());
+    let restore_q = app.confirm.as_ref().unwrap().question.clone();
+    assert!(restore_q.starts_with("RESTORE a.rs from trash?"));
+    press(&mut app, KeyCode::Char('y'));
+    assert!(tmp.path().join("a.rs").exists());
+    assert_eq!(app.message.as_deref(), Some("Restored a.rs from trash"));
+}
+
+#[test]
+fn delete_prompt_toggles_between_trash_and_permanent() {
+    let (tmp, mut app) = sample();
+    app.options.delete_to_trash = false;
+    press(&mut app, KeyCode::Enter);
+    press(&mut app, KeyCode::Char('d'));
+    assert!(app.confirm.as_ref().unwrap().question.starts_with("DELETE a.rs?"));
+    press(&mut app, KeyCode::Char('t'));
+    assert!(app.confirm.as_ref().unwrap().question.starts_with("MOVE a.rs to trash?"));
+    press(&mut app, KeyCode::Char('p'));
+    assert!(app.confirm.as_ref().unwrap().question.starts_with("DELETE a.rs?"));
+    press(&mut app, KeyCode::Char('n'));
+    assert!(tmp.path().join("a.rs").exists());
+}
+
+#[test]
+fn shift_delete_permanently_deletes_even_when_delete_to_trash_is_true() {
+    let (tmp, mut app) = sample();
+    app.options.delete_to_trash = true;
+    press(&mut app, KeyCode::Enter);
+    app.handle_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::SHIFT));
+    assert!(app.confirm.is_some());
+    assert!(app.confirm.as_ref().unwrap().question.starts_with("DELETE a.rs?"));
+    press(&mut app, KeyCode::Char('y'));
+    while app.busy() {
+        app.tick(Duration::from_millis(50));
+    }
+    assert!(!tmp.path().join("a.rs").exists());
+    assert_eq!(app.message.as_deref(), Some("Deleted 1 of 1 files"));
+}
+
+#[test]
+fn delete_empty_directory_to_trash_and_oops_restore() {
+    let (tmp, mut app) = sample();
+    app.options.delete_to_trash = true;
+    press(&mut app, KeyCode::Char('m'));
+    answer_prompt(&mut app, "empty_dir");
+    assert!(tmp.path().join("empty_dir").is_dir());
+
+    press(&mut app, KeyCode::Down);
+    assert_eq!(app.tree.node(app.current()).name, "empty_dir");
+    press(&mut app, KeyCode::Char('d'));
+    assert!(app.confirm.as_ref().unwrap().question.starts_with("MOVE directory empty_dir to trash?"));
+    press(&mut app, KeyCode::Char('y'));
+    assert!(!tmp.path().join("empty_dir").exists());
+
+    // Oops in tree window ('o')
+    press(&mut app, KeyCode::Char('o'));
+    assert!(app.confirm.as_ref().unwrap().question.starts_with("RESTORE empty_dir from trash?"));
+    press(&mut app, KeyCode::Char('y'));
+    assert!(tmp.path().join("empty_dir").exists());
+}
+
+#[test]
 fn tagged_ops_without_tags_warn() {
     let (_tmp, mut app) = sample();
     ctrl(&mut app, 'd');

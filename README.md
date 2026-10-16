@@ -343,7 +343,9 @@ in bash (`ignorespace`) and in zsh (`HIST_IGNORE_SPACE`). Inside the terminal,
 | Ctrl+F7 / F8 / F9 | tags / untags / inverts the logged files of the branch | |
 | `C` | | copies the file |
 | `M` | creates a subdirectory | moves the file |
-| `D` | deletes the directory (only if empty) | deletes the file |
+| `D` / Del | deletes the directory (only if empty) | deletes the file |
+| Shift+Del | permanently deletes the directory | permanently deletes the file |
+| `O` (tree) / Ctrl+Z | restores file from trash (Oops!) | restores file from trash (Oops!) |
 | Alt+P | Prune: deletes the directory with everything in it | |
 | `R` | renames the directory | renames the file |
 | `A` | | permissions (octal, e.g. `644`) |
@@ -541,7 +543,7 @@ uptime, load, memory and swap, shell, terminal), the network (IP addresses
 of each interface, gateway and DNS) and xt itself (version, PID, memory in use,
 executable and configuration file).
 
-**Delete** really deletes (it does not go to the trash) and always asks for confirmation.
+**Delete and Trash:** `D` or `Del` asks for confirmation before deleting. When `delete_to_trash = true` in the configuration (or when pressing `T` at the confirmation prompt), files and empty directories are moved to the system trash (FreeDesktop Trash on Linux, Recycle Bin on Windows) instead of being removed permanently. `Shift+Del` always deletes permanently. If an item was sent to the trash by mistake, **Oops** (`O` in the tree, or `Ctrl+Z` in both windows) lets you restore it back to its original location.
 
 **Prune (Alt+P in the tree):** logs the whole branch, shows how many files,
 directories and bytes will be deleted and asks you to **type PRUNE** (or the
@@ -652,7 +654,7 @@ screen (Alt+F10).
 | Sort | Name, Ext, Date, Time, Length, Alpha, nuMber, Size, Value, Unsorted; Charset; same/diff in split screen | Name, Ext, Date, Size, ascending/descending, Path first; each window has its own order |
 | Compare | options Identical, Unique, Newer, Older, Size, Binary, Case; display filter | tags unique, newer, older, identical, different or unique+newer; no binary comparison |
 | Prune | deletes only the subdirectories or the current one too; only empty directories; recycle bin | always deletes the whole directory, permanently; configurable confirmation |
-| Delete | optional recycle bin | deletes for good |
+| Delete | optional recycle bin | optional system trash (delete_to_trash, T/P prompt toggle, Shift+Del permanent); Oops (O/Ctrl+Z) to restore |
 | Log | several logged drives, Global, drive switching | one root per window; `L` opens another directory |
 | eXecute | batch parameters `%1`–`%8`, new window (NTW) | `sh` with `%f`, `%t` and `%d`; always in xt's terminal; also a built-in terminal (Alt+X) |
 | History | history window with bookmarks | ↑/↓ at the prompt, one history per type, saved between runs |

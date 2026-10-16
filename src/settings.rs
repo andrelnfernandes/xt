@@ -20,6 +20,7 @@ pub enum Opt {
     SortDescending,
     EnterViews,
     ConfirmQuit,
+    DeleteToTrash,
     PruneConfirmation,
     HistorySkipAt,
     CompareIgnore2s,
@@ -73,14 +74,15 @@ pub const PAGES: &[Page] = &[
         "Confirmations and history",
         &[
             ('A', "Quit confirmation", Opt::ConfirmQuit),
-            ('B', "Prune confirmation (type)", Opt::PruneConfirmation),
+            ('B', "Delete to trash / Recycle Bin", Opt::DeleteToTrash),
+            ('C', "Prune confirmation (type)", Opt::PruneConfirmation),
             (
-                'C',
+                'D',
                 "Entries starting with @ are not saved in history",
                 Opt::HistorySkipAt,
             ),
             (
-                'D',
+                'E',
                 "Built-in terminal keeps a shell history of its own",
                 Opt::TerminalHistory,
             ),
@@ -145,6 +147,7 @@ impl Opt {
             }
             .into(),
             Opt::ConfirmQuit => yes_no(o.confirm_quit),
+            Opt::DeleteToTrash => yes_no(o.delete_to_trash),
             Opt::PruneConfirmation => match o.prune_confirmation.as_str() {
                 "prune" => "PRUNE".into(),
                 "name" => "directory name".into(),
@@ -191,6 +194,7 @@ impl Opt {
             Opt::SortDescending => o.sort_descending = !o.sort_descending,
             Opt::EnterViews => o.enter_views = !o.enter_views,
             Opt::ConfirmQuit => o.confirm_quit = !o.confirm_quit,
+            Opt::DeleteToTrash => o.delete_to_trash = !o.delete_to_trash,
             Opt::PruneConfirmation => o.prune_confirmation = o.prune_confirmation.next(),
             Opt::HistorySkipAt => o.history_skip_at = !o.history_skip_at,
             Opt::TerminalHistory => o.terminal_history = !o.terminal_history,

@@ -842,7 +842,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                 "DIR",
                 &[
                     "Branch", "Compare", "Delete", "Filespec", "Invert", "Log", "Makedir",
-                    "Rename", "Showall", "Tag", "Untag", "Yank", "eXecute", "Quit",
+                    "Oops", "Rename", "Showall", "Tag", "Untag", "Yank", "eXecute", "Quit",
                 ],
             ),
             menu_line(
@@ -1041,7 +1041,7 @@ fn op_lines(op: &Operation) -> Vec<Line<'static>> {
             Span::styled(
                 format!(
                     "{} {} of {}: ",
-                    op.kind.verb(),
+                    if op.to_trash { "Trashing" } else { op.kind.verb() },
                     (op.done_files + op.skipped + op.errors.len() + 1).min(op.total_files()),
                     op.total_files()
                 ),
