@@ -53,6 +53,9 @@ sort = "name"
 sort_descending = false
 # Ask before quitting.
 confirm_quit = true
+# Send deleted files to the system trash / Recycle Bin instead of deleting
+# them permanently.
+delete_to_trash = false
 # To confirm a Prune (Alt+P), type: "prune" (the word PRUNE),
 # "name" (the directory name) or "y".
 prune_confirmation = "prune"
@@ -157,6 +160,8 @@ pub struct Options {
     pub sort: SortKey,
     pub sort_descending: bool,
     pub confirm_quit: bool,
+    /// Send deleted files to the system trash / Recycle Bin.
+    pub delete_to_trash: bool,
     /// What to type to confirm a Prune.
     pub prune_confirmation: PruneConfirm,
     /// Alt+C / Alt+M: initial path mode.
@@ -187,6 +192,7 @@ impl Default for Options {
             sort: SortKey::Name,
             sort_descending: false,
             confirm_quit: true,
+            delete_to_trash: false,
             prune_confirmation: PruneConfirm::Prune,
             copy_paths: CopyPaths::Full,
             history_skip_at: false,
@@ -225,6 +231,7 @@ impl Options {
             ("sort", s(self.sort.as_str())),
             ("sort_descending", Value::from(self.sort_descending)),
             ("confirm_quit", Value::from(self.confirm_quit)),
+            ("delete_to_trash", Value::from(self.delete_to_trash)),
             ("prune_confirmation", s(self.prune_confirmation.as_str())),
             ("copy_paths", s(self.copy_paths.as_str())),
             ("history_skip_at", Value::from(self.history_skip_at)),

@@ -220,8 +220,15 @@ pub(crate) enum ConfirmKind {
     Quit,
     /// Alt+Q: quit and leave this directory for the shell.
     QuitChangeDir(PathBuf),
-    DeleteFiles(Vec<Source>),
-    DeleteDir(NodeId),
+    DeleteFiles {
+        sources: Vec<Source>,
+        to_trash: bool,
+    },
+    DeleteDir {
+        id: NodeId,
+        to_trash: bool,
+    },
+    RestoreTrash(Vec<PathBuf>),
     /// `branch`: compares the whole branch, not just the directory.
     Compare {
         branch: bool,
@@ -622,25 +629,80 @@ impl App {
                 };
                 self.set_sort(sort);
             }
-            _ if !yes => {}
+            _ if !yes
+                && !matches!(
+                    kind,
+                    ConfirmKind::DeleteFiles { .. } | ConfirmKind::DeleteDir { .. }
+                ) => {}
             ConfirmKind::Quit => self.should_quit = true,
             ConfirmKind::QuitChangeDir(dir) => {
                 self.quit_dir = Some(dir);
                 self.should_quit = true;
             }
-            ConfirmKind::DeleteFiles(sources) => self.start_op(Operation::delete(sources)),
-            ConfirmKind::DeleteDir(id) => {
-                let path = self.tree.path(id);
-                let parent = self.tree.node(id).parent.unwrap_or(ROOT);
-                match fs::remove_dir(&path) {
-                    Ok(()) => {
-                        self.tree.rescan(parent);
-                        self.refresh_rows(parent);
-                        self.refresh_files();
-                        self.rescan_everywhere(&[&path]);
-                        self.message = Some(format!("Deleted {}", path.display()));
+            ConfirmKind::DeleteFiles { sources, to_trash } => {
+                if choice == 't' && !to_trash {
+                    return self.ask_delete_files(sources, true);
+                }
+                if choice == 'p' && to_trash {
+                    return self.ask_delete_files(sources, false);
+                }
+                if yes {
+                    self.start_op(Operation::delete(sources, to_trash));
+                }
+            }
+            ConfirmKind::DeleteDir { id, to_trash } => {
+                if choice == 't' && !to_trash {
+                    return self.ask_delete_dir_with(id, true);
+                }
+                if choice == 'p' && to_trash {
+                    return self.ask_delete_dir_with(id, false);
+                }
+                if yes {
+                    let path = self.tree.path(id);
+                    let parent = self.tree.node(id).parent.unwrap_or(ROOT);
+                    let removed = if to_trash {
+                        platform::trash_file(&path)
+                    } else {
+                        fs::remove_dir(&path)
+                    };
+                    match removed {
+                        Ok(()) => {
+                            if to_trash {
+                                self.last_trashed = vec![path.clone()];
+                            }
+                            self.tree.rescan(parent);
+                            self.refresh_rows(parent);
+                            self.refresh_files();
+                            self.rescan_everywhere(&[&path]);
+                            let action = if to_trash { "Moved" } else { "Deleted" };
+                            let suffix = if to_trash { " to trash" } else { "" };
+                            self.message = Some(format!("{action} {}{suffix}", path.display()));
+                        }
+                        Err(e) => {
+                            let action = if to_trash {
+                                "move directory to trash"
+                            } else {
+                                "delete directory"
+                            };
+                            self.message = Some(format!("Cannot {action}: {e}"));
+                        }
                     }
-                    Err(e) => self.message = Some(format!("Cannot delete directory: {e}")),
+                }
+            }
+            ConfirmKind::RestoreTrash(paths) => {
+                if yes {
+                    match platform::restore_trash_paths(&paths) {
+                        Ok(_) => {
+                            let dirs: Vec<_> = paths.iter().filter_map(|p| p.parent()).collect();
+                            self.rescan_everywhere(&dirs);
+                            self.message =
+                                Some(format!("Restored {} from trash", describe_paths(&paths)));
+                            self.last_trashed.clear();
+                        }
+                        Err(e) => {
+                            self.message = Some(format!("Cannot restore from trash: {e}"));
+                        }
+                    }
                 }
             }
         }
@@ -687,8 +749,31 @@ impl App {
         self.open_prompt(PromptKind::Chmod(paths), label, &mode);
     }
 
-    pub(crate) fn ask_delete_dir(&mut self) {
-        let id = self.current();
+    pub(crate) fn ask_delete_files(&mut self, sources: Vec<Source>, to_trash: bool) {
+        let label = describe(&sources);
+        let q = if to_trash {
+            format!("MOVE {label} to trash?")
+        } else {
+            format!("DELETE {label}? This cannot be undone.")
+        };
+        let options: &'static [&'static str] = if to_trash {
+            &["Yes", "No", "Permanent"]
+        } else {
+            &["Yes", "No", "Trash"]
+        };
+        self.ask_options(ConfirmKind::DeleteFiles { sources, to_trash }, q, options);
+    }
+
+    pub(crate) fn ask_delete_dir(&mut self, permanent: bool) {
+        let to_trash = if permanent {
+            false
+        } else {
+            self.options.delete_to_trash
+        };
+        self.ask_delete_dir_with(self.current(), to_trash);
+    }
+
+    pub(crate) fn ask_delete_dir_with(&mut self, id: NodeId, to_trash: bool) {
         if id == ROOT {
             self.message = Some("Cannot delete the root directory".into());
             return;
@@ -701,7 +786,40 @@ impl App {
             self.after_change();
             return;
         }
-        let q = format!("DELETE directory {}?", node.name.to_string_lossy());
-        self.ask(ConfirmKind::DeleteDir(id), q);
+        let name = node.name.to_string_lossy();
+        let q = if to_trash {
+            format!("MOVE directory {name} to trash?")
+        } else {
+            format!("DELETE directory {name}?")
+        };
+        let options: &'static [&'static str] = if to_trash {
+            &["Yes", "No", "Permanent"]
+        } else {
+            &["Yes", "No", "Trash"]
+        };
+        self.ask_options(ConfirmKind::DeleteDir { id, to_trash }, q, options);
+    }
+
+    pub(crate) fn ask_oops(&mut self) {
+        if !self.last_trashed.is_empty() {
+            let label = describe_paths(&self.last_trashed);
+            let q = format!("RESTORE {label} from trash?");
+            let paths = self.last_trashed.clone();
+            self.ask(ConfirmKind::RestoreTrash(paths), q);
+            return;
+        }
+        match platform::latest_trash_item() {
+            Ok(Some(item)) => {
+                let name = item.name.clone();
+                let q = format!("RESTORE {name} from trash?");
+                self.ask(ConfirmKind::RestoreTrash(vec![item.original_path]), q);
+            }
+            Ok(None) => {
+                self.message = Some("Trash is empty (nothing to restore)".into());
+            }
+            Err(e) => {
+                self.message = Some(format!("Cannot check trash: {e}"));
+            }
+        }
     }
 }

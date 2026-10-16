@@ -119,7 +119,10 @@ pub enum Command {
     },
     Delete {
         tagged: bool,
+        permanent: bool,
     },
+    /// Restores the most recently trashed file(s) from system trash (Oops!).
+    Oops,
     Attributes {
         tagged: bool,
     },

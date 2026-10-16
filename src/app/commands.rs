@@ -228,6 +228,7 @@ impl App {
             cmd,
             Command::Move { .. }
                 | Command::Delete { .. }
+                | Command::Oops
                 | Command::Rename
                 | Command::Attributes { .. }
                 | Command::MakeDir
@@ -444,13 +445,21 @@ impl App {
             }
             Command::Copy { tagged, paths } => self.prompt_transfer(OpKind::Copy, tagged, paths),
             Command::Move { tagged, paths } => self.prompt_transfer(OpKind::Move, tagged, paths),
-            Command::Delete { tagged: false } if !in_files => self.ask_delete_dir(),
-            Command::Delete { tagged } => {
+            Command::Delete {
+                tagged: false,
+                permanent,
+            } if !in_files => self.ask_delete_dir(permanent),
+            Command::Delete { tagged, permanent } => {
+                let to_trash = if permanent {
+                    false
+                } else {
+                    self.options.delete_to_trash
+                };
                 if let Some(sources) = self.sources_or_warn(tagged) {
-                    let q = format!("DELETE {}? This cannot be undone.", describe(&sources));
-                    self.ask(ConfirmKind::DeleteFiles(sources), q);
+                    self.ask_delete_files(sources, to_trash);
                 }
             }
+            Command::Oops => self.ask_oops(),
             Command::Attributes { tagged } => self.prompt_chmod(tagged),
             Command::Rename if in_files => {
                 if let Some(f) = self.selected_file() {

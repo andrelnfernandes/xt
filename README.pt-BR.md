@@ -347,7 +347,9 @@ bash (`ignorespace`) e no zsh (`HIST_IGNORE_SPACE`). Dentro do terminal,
 | Ctrl+F7 / F8 / F9 | marca / desmarca / inverte os arquivos logados do ramo | |
 | `C` | | copia o arquivo |
 | `M` | cria um subdiretório | move o arquivo |
-| `D` | apaga o diretório (só se vazio) | apaga o arquivo |
+| `D` / Del | apaga o diretório (só se vazio) | apaga o arquivo |
+| Shift+Del | apaga definitivamente o diretório | apaga definitivamente o arquivo |
+| `O` (árvore) / Ctrl+Z | restaura arquivo da lixeira (Oops!) | restaura arquivo da lixeira (Oops!) |
 | Alt+P | Prune: apaga o diretório com tudo dentro | |
 | `R` | renomeia o diretório | renomeia o arquivo |
 | `A` | | permissões (octal, ex.: `644`) |
@@ -547,7 +549,7 @@ tempo ligado, carga, memória e swap, shell, terminal), a rede (endereços IP
 de cada interface, gateway e DNS) e o próprio xt (versão, PID, memória em uso,
 executável e arquivo de configuração).
 
-**Delete** apaga de verdade (não vai para a lixeira) e sempre pede confirmação.
+**Delete e Lixeira:** `D` ou `Del` sempre pede confirmação antes de apagar. Quando `delete_to_trash = true` na configuração (ou pressionando `T` na confirmação), arquivos e diretórios vazios são enviados para a lixeira do sistema (FreeDesktop Trash no Linux, Lixeira no Windows) em vez de apagados de vez. `Shift+Del` apaga de forma permanente. Caso tenha enviado algo para a lixeira por engano, a função **Oops** (`O` na árvore, ou `Ctrl+Z` em ambas as janelas) permite restaurar o item para a sua localização original.
 
 **Prune (Alt+P na árvore):** loga o ramo inteiro, mostra quantos arquivos,
 diretórios e bytes serão apagados e pede que você **digite PRUNE** (ou o nome
@@ -659,7 +661,7 @@ configuração (Alt+F10).
 | Sort | Name, Ext, Date, Time, Length, Alpha, nuMber, Size, Value, Unsorted; Charset; same/diff na tela dividida | Name, Ext, Date, Size, crescente/decrescente, Path first; cada janela tem a sua ordem |
 | Compare | opções Identical, Unique, Newer, Older, Size, Binary, Case; filtro de exibição | marca únicos, mais novos, mais antigos, idênticos, diferentes ou únicos+mais novos; sem comparação binária |
 | Prune | apaga só os subdiretórios ou também o atual; só diretórios vazios; lixeira | apaga sempre o diretório inteiro, permanentemente; confirmação configurável |
-| Delete | lixeira opcional | apaga de vez |
+| Delete | lixeira opcional | lixeira opcional (via delete_to_trash ou alternância T/P no prompt; Shift+Del definitivo) com restauração Oops (O/Ctrl+Z) |
 | Log | vários drives logados, Global, troca de drive | uma raiz por janela; `L` abre outro diretório |
 | eXecute | parâmetros de batch `%1`–`%8`, nova janela (NTW) | `sh` com `%f`, `%t` e `%d`; sempre no terminal do xt; também um terminal embutido (Alt+X) |
 | Histórico | janela de histórico com marcadores | ↑/↓ no prompt, um histórico por tipo, salvo entre execuções |

@@ -124,6 +124,8 @@ pub struct App {
     pub settings: Option<Settings>,
     /// Directory being deleted by an ongoing Prune.
     pruning: Option<PathBuf>,
+    /// Files or directories trashed during the session, for Oops restoration.
+    pub last_trashed: Vec<PathBuf>,
     pub keymap: Keymap,
     pub should_quit: bool,
     /// Alt+Q: the directory for the shell to go to on exit.
@@ -190,6 +192,7 @@ impl App {
             config_error: None,
             settings: None,
             pruning: None,
+            last_trashed: Vec::new(),
             keymap: Keymap::default(),
             should_quit: false,
             quit_dir: None,
@@ -395,6 +398,9 @@ impl App {
     /// End (or cancellation) of an operation: re-reads the affected directories.
     pub(crate) fn finish_op(&mut self, prefix: &str) {
         let Some(op) = self.op.take() else { return };
+        if op.to_trash && !op.trashed.is_empty() {
+            self.last_trashed = op.trashed.clone();
+        }
         self.rescan_everywhere(&op.touched_dirs());
         // After a Prune, the cursor goes to the parent directory.
         if let Some(root) = self.pruning.take()
