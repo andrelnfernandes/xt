@@ -408,6 +408,166 @@ impl App {
         Ok(())
     }
 
+    /// Jumps directly to a directory path: if it is inside the current tree, moves
+    /// the cursor there and expands as needed; otherwise opens it as a new root.
+    pub(crate) fn jump_to_path(&mut self, path: &Path) -> Result<(), String> {
+        let path = dunce::canonicalize(path).map_err(|e| format!("Cannot jump to {}: {e}", path.display()))?;
+        if !path.is_dir() {
+            return Err(format!("{} is not a directory", path.display()));
+        }
+        if !self.goto(&path) {
+            let (sort, display) = (self.sort, self.display);
+            *self.deref_mut() = self.new_pane(path);
+            self.display = display;
+            self.set_sort(sort);
+        }
+        Ok(())
+    }
+
+    /// Sets or updates a bookmark for `key` pointing to `path`.
+    pub(crate) fn set_bookmark(&mut self, key: String, path: PathBuf) {
+        self.bookmarks.insert(key, Bookmark::new(path));
+        if let Some(file) = &self.history_file {
+            let _ = state::save_bookmarks(file, &self.bookmarks);
+        }
+    }
+
+    /// Removes a bookmark by `key`. Returns true if it existed.
+    pub(crate) fn remove_bookmark(&mut self, key: &str) -> bool {
+        let removed = self.bookmarks.remove(key).is_some();
+        if removed
+            && let Some(file) = &self.history_file
+        {
+            let _ = state::save_bookmarks(file, &self.bookmarks);
+        }
+        removed
+    }
+
+    /// Opens the prompt to jump to a bookmark (').
+    pub(crate) fn start_bookmark_jump(&mut self) {
+        if self.bookmarks.is_empty() {
+            self.start_bookmark_set();
+            return;
+        }
+        self.open_prompt(
+            PromptKind::BookmarkJump,
+            "JUMP (0-9, a-z; ' list; + bookmark here; Esc cancel): ".into(),
+            "",
+        );
+    }
+
+    /// Opens the prompt to bookmark the current directory (Ctrl+B / Ctrl+F11).
+    pub(crate) fn start_bookmark_set(&mut self) {
+        self.open_prompt(
+            PromptKind::BookmarkSet,
+            "SET BOOKMARK for current directory (press 0-9 or a-z, Esc to cancel): ".into(),
+            "",
+        );
+    }
+
+    /// Opens the bookmarks manager screen (Alt+B / F11).
+    pub(crate) fn open_bookmarks(&mut self) {
+        self.bookmarks_view = Some(BookmarksView { selected: 0 });
+    }
+
+    /// Handles keyboard events when the bookmarks manager (Alt+B / F11) is open.
+    pub(crate) fn bookmarks_key(&mut self, key: KeyEvent) {
+        if key.modifiers.contains(KeyModifiers::ALT) && matches!(key.code, KeyCode::Char('b' | 'B')) {
+            self.bookmarks_view = None;
+            return;
+        }
+        let count = self.bookmarks.len();
+        match key.code {
+            KeyCode::Esc | KeyCode::F(11) => {
+                self.bookmarks_view = None;
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                if let Some(view) = &mut self.bookmarks_view {
+                    view.selected = view.selected.saturating_sub(1);
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if let Some(view) = &mut self.bookmarks_view
+                    && count > 0
+                {
+                    view.selected = (view.selected + 1).min(count - 1);
+                }
+            }
+            KeyCode::Home => {
+                if let Some(view) = &mut self.bookmarks_view {
+                    view.selected = 0;
+                }
+            }
+            KeyCode::End => {
+                if let Some(view) = &mut self.bookmarks_view {
+                    view.selected = count.saturating_sub(1);
+                }
+            }
+            KeyCode::Enter => {
+                if let Some(view) = self.bookmarks_view.take()
+                    && let Some((_, bm)) = self.bookmarks.iter().nth(view.selected)
+                {
+                    let path = bm.path.clone();
+                    if let Err(e) = self.jump_to_path(&path) {
+                        self.message = Some(e);
+                    }
+                }
+            }
+            KeyCode::Delete => {
+                let to_remove = self
+                    .bookmarks_view
+                    .as_ref()
+                    .and_then(|v| self.bookmarks.keys().nth(v.selected).cloned());
+                if let Some(k) = to_remove {
+                    self.remove_bookmark(&k);
+                    let new_count = self.bookmarks.len();
+                    if let Some(view) = &mut self.bookmarks_view {
+                        if new_count == 0 {
+                            view.selected = 0;
+                        } else {
+                            view.selected = view.selected.min(new_count - 1);
+                        }
+                    }
+                    self.message = Some(format!("Bookmark '{k}' removed"));
+                }
+            }
+            KeyCode::Insert | KeyCode::Char('+') => {
+                self.bookmarks_view = None;
+                self.start_bookmark_set();
+            }
+            KeyCode::Char(c) if c.is_ascii_alphanumeric() => {
+                let key_str = c.to_ascii_lowercase().to_string();
+                if let Some(bm) = self.bookmarks.get(&key_str).cloned() {
+                    self.bookmarks_view = None;
+                    if let Err(e) = self.jump_to_path(&bm.path) {
+                        self.message = Some(e);
+                    }
+                } else if c == 'd' || c == 'D' {
+                    let to_remove = self
+                        .bookmarks_view
+                        .as_ref()
+                        .and_then(|v| self.bookmarks.keys().nth(v.selected).cloned());
+                    if let Some(k) = to_remove {
+                        self.remove_bookmark(&k);
+                        let new_count = self.bookmarks.len();
+                        if let Some(view) = &mut self.bookmarks_view {
+                            if new_count == 0 {
+                                view.selected = 0;
+                            } else {
+                                view.selected = view.selected.min(new_count - 1);
+                            }
+                        }
+                        self.message = Some(format!("Bookmark '{k}' removed"));
+                    }
+                } else if c == 'a' || c == 'A' || c == 'm' || c == 'M' {
+                    self.bookmarks_view = None;
+                    self.start_bookmark_set();
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// `sources`, warning when there is nothing to operate on.
     pub(crate) fn sources_or_warn(&mut self, tagged: bool) -> Option<Vec<Source>> {
         let sources = self.sources(tagged);
@@ -418,6 +578,51 @@ impl App {
             return None;
         }
         Some(sources)
+    }
+
+    pub(crate) fn rename_tagged(
+        &mut self,
+        sources: Vec<Source>,
+        case_mode: CaseMode,
+        pattern: &str,
+    ) {
+        let pattern = pattern.trim();
+        if pattern.is_empty() {
+            return;
+        }
+        let mask = RenameMask::new(pattern, case_mode);
+        let mut pairs = Vec::new();
+        let mut seen_dsts = std::collections::HashSet::new();
+
+        for (i, s) in sources.iter().enumerate() {
+            let index = i + 1;
+            let Some(file_name) = s.path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            let new_name = mask.apply(file_name, index);
+            if let Err(e) = ops::check_name(&new_name) {
+                self.message = Some(format!("Invalid name '{new_name}': {e}"));
+                return;
+            }
+            let dst = s.path.with_file_name(&new_name);
+            if dst != s.path {
+                if !seen_dsts.insert(dst.clone()) {
+                    self.message = Some(format!(
+                        "Duplicate target name generated: {new_name}"
+                    ));
+                    return;
+                }
+                pairs.push((s.path.clone(), dst, s.size));
+            }
+        }
+
+        if pairs.is_empty() {
+            self.message = Some("No files renamed (names unchanged)".into());
+            return;
+        }
+
+        let op = Operation::rename_batch(pairs);
+        self.start_op(op);
     }
 
     pub(crate) fn rename_file(&mut self, path: &Path, name: &str) -> Result<(), String> {

@@ -19,7 +19,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Clear, List, ListItem, ListState, Paragraph};
 
-use crate::app::{self, App, FileView, Focus, KbyteShow, MenuMode, Pane};
+use crate::app::{self, App, BookmarksView, FileView, Focus, KbyteShow, MenuMode, Pane};
 use crate::config::TerminalTheme;
 use crate::config::{self, formats, theme};
 use crate::git::StatusCache;
@@ -27,6 +27,7 @@ use crate::input::Command;
 use crate::model::tree::{FileEntry, FileKind};
 use crate::ops::Operation;
 use crate::pane::{Count, FileDisplay, FileRef};
+use crate::platform;
 use crate::settings::{self, Settings};
 use crate::term::{self, Terminal};
 use crate::viewer::{self, ViewMode, Viewer};
@@ -46,6 +47,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     }
     if let Some(settings) = &app.settings {
         draw_settings(frame, settings);
+        return;
+    }
+    if let Some(view) = &app.bookmarks_view {
+        draw_bookmarks(frame, app, view);
         return;
     }
 
@@ -854,6 +859,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                     ("Enter", "files"),
                     ("Alt+X", "terminal"),
                     ("F8", "split"),
+                    ("Alt+B", "bookmarks"),
                     ("F9", "menus"),
                 ],
             ),
@@ -888,6 +894,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                     ("Esc", "tree"),
                     ("Alt+X", "terminal"),
                     ("F8", "split"),
+                    ("Alt+B", "bookmarks"),
                     ("F9", "Ctrl/Alt menus"),
                 ],
             ),
@@ -901,6 +908,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                         "Copy",
                         "Delete",
                         "Move",
+                        "Rename",
                         "Tag",
                         "Untag",
                         "Yank",
@@ -912,6 +920,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                         "Delete",
                         "Move",
                         "Open",
+                        "Rename",
                         "Tag",
                         "Untag",
                         "Yank",
@@ -939,23 +948,29 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                 if tree {
                     &[
                         "Attributes",
+                        "Bookmarks",
                         "Compare branch",
                         "Delete",
+                        "Help",
                         "Info",
                         "Kbyte",
                         "Prune",
+                        "Rename",
                         "Sort",
                         "eXecute",
                     ]
                 } else {
                     &[
                         "Attributes",
+                        "Bookmarks",
                         "Copy",
                         "Delete",
                         "File display",
+                        "Help",
                         "Info",
                         "Move",
                         "Open terminal",
+                        "Rename",
                         "Sort",
                         "eXecute",
                     ]
@@ -987,22 +1002,37 @@ fn prompt_lines(frame: &mut Frame, prompt: &app::Prompt, area: Rect) -> Vec<Line
     let bold = Style::new().add_modifier(Modifier::BOLD);
     let col = area.x + (prompt.label.chars().count() + prompt.input.cursor) as u16;
     frame.set_cursor_position((col.min(area.right().saturating_sub(1)), area.y));
-    let mut help = vec![("Enter", "accept"), ("Esc", "cancel"), ("Ctrl+U", "clear")];
-    if prompt.picks_folder() {
-        help.push(("F2", "tree"));
-    }
-    if prompt.toggles_paths() {
-        help.push(("F6", "with/without paths"));
-        help.push(("F7", "paths from"));
-    }
-    if prompt.is_search() {
-        help.push(("F2", "match case"));
-        help.push(("F4", "text/hex"));
-        help.push(("↑↓", "history"));
-    }
-    if prompt.label.starts_with("FILESPEC") {
-        help.push(("e.g.", "*.rs -*.bak >TODAY-7 >s1M"));
-    }
+    let help = if prompt.is_bookmark_jump() {
+        vec![("0-9, a-z", "jump"), ("' / Enter", "list"), ("+", "bookmark here"), ("Esc", "cancel")]
+    } else if prompt.is_bookmark_set() {
+        vec![("0-9, a-z", "assign key"), ("Esc", "cancel")]
+    } else if prompt.is_rename_tagged() {
+        vec![
+            ("Enter", "rename"),
+            ("F2", "case"),
+            ("↑↓", "history"),
+            ("Esc", "cancel"),
+            ("e.g.", "*.jpg  new_*.*  %03d  s/a/b/"),
+        ]
+    } else {
+        let mut help = vec![("Enter", "accept"), ("Esc", "cancel"), ("Ctrl+U", "clear")];
+        if prompt.picks_folder() {
+            help.push(("F2", "tree"));
+        }
+        if prompt.toggles_paths() {
+            help.push(("F6", "with/without paths"));
+            help.push(("F7", "paths from"));
+        }
+        if prompt.is_search() {
+            help.push(("F2", "match case"));
+            help.push(("F4", "text/hex"));
+            help.push(("↑↓", "history"));
+        }
+        if prompt.label.starts_with("FILESPEC") {
+            help.push(("e.g.", "*.rs -*.bak >TODAY-7 >s1M"));
+        }
+        help
+    };
     vec![
         Line::from(vec![
             Span::styled(prompt.label.clone(), bold),
@@ -1228,6 +1258,124 @@ fn draw_settings(frame: &mut Frame, s: &Settings) {
         vec![first, menu_line("", &[("F3", "save"), ("Esc", "cancel")])]
     };
     frame.render_widget(Paragraph::new(lines), menu);
+}
+
+fn draw_bookmarks(frame: &mut Frame, app: &App, view: &BookmarksView) {
+    let [header, body, menu] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(3),
+        Constraint::Length(2),
+    ])
+    .areas(frame.area());
+    let bold = Style::new().add_modifier(Modifier::BOLD);
+
+    frame.render_widget(
+        Line::from(vec![
+            Span::styled("xt bookmarks", bold),
+            Span::raw(format!(
+                "   {} bookmark{}",
+                app.bookmarks.len(),
+                if app.bookmarks.len() == 1 { "" } else { "s" }
+            )),
+        ]),
+        header,
+    );
+
+    let block = panel(" Directory Bookmarks (Alt+B / F11) ", true);
+    let inner = block.inner(body);
+    frame.render_widget(block, body);
+
+    let home = platform::home_dir();
+    let format_path = |p: &std::path::Path| -> String {
+        if let Some(h) = &home
+            && let Ok(rel) = p.strip_prefix(h)
+        {
+            format!("~/{}", rel.display())
+        } else {
+            p.display().to_string()
+        }
+    };
+
+    let mut lines: Vec<Line> = Vec::new();
+    if app.bookmarks.is_empty() {
+        lines.push(Line::default());
+        lines.push(Line::from(Span::styled(
+            "  No bookmarks defined yet.",
+            bold,
+        )));
+        lines.push(Line::default());
+        lines.push(Line::from(vec![
+            Span::raw("  Press "),
+            key("Ins"),
+            Span::raw(", "),
+            key("+"),
+            Span::raw(" or "),
+            key("m"),
+            Span::raw(" to bookmark the current directory:"),
+        ]));
+        lines.push(Line::from(vec![
+            Span::raw("    "),
+            Span::styled(
+                format_path(&app.current_path()),
+                Style::new().fg(theme().key).add_modifier(Modifier::BOLD),
+            ),
+        ]));
+    } else {
+        let width = inner.width as usize;
+        for (i, (k, bm)) in app.bookmarks.iter().enumerate() {
+            let exists = bm.path.is_dir();
+            let path_str = format_path(&bm.path);
+            let label_part = match &bm.label {
+                Some(lbl) => format!(" ({lbl})"),
+                None => String::new(),
+            };
+            let cursor = if i == view.selected { "▶ " } else { "  " };
+            let status = if !exists { " [not found]" } else { "" };
+
+            let full_text = format!("{path_str}{label_part}{status}");
+            let text_fitted = fit(&full_text, width.saturating_sub(10));
+
+            let mut spans = vec![
+                Span::raw(cursor),
+                key(&format!("[{k}]")),
+                Span::raw(" "),
+                Span::raw(text_fitted),
+            ];
+            if !exists {
+                spans.push(Span::styled(
+                    " [invalid]",
+                    Style::new().fg(theme().message),
+                ));
+            }
+            let line = Line::from(spans);
+            if i == view.selected {
+                lines.push(line.style(highlight(true)));
+            } else {
+                lines.push(line);
+            }
+        }
+        lines.push(Line::default());
+        lines.push(Line::from(vec![
+            Span::styled("  Current directory: ", bold),
+            Span::raw(format_path(&app.current_path())),
+        ]));
+    }
+
+    frame.render_widget(Paragraph::new(lines), inner);
+
+    frame.render_widget(
+        menu_line(
+            "",
+            &[
+                ("Enter / key", "jump"),
+                ("Ins / +", "add current dir"),
+                ("Del / d", "remove"),
+                ("↑↓ / j k", "navigate"),
+                ("Esc", "exit"),
+            ],
+        ),
+        menu,
+    );
 }
 
 fn draw_viewer(frame: &mut Frame, app: &mut App) {
@@ -1613,5 +1761,29 @@ mod tests {
         let screen = format!("{:?}", term.backend().buffer());
         assert!(screen.contains("sub"));
         assert!(screen.contains("file.txt"));
+    }
+
+    #[test]
+    fn renders_bookmarks_modal() {
+        use ratatui::{Terminal, backend::TestBackend};
+        let tmp = crate::testing::tempdir();
+        let mut app = App::new(tmp.path().to_path_buf());
+
+        // Empty bookmarks view
+        app.bookmarks_view = Some(BookmarksView { selected: 0 });
+        let mut term = Terminal::new(TestBackend::new(100, 30)).unwrap();
+        term.draw(|f| draw(f, &mut app)).unwrap();
+        let screen = format!("{:?}", term.backend().buffer());
+        assert!(screen.contains("Directory Bookmarks"));
+        assert!(screen.contains("No bookmarks defined yet"));
+
+        // With bookmarks
+        app.set_bookmark("1".into(), tmp.path().to_path_buf());
+        app.set_bookmark("x".into(), tmp.path().join("sub"));
+        term.draw(|f| draw(f, &mut app)).unwrap();
+        let screen = format!("{:?}", term.backend().buffer());
+        assert!(screen.contains("[1]"));
+        assert!(screen.contains("[x]"));
+        assert!(screen.contains("2 bookmarks"));
     }
 }

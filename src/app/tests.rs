@@ -2090,3 +2090,216 @@ fn test_clipboard_viewer_copy() {
     assert!(note.starts_with("Copied to clipboard:"), "{note}");
     assert!(note.ends_with("a.rs"), "{note}");
 }
+
+#[test]
+fn test_bookmark_set_and_quick_jump() {
+    let (_tmp, mut app) = sample();
+    let root = app.current_path();
+    let deep = root.join("sub/deep");
+
+    // Navigate into sub/deep
+    assert!(app.goto(&deep));
+    assert_eq!(app.current_path(), deep);
+
+    // Press Ctrl+F11 to bookmark current directory
+    app.handle_key(KeyEvent::new(KeyCode::F(11), KeyModifiers::CONTROL));
+    assert!(app.prompt.as_ref().unwrap().is_bookmark_set());
+
+    // Assign key 'd'
+    press(&mut app, KeyCode::Char('d'));
+    assert!(app.prompt.is_none());
+    assert_eq!(app.bookmarks["d"].path, deep);
+
+    // Go back to root
+    assert!(app.goto(&root));
+    assert_eq!(app.current_path(), root);
+
+    // Quick jump with single quote (')
+    press(&mut app, KeyCode::Char('\''));
+    assert!(app.prompt.as_ref().unwrap().is_bookmark_jump());
+
+    // Press 'd' -> jumps immediately to sub/deep
+    press(&mut app, KeyCode::Char('d'));
+    assert!(app.prompt.is_none());
+    assert_eq!(app.current_path(), deep);
+}
+
+#[test]
+fn test_bookmark_jump_outside_tree() {
+    let (_tmp, mut app) = sample();
+    let other = crate::testing::tempdir();
+    let other_path = dunce::canonicalize(other.path()).unwrap();
+
+    app.set_bookmark("o".into(), other_path.clone());
+
+    // Jump with ' followed by o
+    press(&mut app, KeyCode::Char('\''));
+    press(&mut app, KeyCode::Char('o'));
+
+    assert_eq!(app.current_path(), other_path);
+}
+
+#[test]
+fn test_bookmark_jump_nonexistent_directory() {
+    let (_tmp, mut app) = sample();
+    let root = app.current_path();
+
+    app.set_bookmark("z".into(), PathBuf::from("/nonexistent/directory/xyz"));
+
+    press(&mut app, KeyCode::Char('\''));
+    press(&mut app, KeyCode::Char('z'));
+
+    assert_eq!(app.current_path(), root);
+    assert!(app.message.as_ref().unwrap().contains("Cannot jump to"));
+}
+
+#[test]
+fn test_bookmarks_manager_navigation_and_delete() {
+    let (_tmp, mut app) = sample();
+    let root = app.current_path();
+    let deep = root.join("sub/deep");
+
+    app.set_bookmark("1".into(), root.clone());
+    app.set_bookmark("2".into(), deep.clone());
+
+    // Open bookmarks with F11
+    press(&mut app, KeyCode::F(11));
+    assert!(app.bookmarks_view.is_some());
+    assert_eq!(app.bookmarks_view.as_ref().unwrap().selected, 0);
+
+    // Navigate down
+    press(&mut app, KeyCode::Down);
+    assert_eq!(app.bookmarks_view.as_ref().unwrap().selected, 1);
+
+    // Enter jumps to selected bookmark ("2" -> deep)
+    press(&mut app, KeyCode::Enter);
+    assert!(app.bookmarks_view.is_none());
+    assert_eq!(app.current_path(), deep);
+
+    // Open bookmarks again and delete the selected one
+    press(&mut app, KeyCode::F(11));
+    press(&mut app, KeyCode::Down);
+    press(&mut app, KeyCode::Char('d')); // Delete "2"
+    assert_eq!(app.bookmarks.len(), 1);
+    assert!(!app.bookmarks.contains_key("2"));
+    assert!(app.bookmarks.contains_key("1"));
+
+    // Close with Esc
+    press(&mut app, KeyCode::Esc);
+    assert!(app.bookmarks_view.is_none());
+}
+
+#[test]
+fn test_bookmark_terminal_friendly_shortcuts() {
+    let (_tmp, mut app) = sample();
+    let root = app.current_path();
+    let deep = root.join("sub/deep");
+
+    // Initially bookmarks is empty; pressing single quote (') immediately prompts to set bookmark
+    press(&mut app, KeyCode::Char('\''));
+    assert!(app.prompt.as_ref().unwrap().is_bookmark_set());
+    // Cancel with Esc
+    press(&mut app, KeyCode::Esc);
+    assert!(app.prompt.is_none());
+
+    // In Tree, press Ctrl+B to bookmark current directory (fallback for Ctrl+F11)
+    app.handle_key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::CONTROL));
+    assert!(app.prompt.as_ref().unwrap().is_bookmark_set());
+    press(&mut app, KeyCode::Char('1'));
+    assert!(app.prompt.is_none());
+    assert_eq!(app.bookmarks["1"].path, root);
+
+    // Open bookmarks modal with Alt+B
+    app.handle_key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::ALT));
+    assert!(app.bookmarks_view.is_some());
+
+    // Toggle close with Alt+B
+    app.handle_key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::ALT));
+    assert!(app.bookmarks_view.is_none());
+
+    // Navigate to sub/deep
+    assert!(app.goto(&deep));
+
+    // Press ' to jump, then press '+' to set a bookmark for sub/deep
+    press(&mut app, KeyCode::Char('\''));
+    assert!(app.prompt.as_ref().unwrap().is_bookmark_jump());
+    press(&mut app, KeyCode::Char('+'));
+    assert!(app.prompt.as_ref().unwrap().is_bookmark_set());
+    press(&mut app, KeyCode::Char('2'));
+    assert_eq!(app.bookmarks["2"].path, deep);
+
+    // Go back to root
+    assert!(app.goto(&root));
+
+    // Jump to '2' with ' 2
+    press(&mut app, KeyCode::Char('\''));
+    press(&mut app, KeyCode::Char('2'));
+    assert_eq!(app.current_path(), deep);
+}
+
+#[test]
+fn rename_tagged_files_with_wildcard_mask() {
+    let (tmp, mut app) = sample();
+    press(&mut app, KeyCode::Enter);
+    // Tag both files
+    press(&mut app, KeyCode::Char('t'));
+    press(&mut app, KeyCode::Char('t'));
+    assert_eq!(tagged(&app).len(), 2);
+
+    // Ctrl+R opens prompt for tagged rename
+    app.handle_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL));
+    assert!(app.prompt.as_ref().unwrap().is_rename_tagged());
+
+    // Enter mask prefix_*.*
+    answer_prompt(&mut app, "prefix_*.*");
+    assert!(tmp.path().join("prefix_a.rs").exists());
+    assert!(tmp.path().join("prefix_b.txt").exists());
+}
+
+#[test]
+fn rename_tagged_files_with_counters_and_search_replace() {
+    let (tmp, mut app) = sample();
+    press(&mut app, KeyCode::Enter);
+    press(&mut app, KeyCode::Char('t'));
+    press(&mut app, KeyCode::Char('t'));
+
+    // Alt+R also triggers rename_tagged
+    app.handle_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::ALT));
+    assert!(app.prompt.as_ref().unwrap().is_rename_tagged());
+
+    // Use counter %02d
+    answer_prompt(&mut app, "item_%02d.*");
+    assert!(tmp.path().join("item_01.rs").exists());
+    assert!(tmp.path().join("item_02.txt").exists());
+
+    // Tag the new files and use search & replace s/item_/test_/
+    press(&mut app, KeyCode::Home);
+    press(&mut app, KeyCode::Char('t'));
+    press(&mut app, KeyCode::Char('t'));
+    assert_eq!(tagged(&app).len(), 2);
+    app.handle_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL));
+    answer_prompt(&mut app, "s/item_/test_/");
+    assert!(tmp.path().join("test_01.rs").exists());
+    assert!(tmp.path().join("test_02.txt").exists());
+}
+
+#[test]
+fn rename_tagged_f2_cycles_case() {
+    let (tmp, mut app) = sample();
+    press(&mut app, KeyCode::Enter);
+    press(&mut app, KeyCode::Char('t'));
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL));
+    assert!(app.prompt.as_ref().unwrap().label.contains("mask"));
+
+    // Press F2 to cycle case to Lower
+    press(&mut app, KeyCode::F(2));
+    assert!(app.prompt.as_ref().unwrap().label.contains("lowercase"));
+
+    // Press F2 to cycle case to Upper
+    press(&mut app, KeyCode::F(2));
+    assert!(app.prompt.as_ref().unwrap().label.contains("UPPERCASE"));
+
+    answer_prompt(&mut app, "*.*");
+    assert!(tmp.path().join("A.RS").exists());
+}

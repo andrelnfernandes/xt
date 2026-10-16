@@ -23,6 +23,7 @@ use crate::input::{Command, LineEvent, LineInput};
 use crate::keymap::Keymap;
 use crate::model::compare::{self, CompareMode};
 use crate::model::filespec::{self, DateOrder, Filespec};
+use crate::model::rename_mask::{CaseMode, RenameMask};
 use crate::model::sort::{Sort, SortKey};
 use crate::model::tree::{LogJob, NodeId, ROOT};
 use crate::ops::{self, Answer, OpKind, Operation, Source};
@@ -32,7 +33,7 @@ use crate::platform;
 use crate::search::{self, Pattern, SearchJob, SearchSpec};
 use crate::settings::{Outcome, Settings};
 use crate::shell::{self, External};
-use crate::state::{self, History};
+use crate::state::{self, Bookmark, Bookmarks, History};
 use crate::term::Terminal;
 use crate::viewer::{self, Action as ViewerAction, SearchFrom, Viewer};
 
@@ -51,6 +52,12 @@ pub(crate) use prompts::*;
 
 pub use prompts::{Confirm, Prompt};
 pub use view::TaggedView;
+
+/// Directory bookmarks manager state (F11).
+#[derive(Debug, Clone, Default)]
+pub struct BookmarksView {
+    pub selected: usize,
+}
 
 /// Ongoing read and what to do when it finishes.
 pub struct Job {
@@ -108,6 +115,10 @@ pub struct App {
     pending_changes: HashSet<PathBuf>,
     /// Prompt history, per kind.
     pub history: History,
+    /// Directory bookmarks, mapped by key (e.g. "0"-"9", "a"-"z").
+    pub bookmarks: Bookmarks,
+    /// Active bookmarks manager view (F11), if open.
+    pub bookmarks_view: Option<BookmarksView>,
     /// Where to save the history on each new entry (no file in tests).
     pub history_file: Option<PathBuf>,
     /// External program (editor, command) to be run by the main loop,
@@ -184,6 +195,8 @@ impl App {
             last_dest: None,
             pending_changes: HashSet::new(),
             history: History::new(),
+            bookmarks: Bookmarks::new(),
+            bookmarks_view: None,
             history_file: None,
             external: None,
             options: Options::default(),
