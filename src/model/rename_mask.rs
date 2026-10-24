@@ -134,7 +134,9 @@ fn split_stem_ext(name: &str) -> (&str, &str) {
 }
 
 fn try_search_replace(pattern: &str, source: &str) -> Option<String> {
-    let p = pattern.strip_prefix("s/").unwrap_or_else(|| pattern.strip_prefix('/').unwrap_or(""));
+    let p = pattern
+        .strip_prefix("s/")
+        .unwrap_or_else(|| pattern.strip_prefix('/').unwrap_or(""));
     if p.is_empty() || (!pattern.starts_with("s/") && !pattern.starts_with('/')) {
         return None;
     }
@@ -162,11 +164,11 @@ fn replace_case_insensitive(source: &str, from: &str, to: &str) -> String {
     let mut result = String::new();
     let mut remaining = source;
     let from_len = from.len();
-    while let Some(idx) = remaining
-        .char_indices()
-        .map(|(i, _)| i)
-        .find(|&i| remaining[i..].to_lowercase().starts_with(&from.to_lowercase()))
-    {
+    while let Some(idx) = remaining.char_indices().map(|(i, _)| i).find(|&i| {
+        remaining[i..]
+            .to_lowercase()
+            .starts_with(&from.to_lowercase())
+    }) {
         result.push_str(&remaining[..idx]);
         result.push_str(to);
         remaining = &remaining[idx + from_len..];

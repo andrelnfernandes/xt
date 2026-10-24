@@ -411,7 +411,8 @@ impl App {
     /// Jumps directly to a directory path: if it is inside the current tree, moves
     /// the cursor there and expands as needed; otherwise opens it as a new root.
     pub(crate) fn jump_to_path(&mut self, path: &Path) -> Result<(), String> {
-        let path = dunce::canonicalize(path).map_err(|e| format!("Cannot jump to {}: {e}", path.display()))?;
+        let path = dunce::canonicalize(path)
+            .map_err(|e| format!("Cannot jump to {}: {e}", path.display()))?;
         if !path.is_dir() {
             return Err(format!("{} is not a directory", path.display()));
         }
@@ -435,9 +436,7 @@ impl App {
     /// Removes a bookmark by `key`. Returns true if it existed.
     pub(crate) fn remove_bookmark(&mut self, key: &str) -> bool {
         let removed = self.bookmarks.remove(key).is_some();
-        if removed
-            && let Some(file) = &self.history_file
-        {
+        if removed && let Some(file) = &self.history_file {
             let _ = state::save_bookmarks(file, &self.bookmarks);
         }
         removed
@@ -472,7 +471,8 @@ impl App {
 
     /// Handles keyboard events when the bookmarks manager (Alt+B / F11) is open.
     pub(crate) fn bookmarks_key(&mut self, key: KeyEvent) {
-        if key.modifiers.contains(KeyModifiers::ALT) && matches!(key.code, KeyCode::Char('b' | 'B')) {
+        if key.modifiers.contains(KeyModifiers::ALT) && matches!(key.code, KeyCode::Char('b' | 'B'))
+        {
             self.bookmarks_view = None;
             return;
         }
@@ -607,9 +607,7 @@ impl App {
             let dst = s.path.with_file_name(&new_name);
             if dst != s.path {
                 if !seen_dsts.insert(dst.clone()) {
-                    self.message = Some(format!(
-                        "Duplicate target name generated: {new_name}"
-                    ));
+                    self.message = Some(format!("Duplicate target name generated: {new_name}"));
                     return;
                 }
                 pairs.push((s.path.clone(), dst, s.size));
