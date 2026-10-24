@@ -9,13 +9,39 @@
 
 use std::io::{self, Read, Write};
 use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
+
+#[cfg(test)]
+thread_local! {
+    /// In tests the desktop clipboard is left alone (the tests run in
+    /// parallel and would overwrite each other, and the user's clipboard):
+    /// what is copied lands here, one per test thread.
+    static COPIED: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// What the current test copied last.
+#[cfg(test)]
+pub fn copied() -> Option<String> {
+    COPIED.with(|c| c.borrow().clone())
+}
+
+/// Copies text to the system clipboard (see [`set_system_clipboard`]).
+pub fn set_clipboard(text: &str) -> io::Result<()> {
+    #[cfg(test)]
+    {
+        COPIED.with(|c| *c.borrow_mut() = Some(text.to_owned()));
+        Ok(())
+    }
+    #[cfg(not(test))]
+    set_system_clipboard(text)
+}
 
 /// Copies text to the system clipboard using:
 /// 1. OSC 52 escape sequence to stdout (works across SSH, tmux, etc.)
 /// 2. Background daemon (`xt --clipboard-daemon`) to serve X11/Wayland selections even after exit
 /// 3. In-process worker thread to serve X11/Wayland selections while xt is running
 /// 4. Native platform clipboard commands as fallback (`wl-copy`, `xclip`, `xsel`, `pbcopy`, `clip`)
-pub fn set_clipboard(text: &str) -> io::Result<()> {
+fn set_system_clipboard(text: &str) -> io::Result<()> {
     // 1. Send OSC 52 escape sequence directly to stdout (works across SSH, tmux, etc.)
     let osc52 = format_osc52(text);
     let mut out = io::stdout();
@@ -29,8 +55,11 @@ pub fn set_clipboard(text: &str) -> io::Result<()> {
         serve_in_thread(text);
     }
 
-    // 3. Also run native clipboard tool as fallback in background
-    let _ = set_native_clipboard(text);
+    // 3. Also run native clipboard tool as fallback in background: on GNOME,
+    // which lacks the data-control protocol, wl-copy may wait for keyboard
+    // focus, and that must not freeze the interface.
+    let text = text.to_owned();
+    std::thread::spawn(move || set_native_clipboard(&text));
 
     Ok(())
 }
@@ -190,7 +219,20 @@ fn run_clipboard_cmd(program: &str, args: &[&str], text: &str) -> bool {
     if let Some(mut stdin) = child.stdin.take() {
         let _ = stdin.write_all(text.as_bytes());
     }
-    child.wait().is_ok_and(|s| s.success())
+    // The tools fork to serve the selection and exit at once; one that is
+    // still waiting after a while (wl-copy without focus) is given up.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return status.success(),
+            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(50)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return false;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -222,9 +264,18 @@ mod tests {
     }
 
     #[test]
+    fn set_clipboard_is_recorded_in_tests() {
+        set_clipboard("/tmp/a.rs").unwrap();
+        assert_eq!(copied().as_deref(), Some("/tmp/a.rs"));
+    }
+
+    /// Uses the real desktop clipboard (and overwrites it), so it only runs
+    /// on request, alone: `cargo test -- --ignored test_set_clipboard_e2e`.
+    #[test]
+    #[ignore]
     fn test_set_clipboard_e2e() {
         if let Ok(mut cb) = arboard::Clipboard::new() {
-            set_clipboard("TEST_E2E_CLIPBOARD").unwrap();
+            set_system_clipboard("TEST_E2E_CLIPBOARD").unwrap();
             std::thread::sleep(std::time::Duration::from_millis(50));
             let text = cb.get_text().unwrap();
             assert_eq!(text, "TEST_E2E_CLIPBOARD");
