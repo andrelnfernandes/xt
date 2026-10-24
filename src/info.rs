@@ -1,6 +1,6 @@
 //! Information screens, shown in the viewer: Info (Alt+I), Avail
 //! (`A` in the tree, the mounted file systems) and statistics (`?`, with
-//! the machine and xt itself).
+//! the machine and Xylem itself).
 
 use std::fmt::Write as _;
 use std::fs;
@@ -138,7 +138,7 @@ pub fn avail() -> String {
     out
 }
 
-/// The SYSTEM and XT sections of the statistics screen (`?`).
+/// The SYSTEM and XYLEM sections of the statistics screen (`?`).
 pub fn system() -> String {
     let s = platform::system();
     let mut out = String::from("SYSTEM\n");
@@ -172,7 +172,7 @@ pub fn system() -> String {
     out.push_str("\nNETWORK\n");
     network(&mut out, &platform::network());
 
-    out.push_str("\nXT\n");
+    out.push_str("\nXYLEM\n");
     let mut opt = |k: &str, v: Option<String>| {
         if let Some(v) = v {
             row(&mut out, k, v);

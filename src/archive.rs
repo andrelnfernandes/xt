@@ -267,7 +267,7 @@ impl ArchiveJob {
             )
         })?;
         let name = dest.file_name().unwrap_or_default().to_string_lossy();
-        let tmp = dest.with_file_name(format!(".{name}.xt-{}.tmp", std::process::id()));
+        let tmp = dest.with_file_name(format!(".{name}.xy-{}.tmp", std::process::id()));
         let file = File::create(&tmp)?;
         let writer = match kind {
             Kind::Zip => Writer::Zip(Box::new(zip::ZipWriter::new(file))),

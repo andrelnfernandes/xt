@@ -4,7 +4,7 @@
 //! Lines are highlighted lazily, only up to the last one shown, and the
 //! result is cached; files longer than `MAX_LINES` are colored only up to
 //! there, so huge files never slow the viewer down. Colors are adjusted to
-//! keep enough contrast with the background of the current xt theme (the
+//! keep enough contrast with the background of the current Xylem theme (the
 //! classic blue one included).
 
 use std::path::Path;
@@ -49,7 +49,7 @@ pub fn enabled() -> bool {
     ENABLED.load(Ordering::Relaxed)
 }
 
-/// Picks the syntect theme for an xt theme and the background to keep
+/// Picks the syntect theme for a Xylem theme and the background to keep
 /// contrast with.
 pub fn set_xt_theme(name: &str, background: Color) {
     let theme = match name {

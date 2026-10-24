@@ -41,7 +41,7 @@ use windows_sys::Win32::System::Threading::GetCurrentProcess;
 
 use super::{DiskSpace, Memory, Mount, Network, System, env_dir};
 
-/// The attributes shown and edited by xt, in display order.
+/// The attributes shown and edited by Xylem, in display order.
 const RHSA: [(u32, char); 4] = [
     (FILE_ATTRIBUTE_READONLY, 'r'),
     (FILE_ATTRIBUTE_HIDDEN, 'h'),
@@ -298,9 +298,14 @@ pub(super) fn state_base() -> Option<PathBuf> {
     env_dir("LOCALAPPDATA")
 }
 
-/// `%LOCALAPPDATA%\xt\cache`.
+/// `%LOCALAPPDATA%\xylem\cache`.
 pub(super) fn cache_base() -> Option<PathBuf> {
-    Some(env_dir("LOCALAPPDATA")?.join("xt").join("cache"))
+    Some(env_dir("LOCALAPPDATA")?.join(super::DIR_NAME).join("cache"))
+}
+
+/// Not looked for on Windows.
+pub(super) fn fish_data_dir() -> Option<PathBuf> {
+    None
 }
 
 /// The machine, from the registry and the memory and process APIs.

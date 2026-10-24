@@ -29,9 +29,9 @@ jobs:
       - name: Release build
         run: cargo build --release
 
-      - name: Upload xt.exe
+      - name: Upload xy.exe
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v7
         with:
-          name: xt-windows-x86_64
-          path: target/release/xt.exe
+          name: xy-windows-x86_64
+          path: target/release/xy.exe

@@ -1,5 +1,5 @@
 //! State that survives between runs: the prompt history, in
-//! `~/.local/state/xt/history.toml` (or `$XDG_STATE_HOME/xt/...`).
+//! `~/.local/state/xylem/history.toml` (or `$XDG_STATE_HOME/xylem/...`).
 
 use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, OpenOptions};
@@ -128,7 +128,7 @@ mod tests {
     #[test]
     fn saves_and_loads_privately() {
         let tmp = crate::testing::tempdir();
-        let path = tmp.path().join("xt/history.toml");
+        let path = tmp.path().join("xylem/history.toml");
         assert!(load_history(&path).is_empty());
 
         let mut history = History::new();

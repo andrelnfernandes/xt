@@ -13,7 +13,7 @@ use std::process::Command;
 pub struct External {
     pub line: OsString,
     pub cwd: PathBuf,
-    /// Asks for Enter before returning to xt, to give time to read the output.
+    /// Asks for Enter before returning to Xylem, to give time to read the output.
     pub wait: bool,
 }
 
@@ -59,7 +59,7 @@ pub fn open_detached(file: &Path, opener: &str) -> std::io::Result<()> {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()?;
-    // Reaps the process when it finishes, without blocking xt.
+    // Reaps the process when it finishes, without blocking Xylem.
     std::thread::spawn(move || child.wait());
     Ok(())
 }
@@ -189,7 +189,7 @@ fn split_ext(name: &[u8]) -> (&[u8], &[u8]) {
 
 /// Default file for Ctrl+B.
 #[cfg(unix)]
-pub const BATCH_FILE: &str = "xt-batch.sh";
+pub const BATCH_FILE: &str = "xy-batch.sh";
 #[cfg(unix)]
 pub const NEWLINE: &[u8] = b"\n";
 
@@ -241,7 +241,7 @@ fn in_path(name: &str) -> bool {
 
 /// Default file for Ctrl+B.
 #[cfg(windows)]
-pub const BATCH_FILE: &str = "xt-batch.bat";
+pub const BATCH_FILE: &str = "xy-batch.bat";
 #[cfg(windows)]
 pub const NEWLINE: &[u8] = b"\r\n";
 
