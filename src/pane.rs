@@ -746,6 +746,7 @@ mod tests {
         // A hidden directory counts as logged, but not as matching.
         create_dir_all(tmp.path().join(".git")).unwrap();
         std::fs::write(tmp.path().join(".git/x.rs"), "0123").unwrap();
+        crate::testing::hide(&tmp.path().join(".git"));
         pane.tree.show_hidden = false;
         pane.tree.rescan(ROOT);
         let git = pane.tree.find(&tmp.path().join(".git")).unwrap();

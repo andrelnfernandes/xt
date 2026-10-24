@@ -1,4 +1,5 @@
 use super::*;
+use crate::testing::hide;
 use ratatui::crossterm::event::KeyModifiers;
 use std::fs::{create_dir_all, write};
 #[cfg(unix)]
@@ -773,6 +774,7 @@ fn compare_setup() -> (tempfile::TempDir, App) {
 fn new_windows_keep_hidden_files_hidden() {
     let tmp = crate::testing::tempdir();
     fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    hide(&tmp.path().join(".git"));
     fs::create_dir_all(tmp.path().join("src")).unwrap();
     let mut app = App::new(tmp.path().to_path_buf());
     let mut config = Config::default();
@@ -792,6 +794,7 @@ fn new_windows_keep_hidden_files_hidden() {
     // Log of a directory outside the tree: a new tree, same option.
     let other = crate::testing::tempdir();
     fs::create_dir_all(other.path().join(".cache")).unwrap();
+    hide(&other.path().join(".cache"));
     app.log(other.path().to_str().unwrap()).unwrap();
     assert!(!app.tree.show_hidden);
     assert!(!names(&app).contains(&".cache".to_string()));
@@ -1654,14 +1657,6 @@ fn treespec_setup() -> (tempfile::TempDir, App, String) {
 /// `/` in the expected text becomes the platform's separator.
 fn sep(text: String) -> String {
     text.replace('/', std::path::MAIN_SEPARATOR_STR)
-}
-
-/// Hides a file or directory: the dot in the name is enough on Linux; on
-/// Windows it takes the H attribute.
-fn hide(path: &Path) {
-    #[cfg(windows)]
-    platform::set_mode(path, 0x2).unwrap();
-    let _ = path;
 }
 
 fn current_name(app: &App) -> String {
