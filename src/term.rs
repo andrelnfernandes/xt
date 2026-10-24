@@ -1,12 +1,12 @@
 //! Built-in terminal (Alt+X): the user's shell running in a pseudo-terminal,
-//! drawn inside xt's screen.
+//! drawn inside Xylem's screen.
 //!
 //! `portable-pty` runs the shell (PTY on Unix, ConPTY on Windows), `vt100`
 //! interprets what it writes and `tui-term` draws the screen. A thread
 //! reads the shell's output; the main loop only draws and sends keys.
 //!
-//! To change the shell's directory and set `$XT_TAGGED`, xt writes a small
-//! script in a private folder (under `~/.cache/xt`) and types ` . script` at
+//! To change the shell's directory and set `$XY_TAGGED`, Xylem writes a small
+//! script in a private folder (under `~/.cache/xylem`) and types ` . script` at
 //! the prompt.
 
 use std::ffi::OsStr;
@@ -49,9 +49,9 @@ pub struct Terminal {
 /// How to write the script for the user's shell.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ShellKind {
-    /// bash, zsh, ksh: `XT_TAGGED=('a' 'b')`.
+    /// bash, zsh, ksh: `XY_TAGGED=('a' 'b')`.
     Arrays,
-    /// fish: `set -g XT_TAGGED 'a' 'b'`, and `source` instead of `.`.
+    /// fish: `set -g XY_TAGGED 'a' 'b'`, and `source` instead of `.`.
     Fish,
     /// Other POSIX shells (sh, dash): without arrays, only the `cd`.
     Posix,
@@ -95,8 +95,8 @@ impl Terminal {
         let mut cmd = CommandBuilder::new(shell);
         cmd.args(args);
         cmd.cwd(cwd);
-        // Lets scripts and prompts know they are inside xt.
-        cmd.env("XT_TERMINAL", "1");
+        // Lets scripts and prompts know they are inside Xylem.
+        cmd.env("XY_TERMINAL", "1");
         if let Some(dir) = history
             && let Some((name, value)) = history_env(shell, dir)
         {
@@ -187,8 +187,8 @@ impl Terminal {
         screen.set_scrollback(pos);
     }
 
-    /// Brings the shell in line with xt: goes to `cd` (if given) and sets
-    /// `$XT_TAGGED` to the tagged files. Only call with the shell at the
+    /// Brings the shell in line with Xylem: goes to `cd` (if given) and sets
+    /// `$XY_TAGGED` to the tagged files. Only call with the shell at the
     /// prompt (`at_prompt`), or the line goes to whatever program is running.
     pub fn sync(&mut self, cd: Option<&Path>, tagged: &[PathBuf]) {
         if !self.prompt_seen {
@@ -209,8 +209,8 @@ impl Terminal {
             script.extend(expand("cd -- %d\n", None));
         }
         match self.kind {
-            ShellKind::Arrays => script.extend(expand("XT_TAGGED=(%t)\n", None)),
-            ShellKind::Fish => script.extend(expand("set -g XT_TAGGED %t\n", None)),
+            ShellKind::Arrays => script.extend(expand("XY_TAGGED=(%t)\n", None)),
+            ShellKind::Fish => script.extend(expand("set -g XY_TAGGED %t\n", None)),
             ShellKind::Posix | ShellKind::Cmd => {}
         }
         if script.is_empty() {
@@ -276,7 +276,7 @@ impl Terminal {
     }
 
     /// The program started from the shell that is in the foreground (e.g.
-    /// `vim`), which quitting xt would end: `None` at the prompt. Its name
+    /// `vim`), which quitting Xylem would end: `None` at the prompt. Its name
     /// comes from /proc; elsewhere it is just "a program".
     pub fn foreground_program(&mut self) -> Option<String> {
         #[cfg(unix)]
@@ -316,8 +316,8 @@ impl Drop for Terminal {
     }
 }
 
-/// A new folder for the script, inside xt's folder for this run
-/// (`~/.cache/xt/run-<pid>`, readable only by the user). One per terminal, so
+/// A new folder for the script, inside Xylem's folder for this run
+/// (`~/.cache/xylem/run-<pid>`, readable only by the user). One per terminal, so
 /// that two terminals (in the tests) never share a script.
 fn private_dir() -> std::io::Result<PathBuf> {
     let nanos = std::time::SystemTime::now()
@@ -340,7 +340,7 @@ struct Palette {
 fn palette(theme: TerminalTheme, text: Color, background: Color) -> Option<Palette> {
     let (fg, bg, ansi) = match theme {
         TerminalTheme::Native => return None,
-        TerminalTheme::Xt => {
+        TerminalTheme::Xylem => {
             return Some(Palette {
                 text,
                 background,
@@ -398,7 +398,7 @@ fn palette(theme: TerminalTheme, text: Color, background: Color) -> Option<Palet
 /// Repaints the terminal's cells (already drawn in `area`) with the colors
 /// of `theme`: the default ones become the theme's text and background, and
 /// the 16 basic ones its palette. 256-color and RGB stay as they are.
-/// `text`/`background` are xt's, for the `xt` theme.
+/// `text`/`background` are Xylem's, for the `xylem` theme.
 pub fn apply_theme(
     buf: &mut Buffer,
     area: Rect,
@@ -438,7 +438,7 @@ fn history_env(shell: &str, dir: &Path) -> Option<(&'static str, std::ffi::OsStr
         .to_ascii_lowercase();
     match (ShellKind::of(shell), stem.as_str()) {
         (ShellKind::Cmd, _) => None,
-        (ShellKind::Fish, _) => Some(("fish_history", "xt".into())),
+        (ShellKind::Fish, _) => Some(("fish_history", "xylem".into())),
         (_, name) => Some((
             "HISTFILE",
             dir.join(format!("{name}_history")).into_os_string(),
@@ -614,10 +614,20 @@ mod tests {
         let tagged = [sub.join("a b.txt"), sub.join("c.txt")];
         term.sync(Some(&sub), &tagged);
         assert!(term.pending.is_some());
-        wait_for(&term, "$ ");
-        term.on_output();
-        assert!(term.pending.is_none());
-        term.write(b"echo n=${#XT_TAGGED[@]} \"${XT_TAGGED[0]##*/}\" \"$PWD\"\r");
+        // As in the app, on every output until the prompt is there. (Waiting
+        // for "$ " is not enough: the typed `PS1='$ '` echoes it before bash
+        // prints its first prompt.)
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while term.pending.is_some() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "no prompt:\n{}",
+                term.parser().screen().contents()
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            term.on_output();
+        }
+        term.write(b"echo n=${#XY_TAGGED[@]} \"${XY_TAGGED[0]##*/}\" \"$PWD\"\r");
         wait_for(&term, &format!("n=2 a b.txt {}", sub.display()));
         assert!(term.at_prompt());
         // The script lives inside the run's private folder, and goes away
@@ -681,11 +691,17 @@ mod tests {
         assert_eq!(buf[(1, 0)].bg, Color::Indexed(200));
         assert_eq!(buf[(2, 0)].fg, Color::Rgb(1, 2, 3));
 
-        let mut xt = Buffer::empty(area);
-        xt[(1, 0)].set_fg(Color::Indexed(1));
-        apply_theme(&mut xt, area, TerminalTheme::Xt, Color::White, Color::Blue);
-        assert_eq!((xt[(0, 0)].fg, xt[(0, 0)].bg), (Color::White, Color::Blue));
-        assert_eq!(xt[(1, 0)].fg, Color::Indexed(1));
+        let mut xy = Buffer::empty(area);
+        xy[(1, 0)].set_fg(Color::Indexed(1));
+        apply_theme(
+            &mut xy,
+            area,
+            TerminalTheme::Xylem,
+            Color::White,
+            Color::Blue,
+        );
+        assert_eq!((xy[(0, 0)].fg, xy[(0, 0)].bg), (Color::White, Color::Blue));
+        assert_eq!(xy[(1, 0)].fg, Color::Indexed(1));
     }
 
     #[cfg(target_os = "linux")]
@@ -708,7 +724,7 @@ mod tests {
         assert!(history.is_dir());
         assert_eq!(
             history_env("/usr/bin/fish", &history),
-            Some(("fish_history", "xt".into()))
+            Some(("fish_history", "xylem".into()))
         );
     }
 

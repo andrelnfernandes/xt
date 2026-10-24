@@ -215,7 +215,7 @@ const COMMANDS: &[(&str, Command, &str)] = &[
     (
         "terminal",
         Command::Terminal,
-        "built-in terminal (the same key goes back to xt)",
+        "built-in terminal (the same key goes back to Xylem)",
     ),
     (
         "terminal_full",
@@ -700,8 +700,8 @@ impl Keymap {
     /// Help text (F1 / Alt+H): the keys currently in effect, per window.
     pub fn help_text(&self) -> String {
         let mut out = String::from(
-            "xt - keys in use (F1 / Alt+H shows this; Esc closes)\n\
-             Change them in ~/.config/xt/config.toml, see xt --default-config.\n",
+            "Xylem - keys in use (F1 / Alt+H shows this; Esc closes)\n\
+             Change them in ~/.config/xylem/config.toml, see xy --default-config.\n",
         );
         for (scope, title) in [
             (Tree, "TREE WINDOW"),
@@ -743,8 +743,8 @@ impl Keymap {
              TERMINAL (Alt+X; Alt+Z in full screen)\n  \
              (keys)                  go to the shell, except the terminal commands above\n  \
              Shift+PgUp / PgDn       scroll back through what went off the screen\n  \
-             $XT_TAGGED              the tagged files, set on entering the terminal\n  \
-             (bash: \"${XT_TAGGED[@]}\"; zsh, fish: $XT_TAGGED)\n  \
+             $XY_TAGGED              the tagged files, set on entering the terminal\n  \
+             (bash: \"${XY_TAGGED[@]}\"; zsh, fish: $XY_TAGGED)\n  \
              exit                    closes the shell\n\n\
              VIEWER (V, Ctrl+V)\n  \
              F / B                   find from the start / backward from the end\n  \

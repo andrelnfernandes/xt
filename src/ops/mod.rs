@@ -590,7 +590,7 @@ impl Operation {
 /// rename is atomic).
 fn tmp_path(dst: &Path) -> PathBuf {
     let name = dst.file_name().unwrap_or_default().to_string_lossy();
-    dst.with_file_name(format!(".{name}.xt-{}.tmp", std::process::id()))
+    dst.with_file_name(format!(".{name}.xy-{}.tmp", std::process::id()))
 }
 
 /// Interprets the typed destination: `~` becomes home, relative paths

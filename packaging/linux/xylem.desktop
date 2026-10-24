@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Xylem
+GenericName=File Manager
+GenericName[pt_BR]=Gerenciador de arquivos
+Comment=Text-mode file manager inspired by XTree and ZTreeWin
+Comment[pt_BR]=Gerenciador de arquivos em modo texto inspirado no XTree e no ZTreeWin
+Exec=xy
+Icon=xylem
+Terminal=true
+Categories=System;FileTools;FileManager;ConsoleOnly;
+Keywords=files;folders;tree;xtree;ztree;terminal;

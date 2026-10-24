@@ -296,7 +296,12 @@ pub fn git_ok(dir: &Path, args: &[&str]) {
     let ok = Command::new("git")
         .arg("-C")
         .arg(dir)
-        .args(["-c", "user.name=xt", "-c", "user.email=xt@example.com"])
+        .args([
+            "-c",
+            "user.name=Xylem",
+            "-c",
+            "user.email=xylem@example.com",
+        ])
         .args(args)
         .output()
         .unwrap()

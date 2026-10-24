@@ -2,7 +2,7 @@
 //! disk space, mounted file systems, the machine (statistics screen) and
 //! where configuration, state and temporary files live.
 //!
-//! Each system has its own module with the same functions; the rest of xt
+//! Each system has its own module with the same functions; the rest of Xylem
 //! only calls `platform::...`.
 
 use std::net::IpAddr;
@@ -44,7 +44,7 @@ pub struct Memory {
     pub available: u64,
 }
 
-/// The machine and xt's process, for the statistics screen (`?`). What the
+/// The machine and Xylem's process, for the statistics screen (`?`). What the
 /// system does not tell stays `None`.
 #[derive(Debug, Default, Clone)]
 pub struct System {
@@ -59,7 +59,7 @@ pub struct System {
     pub load: Option<[f64; 3]>,
     pub memory: Option<Memory>,
     pub swap: Option<Memory>,
-    /// Memory used by xt itself (resident set / working set).
+    /// Memory used by Xylem itself (resident set / working set).
     pub xt_memory: Option<u64>,
 }
 
@@ -97,24 +97,54 @@ impl Network {
     }
 }
 
-/// Directory of xt's configuration (`config.toml`).
+/// Name of Xylem's folders (configuration, state, temporary files).
+const DIR_NAME: &str = "xylem";
+
+/// Name of the folders before Xylem was called Xylem: see
+/// [`migrate_from_xt`].
+const OLD_DIR_NAME: &str = "xt";
+
+/// Directory of Xylem's configuration (`config.toml`).
 pub fn config_dir() -> Option<PathBuf> {
-    Some(config_base()?.join("xt"))
+    Some(config_base()?.join(DIR_NAME))
 }
 
 /// Directory of the state kept between runs (history).
 pub fn state_dir() -> Option<PathBuf> {
-    Some(state_base()?.join("xt"))
+    Some(state_base()?.join(DIR_NAME))
 }
 
-/// Directory of xt's temporary files (`$XDG_CACHE_HOME/xt`, `~/.cache/xt`;
-/// `%LOCALAPPDATA%\xt\cache` on Windows). Inside the user's own space, never
-/// in the shared `/tmp`.
+/// Xylem used to be called xt: moves xt's configuration and state (and the
+/// built-in terminal's fish history) to Xylem's names, when the old one
+/// exists and the new one doesn't. Each pair has the same parent, so it is
+/// a plain rename. Returns what was moved, `(from, to)`.
+pub fn migrate_from_xt() -> Vec<(PathBuf, PathBuf)> {
+    let mut pairs = Vec::new();
+    for base in [config_base(), state_base()].into_iter().flatten() {
+        pairs.push((base.join(OLD_DIR_NAME), base.join(DIR_NAME)));
+    }
+    if let Some(fish) = fish_data_dir() {
+        pairs.push((fish.join("xt_history"), fish.join("xylem_history")));
+    }
+    move_missing(pairs)
+}
+
+/// Renames each `(old, new)` whose `old` exists and `new` doesn't.
+fn move_missing(pairs: Vec<(PathBuf, PathBuf)>) -> Vec<(PathBuf, PathBuf)> {
+    pairs
+        .into_iter()
+        .filter(|(old, new)| old.exists() && !new.exists() && std::fs::rename(old, new).is_ok())
+        .collect()
+}
+
+/// Directory of Xylem's temporary files (`$XDG_CACHE_HOME/xylem`,
+/// `~/.cache/xylem`; `%LOCALAPPDATA%\xylem\cache` on Windows). Inside the
+/// user's own space, never in the shared `/tmp`.
 pub fn cache_dir() -> Option<PathBuf> {
     cache_base()
 }
 
-/// A folder of this run of xt inside `cache_dir`, readable only by the user
+/// A folder of this run of Xylem inside `cache_dir`, readable only by the user
 /// and removed on exit (by `main`): files extracted from ZIP/TAR, the
 /// built-in terminal's script. Created if missing.
 pub fn run_dir() -> std::io::Result<PathBuf> {
@@ -358,13 +388,34 @@ mod test_trash {
 mod tests {
     use super::*;
 
+    #[test]
+    fn moves_xt_folders_only_when_new_ones_are_missing() {
+        let tmp = crate::testing::tempdir();
+        let dir = |name: &str| tmp.path().join(name);
+        for name in ["config/xt", "state/xt", "state/xylem"] {
+            std::fs::create_dir_all(dir(name)).unwrap();
+        }
+        std::fs::write(dir("config/xt/config.toml"), "x").unwrap();
+        std::fs::write(dir("state/xt/history.toml"), "old").unwrap();
+        let pairs = vec![
+            (dir("config/xt"), dir("config/xylem")),
+            (dir("state/xt"), dir("state/xylem")),
+            (dir("fish/xt_history"), dir("fish/xylem_history")),
+        ];
+        let moved = move_missing(pairs);
+        assert_eq!(moved, vec![(dir("config/xt"), dir("config/xylem"))]);
+        assert!(dir("config/xylem/config.toml").exists() && !dir("config/xt").exists());
+        // Xylem already has its own state: xt's stays where it is.
+        assert!(dir("state/xt/history.toml").exists());
+    }
+
     /// Uses the real system trash, so it only runs on request:
     /// `cargo test -- --ignored system_trash_and_restore`.
     #[test]
     #[ignore]
     fn system_trash_and_restore() {
         let tmp = crate::testing::tempdir();
-        let file = tmp.path().join("xt-trash-test.txt");
+        let file = tmp.path().join("xy-trash-test.txt");
         std::fs::write(&file, "x").unwrap();
         system_trash_file(&file).unwrap();
         assert!(!file.exists());

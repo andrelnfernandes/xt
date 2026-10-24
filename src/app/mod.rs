@@ -155,7 +155,7 @@ pub struct App {
     pub terminal_focus: bool,
     /// Alt+Z: the terminal takes the whole screen, instead of the bottom.
     pub terminal_full: bool,
-    /// The tagged files last put in the shell's `$XT_TAGGED`.
+    /// The tagged files last put in the shell's `$XY_TAGGED`.
     terminal_tagged: Vec<PathBuf>,
     /// Last directory of the terminal's shell seen, for the tree to follow it.
     terminal_cwd: Option<PathBuf>,

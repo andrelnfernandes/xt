@@ -1,4 +1,4 @@
-//! Configuration file (`~/.config/xt/config.toml`), color themes and
+//! Configuration file (`~/.config/xylem/config.toml`), color themes and
 //! the date and number formats. The configuration screen (F12) saves here.
 
 use std::collections::HashMap;
@@ -15,11 +15,11 @@ use crate::keymap::Keymap;
 use crate::model::sort::{Sort, SortKey};
 use crate::pane::FileDisplay;
 
-/// Commented example, printed by `xt --default-config`. The values are the
+/// Commented example, printed by `xy --default-config`. The values are the
 /// defaults: a file with only this is the same as having no file.
-pub const DEFAULT_CONFIG: &str = r##"# xt configuration: ~/.config/xt/config.toml (or $XDG_CONFIG_HOME/xt/)
-# on Linux, %APPDATA%\xt\config.toml on Windows. Everything is optional. The
-# configuration screen (F12 inside xt) changes these values and keeps the comments.
+pub const DEFAULT_CONFIG: &str = r##"# Xylem configuration: ~/.config/xylem/config.toml (or $XDG_CONFIG_HOME/xylem/)
+# on Linux, %APPDATA%\xylem\config.toml on Windows. Everything is optional. The
+# configuration screen (F12 inside Xylem) changes these values and keeps the comments.
 
 # Theme: "classic" (XTree blue), "dark", "light", "mono" (the terminal's
 # own colors), "norton", "solarized", "gruvbox" or "nord".
@@ -62,7 +62,7 @@ prune_confirmation = "prune"
 # Alt+C / Alt+M (copy/move tagged files with their paths): from where each
 # file's path is recreated at the destination (F7 changes it at the prompt):
 # "full" (from the root of the disk, as in ZTreeWin), "tree" (from the root
-# of xt's tree), "current" (from the current directory, its name included)
+# of Xylem's tree), "current" (from the current directory, its name included)
 # or "relative" (only what is below the current directory).
 copy_paths = "full"
 # Don't keep entries starting with "@" in the history (useful for commands
@@ -78,12 +78,12 @@ auto_refresh = true
 # XTree or ZTreeWin, so off by default; needs the git program.
 git = false
 # Colors of the built-in terminal (Alt+X): "native" (the colors of the
-# terminal xt runs in), "xt" (background and text of xt's theme), "solarized",
-# "gruvbox", "nord", "dracula" or "one_dark".
+# terminal Xylem runs in), "xylem" (background and text of Xylem's theme),
+# "solarized", "gruvbox", "nord", "dracula" or "one_dark".
 terminal_theme = "native"
 # The built-in terminal keeps a shell history of its own, apart from your
-# other terminals' (in ~/.local/state/xt/, e.g. bash_history; in fish, the
-# "xt" session). Takes effect when the shell starts.
+# other terminals' (in ~/.local/state/xylem/, e.g. bash_history; in fish, the
+# "xylem" session). Takes effect when the shell starts.
 terminal_history = true
 
 # Individual colors, on top of the theme. Values: names ("yellow",
@@ -98,7 +98,7 @@ terminal_history = true
 # Keys: "key" = "command". Keys: letters, "F1".."F12", "enter",
 # "esc", "tab", "space", "plus", "minus", arrows ("up"...), "pageup"...,
 # with "ctrl+" and/or "alt+" in front. "none" disables the key.
-# Commands: see the list with F1 inside xt; the names are those in the
+# Commands: see the list with F1 inside Xylem; the names are those in the
 # source file keymap.rs (view, copy, copy_tagged, copy_tagged_paths,
 # move_tagged, relog, compare, execute...).
 [keys.any]
@@ -343,11 +343,13 @@ impl NumberFormat {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TerminalTheme {
-    /// The colors of the terminal xt runs in.
+    /// The colors of the terminal Xylem runs in.
     #[default]
     Native,
-    /// Background and text of xt's theme; the 16 colors stay the terminal's.
-    Xt,
+    /// Background and text of Xylem's theme; the 16 colors stay the terminal's.
+    /// "xt" is the name from before Xylem was called Xylem.
+    #[serde(alias = "xt")]
+    Xylem,
     Solarized,
     Gruvbox,
     Nord,
@@ -358,7 +360,7 @@ pub enum TerminalTheme {
 impl Choice for TerminalTheme {
     const ALL: &'static [Self] = &[
         TerminalTheme::Native,
-        TerminalTheme::Xt,
+        TerminalTheme::Xylem,
         TerminalTheme::Solarized,
         TerminalTheme::Gruvbox,
         TerminalTheme::Nord,
@@ -368,7 +370,7 @@ impl Choice for TerminalTheme {
     fn as_str(self) -> &'static str {
         match self {
             TerminalTheme::Native => "native",
-            TerminalTheme::Xt => "xt",
+            TerminalTheme::Xylem => "xylem",
             TerminalTheme::Solarized => "solarized",
             TerminalTheme::Gruvbox => "gruvbox",
             TerminalTheme::Nord => "nord",
@@ -387,7 +389,7 @@ pub enum CopyPaths {
     /// From the root of the disk: `/home/me/proj/src/a.rs` → `dest/home/me/proj/src/a.rs`.
     #[default]
     Full,
-    /// From the root of xt's tree (not in ZTreeWin).
+    /// From the root of Xylem's tree (not in ZTreeWin).
     Tree,
     /// From the current directory, its own name included: `dest/src/a.rs`.
     Current,
@@ -885,7 +887,7 @@ mod tests {
     #[test]
     fn save_keeps_comments_and_other_sections() {
         let tmp = crate::testing::tempdir();
-        let path = tmp.path().join("xt/config.toml");
+        let path = tmp.path().join("xylem/config.toml");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(
             &path,
@@ -924,7 +926,7 @@ mod tests {
         };
         config.save(&path).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains("# xt configuration"));
+        assert!(text.contains("# Xylem configuration"));
         assert_eq!(Config::load_from(&path).0, config);
     }
 
@@ -932,6 +934,6 @@ mod tests {
     fn config_path_ends_in_xt_dir() {
         // Only reads the variable; doesn't touch the environment of the other tests.
         let path = Config::path().unwrap();
-        assert!(path.ends_with("xt/config.toml"));
+        assert!(path.ends_with("xylem/config.toml"));
     }
 }

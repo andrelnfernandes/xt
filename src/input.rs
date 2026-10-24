@@ -39,7 +39,7 @@ pub enum Command {
     Edit,
     /// Runs a shell command.
     Execute,
-    /// Alt+X: shows the built-in terminal (or goes back to xt).
+    /// Alt+X: shows the built-in terminal (or goes back to Xylem).
     Terminal,
     /// Alt+Z: the terminal in full screen (inside it: full screen / panel).
     TerminalFull,

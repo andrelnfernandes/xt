@@ -1,6 +1,6 @@
-//! xt — text-mode file manager inspired by XTree/ZTreeWin.
+//! Xylem — text-mode file manager inspired by XTree/ZTreeWin.
 //!
-//! Usage: `xt [directory]` (default: current directory); `xt --help` for more.
+//! Usage: `xy [directory]` (default: current directory); `xy --help` for more.
 
 mod app;
 mod archive;
@@ -43,9 +43,9 @@ use ratatui::crossterm::{cursor, execute, terminal};
 use app::App;
 
 const USAGE: &str = "\
-xt - text-mode file manager inspired by XTree/ZTreeWin
+Xylem - text-mode file manager inspired by XTree/ZTreeWin
 
-Usage: xt [--cwd-file FILE] [DIRECTORY]
+Usage: xy [--cwd-file FILE] [DIRECTORY]
 
 Options:
   --cwd-file FILE    on Alt+Q (quit and change directory), write the current
@@ -72,12 +72,12 @@ fn main() -> anyhow::Result<()> {
                 let config =
                     config::Config::path().map_or_else(|| "-".into(), |p| p.display().to_string());
                 println!(
-                    "{USAGE}\n\nConfiguration: {config}\nInside xt, press F1 for the list of keys."
+                    "{USAGE}\n\nConfiguration: {config}\nInside Xylem, press F1 for the list of keys."
                 );
                 return Ok(());
             }
             Some("-V" | "--version") => {
-                println!("xt {}", env!("CARGO_PKG_VERSION"));
+                println!("xy {}", env!("CARGO_PKG_VERSION"));
                 return Ok(());
             }
             Some("--default-config") => {
@@ -99,6 +99,7 @@ fn main() -> anyhow::Result<()> {
         bail!("{} is not a directory", root.display());
     }
 
+    let migrated = platform::migrate_from_xt();
     let (config, config_error) = config::Config::load();
     let mut app = App::new(root);
     app.set_sort(config.options.initial_sort());
@@ -107,7 +108,14 @@ fn main() -> anyhow::Result<()> {
     let _ = app.apply_config(&config);
     app.config_file = config::Config::path();
     app.config_error = config_error.clone();
-    app.message = config_error;
+    app.message = config_error.or_else(|| {
+        let (from, to) = migrated.first()?;
+        Some(format!(
+            "xt is now Xylem: moved {} to {}",
+            from.display(),
+            to.display()
+        ))
+    });
     app.history_file = state::history_path();
     if let Some(path) = &app.history_file {
         let state = state::load_state(path);
@@ -130,7 +138,7 @@ fn main() -> anyhow::Result<()> {
             Some(file) => std::fs::write(file, dir.as_os_str().as_encoded_bytes())
                 .with_context(|| format!("cannot write {}", file.display()))?,
             None => eprintln!(
-                "xt: Alt+Q changes the shell's directory only through a shell function \
+                "xy: Alt+Q changes the shell's directory only through a shell function \
                  using --cwd-file (see the README)"
             ),
         }
@@ -231,7 +239,7 @@ fn run_external(
 
     let status = ext.command().status();
     if ext.wait {
-        print!("\n[xt] Press Enter to return to xt...");
+        print!("\n[Xylem] Press Enter to return to Xylem...");
         let _ = stdout().flush();
         let _ = std::io::stdin().read_line(&mut String::new());
     }
