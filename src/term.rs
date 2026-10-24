@@ -614,9 +614,19 @@ mod tests {
         let tagged = [sub.join("a b.txt"), sub.join("c.txt")];
         term.sync(Some(&sub), &tagged);
         assert!(term.pending.is_some());
-        wait_for(&term, "$ ");
-        term.on_output();
-        assert!(term.pending.is_none());
+        // As in the app, on every output until the prompt is there. (Waiting
+        // for "$ " is not enough: the typed `PS1='$ '` echoes it before bash
+        // prints its first prompt.)
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while term.pending.is_some() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "no prompt:\n{}",
+                term.parser().screen().contents()
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            term.on_output();
+        }
         term.write(b"echo n=${#XY_TAGGED[@]} \"${XY_TAGGED[0]##*/}\" \"$PWD\"\r");
         wait_for(&term, &format!("n=2 a b.txt {}", sub.display()));
         assert!(term.at_prompt());
