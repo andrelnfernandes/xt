@@ -260,11 +260,29 @@ fn delete_prompt_toggles_between_trash_and_permanent() {
     app.options.delete_to_trash = false;
     press(&mut app, KeyCode::Enter);
     press(&mut app, KeyCode::Char('d'));
-    assert!(app.confirm.as_ref().unwrap().question.starts_with("DELETE a.rs?"));
+    assert!(
+        app.confirm
+            .as_ref()
+            .unwrap()
+            .question
+            .starts_with("DELETE a.rs?")
+    );
     press(&mut app, KeyCode::Char('t'));
-    assert!(app.confirm.as_ref().unwrap().question.starts_with("MOVE a.rs to trash?"));
+    assert!(
+        app.confirm
+            .as_ref()
+            .unwrap()
+            .question
+            .starts_with("MOVE a.rs to trash?")
+    );
     press(&mut app, KeyCode::Char('p'));
-    assert!(app.confirm.as_ref().unwrap().question.starts_with("DELETE a.rs?"));
+    assert!(
+        app.confirm
+            .as_ref()
+            .unwrap()
+            .question
+            .starts_with("DELETE a.rs?")
+    );
     press(&mut app, KeyCode::Char('n'));
     assert!(tmp.path().join("a.rs").exists());
 }
@@ -276,7 +294,13 @@ fn shift_delete_permanently_deletes_even_when_delete_to_trash_is_true() {
     press(&mut app, KeyCode::Enter);
     app.handle_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::SHIFT));
     assert!(app.confirm.is_some());
-    assert!(app.confirm.as_ref().unwrap().question.starts_with("DELETE a.rs?"));
+    assert!(
+        app.confirm
+            .as_ref()
+            .unwrap()
+            .question
+            .starts_with("DELETE a.rs?")
+    );
     press(&mut app, KeyCode::Char('y'));
     while app.busy() {
         app.tick(Duration::from_millis(50));
@@ -296,13 +320,25 @@ fn delete_empty_directory_to_trash_and_oops_restore() {
     press(&mut app, KeyCode::Down);
     assert_eq!(app.tree.node(app.current()).name, "empty_dir");
     press(&mut app, KeyCode::Char('d'));
-    assert!(app.confirm.as_ref().unwrap().question.starts_with("MOVE directory empty_dir to trash?"));
+    assert!(
+        app.confirm
+            .as_ref()
+            .unwrap()
+            .question
+            .starts_with("MOVE directory empty_dir to trash?")
+    );
     press(&mut app, KeyCode::Char('y'));
     assert!(!tmp.path().join("empty_dir").exists());
 
     // Oops in tree window ('o')
     press(&mut app, KeyCode::Char('o'));
-    assert!(app.confirm.as_ref().unwrap().question.starts_with("RESTORE empty_dir from trash?"));
+    assert!(
+        app.confirm
+            .as_ref()
+            .unwrap()
+            .question
+            .starts_with("RESTORE empty_dir from trash?")
+    );
     press(&mut app, KeyCode::Char('y'));
     assert!(tmp.path().join("empty_dir").exists());
 }

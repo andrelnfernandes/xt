@@ -846,8 +846,8 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
             menu_words(
                 "DIR",
                 &[
-                    "Branch", "Compare", "Delete", "Filespec", "Invert", "Log", "Makedir",
-                    "Oops", "Rename", "Showall", "Tag", "Untag", "Yank", "eXecute", "Quit",
+                    "Branch", "Compare", "Delete", "Filespec", "Invert", "Log", "Makedir", "Oops",
+                    "Rename", "Showall", "Tag", "Untag", "Yank", "eXecute", "Quit",
                 ],
             ),
             menu_line(
@@ -1003,7 +1003,12 @@ fn prompt_lines(frame: &mut Frame, prompt: &app::Prompt, area: Rect) -> Vec<Line
     let col = area.x + (prompt.label.chars().count() + prompt.input.cursor) as u16;
     frame.set_cursor_position((col.min(area.right().saturating_sub(1)), area.y));
     let help = if prompt.is_bookmark_jump() {
-        vec![("0-9, a-z", "jump"), ("' / Enter", "list"), ("+", "bookmark here"), ("Esc", "cancel")]
+        vec![
+            ("0-9, a-z", "jump"),
+            ("' / Enter", "list"),
+            ("+", "bookmark here"),
+            ("Esc", "cancel"),
+        ]
     } else if prompt.is_bookmark_set() {
         vec![("0-9, a-z", "assign key"), ("Esc", "cancel")]
     } else if prompt.is_rename_tagged() {
@@ -1071,7 +1076,11 @@ fn op_lines(op: &Operation) -> Vec<Line<'static>> {
             Span::styled(
                 format!(
                     "{} {} of {}: ",
-                    if op.to_trash { "Trashing" } else { op.kind.verb() },
+                    if op.to_trash {
+                        "Trashing"
+                    } else {
+                        op.kind.verb()
+                    },
                     (op.done_files + op.skipped + op.errors.len() + 1).min(op.total_files()),
                     op.total_files()
                 ),
@@ -1342,10 +1351,7 @@ fn draw_bookmarks(frame: &mut Frame, app: &App, view: &BookmarksView) {
                 Span::raw(text_fitted),
             ];
             if !exists {
-                spans.push(Span::styled(
-                    " [invalid]",
-                    Style::new().fg(theme().message),
-                ));
+                spans.push(Span::styled(" [invalid]", Style::new().fg(theme().message)));
             }
             let line = Line::from(spans);
             if i == view.selected {

@@ -142,7 +142,12 @@ fn env_dir(name: &str) -> Option<PathBuf> {
 /// Moves a file or directory to the system trash (FreeDesktop Trash on Linux,
 /// Recycle Bin on Windows).
 pub fn trash_file(path: &std::path::Path) -> std::io::Result<()> {
-    #[cfg(all(unix, not(target_os = "macos"), not(target_os = "ios"), not(target_os = "android")))]
+    #[cfg(all(
+        unix,
+        not(target_os = "macos"),
+        not(target_os = "ios"),
+        not(target_os = "android")
+    ))]
     {
         // Try `gio trash` first if available, which immediately notifies GVFS / desktop
         // environments (GNOME, XFCE, MATE, Cinnamon) via D-Bus that the trash has changed.
@@ -171,7 +176,12 @@ pub struct TrashEntry {
 pub fn latest_trash_item() -> Result<Option<TrashEntry>, String> {
     #[cfg(any(
         target_os = "windows",
-        all(unix, not(target_os = "macos"), not(target_os = "ios"), not(target_os = "android"))
+        all(
+            unix,
+            not(target_os = "macos"),
+            not(target_os = "ios"),
+            not(target_os = "android")
+        )
     ))]
     {
         let mut items = trash::os_limited::list().map_err(|e| e.to_string())?;
@@ -188,7 +198,12 @@ pub fn latest_trash_item() -> Result<Option<TrashEntry>, String> {
     }
     #[cfg(not(any(
         target_os = "windows",
-        all(unix, not(target_os = "macos"), not(target_os = "ios"), not(target_os = "android"))
+        all(
+            unix,
+            not(target_os = "macos"),
+            not(target_os = "ios"),
+            not(target_os = "android")
+        )
     )))]
     {
         Err("Trash restore is not supported on this platform".into())
@@ -199,7 +214,12 @@ pub fn latest_trash_item() -> Result<Option<TrashEntry>, String> {
 pub fn restore_trash_paths(paths: &[PathBuf]) -> Result<usize, String> {
     #[cfg(any(
         target_os = "windows",
-        all(unix, not(target_os = "macos"), not(target_os = "ios"), not(target_os = "android"))
+        all(
+            unix,
+            not(target_os = "macos"),
+            not(target_os = "ios"),
+            not(target_os = "android")
+        )
     ))]
     {
         let all_items = trash::os_limited::list().map_err(|e| e.to_string())?;
@@ -224,10 +244,14 @@ pub fn restore_trash_paths(paths: &[PathBuf]) -> Result<usize, String> {
     }
     #[cfg(not(any(
         target_os = "windows",
-        all(unix, not(target_os = "macos"), not(target_os = "ios"), not(target_os = "android"))
+        all(
+            unix,
+            not(target_os = "macos"),
+            not(target_os = "ios"),
+            not(target_os = "android")
+        )
     )))]
     {
         Err("Trash restore is not supported on this platform".into())
     }
 }
-

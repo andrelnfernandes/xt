@@ -173,7 +173,8 @@ impl App {
                         let key_str = c.to_ascii_lowercase().to_string();
                         let path = self.current_path();
                         self.set_bookmark(key_str.clone(), path.clone());
-                        self.message = Some(format!("Bookmark '{key_str}' set to {}", path.display()));
+                        self.message =
+                            Some(format!("Bookmark '{key_str}' set to {}", path.display()));
                     }
                     _ => {}
                 }
@@ -529,10 +530,7 @@ impl App {
                     let case_mode = CaseMode::None;
                     let label = format!("RENAME {count} tagged files (mask): ");
                     self.open_prompt(
-                        PromptKind::RenameTagged {
-                            sources,
-                            case_mode,
-                        },
+                        PromptKind::RenameTagged { sources, case_mode },
                         label,
                         "*.*",
                     );
