@@ -495,8 +495,11 @@ arquivo compactado, a entrada é extraída antes para uma pasta temporária,
 apagada ao sair do Xylem. Outro programa pode ser escolhido em `opener` (ou na
 tela de configuração).
 
-**Arquivos compactados:** Alt+F5 na janela de arquivos abre `.zip`, `.jar`,
-`.war`, `.apk`, `.tar`, `.tar.gz` ou `.tgz` como uma árvore, somente leitura:
+**Arquivos compactados:** Alt+F5 na janela de arquivos abre `.zip` (também
+`.jar`, `.war`, `.apk`), `.7z` e `.tar`, puro ou comprimido com gzip
+(`.tar.gz`, `.tgz`), xz (`.tar.xz`, `.txz`), bzip2 (`.tar.bz2`, `.tbz2`) ou
+zstd (`.tar.zst`), como uma árvore, somente leitura (arquivos 7z
+criptografados não são suportados):
 navegação, Filespec, Branch, Showall, tags, View e Compare funcionam dentro
 dele, e Copy (inclusive Ctrl+C e Alt+C com caminhos) extrai os arquivos.
 `Esc` na árvore fecha o arquivo e volta para onde estava. Por segurança,
@@ -703,7 +706,7 @@ configuração (Alt+F10).
 | eXecute | parâmetros de batch `%1`–`%8`, nova janela (NTW) | `sh` com `%f`, `%t` e `%d`; sempre no terminal do Xylem; também um terminal embutido (Alt+X) |
 | Histórico | janela de histórico com marcadores | ↑/↓ no prompt, um histórico por tipo, salvo entre execuções |
 | Configuração | 7 páginas, editor de cores (F4) por elemento, Alt-Export | 4 páginas com as opções que fazem sentido no Linux; F4 escolhe entre 8 temas prontos; cores individuais no `config.toml` |
-| Arquivos compactados | qualquer formato com archiver externo, criar (F5), extrair (Alt-F5) | ZIP/JAR/WAR/APK/TAR/TGZ: abrir (Alt+F5), extrair com Copy, criar com F5 (ZIP, TAR e TAR.GZ) |
+| Arquivos compactados | qualquer formato com archiver externo, criar (F5), extrair (Alt-F5) | ZIP/JAR/WAR/APK, 7z, TAR (puro, gzip, xz, bzip2, zstd): abrir (Alt+F5), extrair com Copy, criar com F5 (ZIP, TAR e TAR.GZ) |
 | Tela dividida | painéis de estatísticas opcionais por lado | sem painel de estatísticas |
 | Menus | menu de Ctrl/Alt ao segurar a tecla | igual em terminais com o protocolo do kitty; F9 em qualquer terminal |
 
