@@ -157,10 +157,18 @@ pub(super) fn state_base() -> Option<PathBuf> {
     env_dir("XDG_STATE_HOME").or_else(|| Some(home_dir()?.join(".local").join("state")))
 }
 
-/// `$XDG_CACHE_HOME/xt` or `~/.cache/xt`.
+/// `$XDG_CACHE_HOME/xylem` or `~/.cache/xylem`.
 pub(super) fn cache_base() -> Option<PathBuf> {
     let base = env_dir("XDG_CACHE_HOME").or_else(|| Some(home_dir()?.join(".cache")))?;
-    Some(base.join("xt"))
+    Some(base.join(super::DIR_NAME))
+}
+
+/// Where fish keeps its history files: `$XDG_DATA_HOME/fish` or
+/// `~/.local/share/fish`.
+pub(super) fn fish_data_dir() -> Option<PathBuf> {
+    let base =
+        env_dir("XDG_DATA_HOME").or_else(|| Some(home_dir()?.join(".local").join("share")))?;
+    Some(base.join("fish"))
 }
 
 /// The machine, from `/proc` and `/etc/os-release` (Linux; elsewhere most

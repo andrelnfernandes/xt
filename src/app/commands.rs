@@ -312,10 +312,12 @@ impl App {
         match cmd {
             Command::Quit => match self.terminal_program() {
                 Some(prog) => {
-                    let q = format!("The terminal is running {prog}. Quit xt anyway?");
+                    let q = format!("The terminal is running {prog}. Quit Xylem anyway?");
                     self.ask(ConfirmKind::Quit, q);
                 }
-                None if self.options.confirm_quit => self.ask(ConfirmKind::Quit, "Quit xt?".into()),
+                None if self.options.confirm_quit => {
+                    self.ask(ConfirmKind::Quit, "Quit Xylem?".into())
+                }
                 None => self.should_quit = true,
             },
             Command::QuitChangeDir => {
@@ -324,7 +326,7 @@ impl App {
                 let dir = base.current_path();
                 let running = self.terminal_program();
                 if self.options.confirm_quit || running.is_some() {
-                    let mut q = format!("Quit xt and change to {}?", dir.display());
+                    let mut q = format!("Quit Xylem and change to {}?", dir.display());
                     if let Some(prog) = running {
                         q = format!("The terminal is running {prog}. {q}");
                     }
@@ -380,12 +382,12 @@ impl App {
             Command::CreateArchive { tagged } => self.prompt_create_archive(tagged),
             Command::Info => {
                 let text = self.info_text();
-                self.show_text("xt info", text);
+                self.show_text("Xylem info", text);
             }
-            Command::Avail => self.show_text("xt avail", info::avail()),
+            Command::Avail => self.show_text("Xylem avail", info::avail()),
             Command::Stats => {
                 let text = self.stats_text();
-                self.show_text("xt statistics", text);
+                self.show_text("Xylem statistics", text);
             }
             Command::Batch => {
                 if self.sources_or_warn(true).is_some() {
@@ -439,7 +441,7 @@ impl App {
             Command::Help => {
                 let text = self.keymap.help_text().into_bytes();
                 let size = text.len() as u64;
-                self.viewer = Some(Viewer::from_bytes("xt help".into(), size, text));
+                self.viewer = Some(Viewer::from_bytes("Xylem help".into(), size, text));
             }
             Command::Edit => {
                 if let Some(f) = self.selected_file() {

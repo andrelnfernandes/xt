@@ -673,7 +673,7 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
             menu_line(
                 "TERMINAL",
                 &[
-                    (&key_for(Command::Terminal), "back to xt"),
+                    (&key_for(Command::Terminal), "back to Xylem"),
                     (
                         &key_for(Command::TerminalFull),
                         if app.terminal_full {
@@ -698,7 +698,7 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
                     "",
                     &[(
                         "",
-                        "the tree follows the shell's cd; $XT_TAGGED has the tagged files; exit closes the shell",
+                        "the tree follows the shell's cd; $XY_TAGGED has the tagged files; exit closes the shell",
                     )],
                 ),
             },
@@ -1147,7 +1147,7 @@ fn draw_settings(frame: &mut Frame, s: &Settings) {
 
     frame.render_widget(
         Line::from(vec![
-            Span::styled("xt configuration", bold),
+            Span::styled("Xylem configuration", bold),
             Span::raw(format!(
                 "   page {} of {}: {title}",
                 s.page + 1,
@@ -1280,7 +1280,7 @@ fn draw_bookmarks(frame: &mut Frame, app: &App, view: &BookmarksView) {
 
     frame.render_widget(
         Line::from(vec![
-            Span::styled("xt bookmarks", bold),
+            Span::styled("Xylem bookmarks", bold),
             Span::raw(format!(
                 "   {} bookmark{}",
                 app.bookmarks.len(),
