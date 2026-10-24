@@ -4,6 +4,7 @@
 
 mod app;
 mod archive;
+mod clipboard;
 mod config;
 mod git;
 mod highlight;
@@ -59,6 +60,10 @@ fn main() -> anyhow::Result<()> {
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
         match arg.to_str() {
+            Some("--clipboard-daemon") => {
+                let _ = clipboard::run_daemon();
+                return Ok(());
+            }
             Some("--cwd-file") => match args.next() {
                 Some(file) => cwd_file = Some(PathBuf::from(file)),
                 None => bail!("--cwd-file needs a file name\n\n{USAGE}"),
@@ -105,7 +110,9 @@ fn main() -> anyhow::Result<()> {
     app.message = config_error;
     app.history_file = state::history_path();
     if let Some(path) = &app.history_file {
-        app.history = state::load_history(path);
+        let state = state::load_state(path);
+        app.history = state.history;
+        app.bookmarks = state.bookmarks;
     }
     // `init` also installs a panic hook that restores the terminal.
     let mut terminal = ratatui::init();

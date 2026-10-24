@@ -58,6 +58,8 @@ pub enum Action {
     Continue {
         forward: Option<bool>,
     },
+    /// Copies the file's path to the clipboard.
+    CopyPath,
 }
 
 /// Match found: in text mode, line and columns (in characters); in
@@ -364,8 +366,10 @@ impl Viewer {
                 'u' => Action::Untag,
                 'e' => Action::Edit,
                 'd' => Action::Diff,
+                'y' => Action::CopyPath,
                 _ => Action::None,
             },
+            KeyCode::Insert if key.modifiers.contains(KeyModifiers::CONTROL) => Action::CopyPath,
             KeyCode::F(9) => Action::Search {
                 forward: true,
                 from: SearchFrom::Page,

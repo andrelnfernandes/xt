@@ -23,6 +23,7 @@ pub enum OpKind {
     Delete,
     /// Deletes a branch: files and then directories, deepest first.
     Prune,
+    Rename,
 }
 
 impl OpKind {
@@ -32,6 +33,7 @@ impl OpKind {
             OpKind::Move => "Moving",
             OpKind::Delete => "Deleting",
             OpKind::Prune => "Pruning",
+            OpKind::Rename => "Renaming",
         }
     }
 
@@ -41,6 +43,7 @@ impl OpKind {
             OpKind::Move => "Moved",
             OpKind::Delete => "Deleted",
             OpKind::Prune => "Pruned",
+            OpKind::Rename => "Renamed",
         }
     }
 }
@@ -103,6 +106,9 @@ pub struct Operation {
     approved: bool,
     /// Conflicting destination, waiting for [`Operation::answer`].
     pub conflict: Option<PathBuf>,
+    pub to_trash: bool,
+    /// Successfully trashed paths, for Oops restoration.
+    pub trashed: Vec<PathBuf>,
     pub done_files: usize,
     pub skipped: usize,
     pub done_bytes: u64,
@@ -116,7 +122,7 @@ pub struct Operation {
 }
 
 impl Operation {
-    pub fn delete(sources: Vec<Source>) -> Self {
+    pub fn delete(sources: Vec<Source>, to_trash: bool) -> Self {
         let items = sources
             .into_iter()
             .map(|s| Item {
@@ -126,14 +132,16 @@ impl Operation {
                 is_dir: false,
             })
             .collect();
-        Self::new(OpKind::Delete, items)
+        let mut op = Self::new(OpKind::Delete, items);
+        op.to_trash = to_trash;
+        op
     }
 
     /// Prepares a Prune: deletes `files` and then `dirs`, deepest first
     /// (each one will already be empty by its turn).
     pub fn prune(files: Vec<Source>, mut dirs: Vec<PathBuf>) -> Self {
         dirs.sort_by_key(|d| std::cmp::Reverse(d.components().count()));
-        let mut op = Self::delete(files);
+        let mut op = Self::delete(files, false);
         op.kind = OpKind::Prune;
         op.items.extend(dirs.into_iter().map(|d| Item {
             src: d,
@@ -192,6 +200,20 @@ impl Operation {
         Ok(Self::new(kind, items))
     }
 
+    /// Prepares a batch rename operation from pairs of (source, destination, size).
+    pub fn rename_batch(items: Vec<(PathBuf, PathBuf, u64)>) -> Self {
+        let items = items
+            .into_iter()
+            .map(|(src, dst, size)| Item {
+                src,
+                dst,
+                size,
+                is_dir: false,
+            })
+            .collect();
+        Self::new(OpKind::Rename, items)
+    }
+
     fn new(kind: OpKind, items: Vec<Item>) -> Self {
         Operation {
             kind,
@@ -202,6 +224,8 @@ impl Operation {
             overwrite: Overwrite::Ask,
             approved: false,
             conflict: None,
+            to_trash: false,
+            trashed: Vec::new(),
             done_files: 0,
             skipped: 0,
             done_bytes: 0,
@@ -331,13 +355,18 @@ impl Operation {
         let item = self.items[self.next].clone();
 
         if matches!(self.kind, OpKind::Delete | OpKind::Prune) {
-            let removed = if item.is_dir {
+            let removed = if self.to_trash {
+                platform::trash_file(&item.src)
+            } else if item.is_dir {
                 fs::remove_dir(&item.src)
             } else {
                 platform::remove_file(&item.src)
             };
             match removed {
                 Ok(()) => {
+                    if self.to_trash {
+                        self.trashed.push(item.src);
+                    }
                     self.done_bytes += item.size;
                     self.finish_item();
                 }
@@ -387,13 +416,13 @@ impl Operation {
             return self.extract_item(&item);
         };
 
-        if self.kind == OpKind::Move {
+        if self.kind == OpKind::Move || self.kind == OpKind::Rename {
             match self.rename(&item.src, &item.dst) {
                 Ok(()) => {
                     self.done_bytes += item.size;
                     return self.finish_item();
                 }
-                Err(e) if e.kind() == ErrorKind::CrossesDevices => {} // copy and delete
+                Err(e) if e.kind() == ErrorKind::CrossesDevices && self.kind == OpKind::Move => {} // copy and delete
                 Err(e) => return self.fail(&item.src, e),
             }
         }
@@ -534,9 +563,14 @@ impl Operation {
             OpKind::Prune => "files and directories",
             _ => "files",
         };
+        let action = if self.to_trash {
+            "Trashed"
+        } else {
+            self.kind.past()
+        };
         let mut s = format!(
             "{} {} of {} {noun}",
-            self.kind.past(),
+            action,
             self.done_files,
             self.items.len()
         );
@@ -824,12 +858,30 @@ mod tests {
     fn deletes_and_reports_errors() {
         let (_tmp, a, _b) = setup();
         let sources = vec![src(&a.join("one.txt")), src(&a.join("missing"))];
-        let mut op = Operation::delete(sources);
+        let mut op = Operation::delete(sources, false);
         run(&mut op);
         assert!(!a.join("one.txt").exists());
         assert_eq!(op.done_files, 1);
         assert_eq!(op.errors.len(), 1);
         assert!(op.summary().starts_with("Deleted 1 of 2 files. Error:"));
+    }
+
+    #[test]
+    fn trashes_files() {
+        let (_tmp, a, _b) = setup();
+        let file = a.join("one.txt");
+        let sources = vec![src(&file)];
+        let mut op = Operation::delete(sources, true);
+        run(&mut op);
+        assert!(!file.exists());
+        assert_eq!(op.done_files, 1);
+        assert_eq!(op.trashed, vec![file.clone()]);
+        assert_eq!(op.summary(), "Trashed 1 of 1 files");
+
+        // Restore using platform::restore_trash_paths
+        let restored = platform::restore_trash_paths(std::slice::from_ref(&file)).unwrap();
+        assert_eq!(restored, 1);
+        assert!(file.exists());
     }
 
     #[test]

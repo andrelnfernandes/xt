@@ -328,7 +328,10 @@ in bash (`ignorespace`) and in zsh (`HIST_IGNORE_SPACE`). Inside the terminal,
 | Alt+I | Info: directory details (and what is logged in it) | Info: file details |
 | `A` | Avail: mounted file systems and free space | |
 | `?` | window statistics | same |
-| F1 | help: list of the keys in effect | same |
+| F1 / Alt+H | help: list of the keys in effect | same |
+| F11 / Alt+B | directory bookmarks manager | same |
+| `'` | quick jump to bookmark (`0`-`9`, `a`-`z`, or `'`/Enter for list, `+` to add) | same |
+| Ctrl+F11 / Ctrl+B | bookmark current directory | (in tree: Ctrl+B / Ctrl+F11) |
 | F12 / Alt+F10 | configuration screen | same |
 | `Q` / F10 | quit (asks for confirmation) | quit |
 | Alt+Q | quits, leaving the shell in the current directory (see above) | same |
@@ -343,9 +346,12 @@ in bash (`ignorespace`) and in zsh (`HIST_IGNORE_SPACE`). Inside the terminal,
 | Ctrl+F7 / F8 / F9 | tags / untags / inverts the logged files of the branch | |
 | `C` | | copies the file |
 | `M` | creates a subdirectory | moves the file |
-| `D` | deletes the directory (only if empty) | deletes the file |
+| `D` / Del | deletes the directory (only if empty) | deletes the file |
+| Shift+Del | permanently deletes the directory | permanently deletes the file |
+| `O` (tree) / Ctrl+Z | restores file from trash (Oops!) | restores file from trash (Oops!) |
 | Alt+P | Prune: deletes the directory with everything in it | |
 | `R` | renames the directory | renames the file |
+| Ctrl+R / Alt+R | | renames tagged files with mask/pattern |
 | `A` | | permissions (octal, e.g. `644`) |
 | `N` | changes the directory's date | changes the file's date (Ctrl+N: of the tagged files) |
 | Ctrl+B | | Batch: creates a script or list with one line per tagged file |
@@ -382,6 +388,13 @@ ZTreeWin. It starts at the folder typed so far; the tree keys move around
 window's tree with the screen split, **Enter** puts the folder in the prompt
 (Ctrl+B and F5 keep the file name) and **Esc** goes back without changing it.
 Nothing runs until you confirm the prompt.
+
+**Batch rename with mask (Ctrl+R / Alt+R):** renames all tagged files using patterns:
+- **Wildcards:** `*.jpg` (changes extension), `prefix_*.*`, `*_suffix.*`, `???.*` (stencils characters).
+- **Search & replace:** `s/foo/bar/` or `s/foo/bar/i` (replaces `foo` with `bar`, case-insensitive with `/i`).
+- **Incremental numbering:** `%03d`, `%02d`, `%d`, `<001>`, `<01>`, or `<#>` (numbers each tagged file sequentially).
+- **Case conversion:** press **F2** in the prompt to toggle case conversion between None, lowercase, UPPERCASE, and Title Case, or use tokens `<lower>`, `<upper>`, `<title>`.
+
 
 **Split screen:** F8 opens a second window, starting in the same directory;
 Tab switches between them (without the split, Tab does the same as Enter). Each window
@@ -541,7 +554,7 @@ uptime, load, memory and swap, shell, terminal), the network (IP addresses
 of each interface, gateway and DNS) and xt itself (version, PID, memory in use,
 executable and configuration file).
 
-**Delete** really deletes (it does not go to the trash) and always asks for confirmation.
+**Delete and Trash:** `D` or `Del` asks for confirmation before deleting. When `delete_to_trash = true` in the configuration (or when pressing `T` at the confirmation prompt), files and empty directories are moved to the system trash (FreeDesktop Trash on Linux, Recycle Bin on Windows) instead of being removed permanently. `Shift+Del` always deletes permanently. If an item was sent to the trash by mistake, **Oops** (`O` in the tree, or `Ctrl+Z` in both windows) lets you restore it back to its original location.
 
 **Prune (Alt+P in the tree):** logs the whole branch, shows how many files,
 directories and bytes will be deleted and asks you to **type PRUNE** (or the
@@ -587,7 +600,7 @@ In the tree, a `+` on the connector (`├─+`) marks a collapsed directory that
 ## Structure
 
 - `src/model/` — in-memory directory tree (arena), independent of the UI
-- `src/app.rs` — global state (prompts, operations) and command execution
+- `src/app/` — global state (prompts, operations) and command execution
 - `src/pane.rs` — one window: tree, file list, cursors and filespec
 - `src/input.rs` — commands and the prompts' text field
 - `src/keymap.rs` — default keys, configuration overrides and help (F1)
@@ -652,7 +665,7 @@ screen (Alt+F10).
 | Sort | Name, Ext, Date, Time, Length, Alpha, nuMber, Size, Value, Unsorted; Charset; same/diff in split screen | Name, Ext, Date, Size, ascending/descending, Path first; each window has its own order |
 | Compare | options Identical, Unique, Newer, Older, Size, Binary, Case; display filter | tags unique, newer, older, identical, different or unique+newer; no binary comparison |
 | Prune | deletes only the subdirectories or the current one too; only empty directories; recycle bin | always deletes the whole directory, permanently; configurable confirmation |
-| Delete | optional recycle bin | deletes for good |
+| Delete | optional recycle bin | optional system trash (delete_to_trash, T/P prompt toggle, Shift+Del permanent); Oops (O/Ctrl+Z) to restore |
 | Log | several logged drives, Global, drive switching | one root per window; `L` opens another directory |
 | eXecute | batch parameters `%1`–`%8`, new window (NTW) | `sh` with `%f`, `%t` and `%d`; always in xt's terminal; also a built-in terminal (Alt+X) |
 | History | history window with bookmarks | ↑/↓ at the prompt, one history per type, saved between runs |
@@ -672,7 +685,9 @@ The keys follow ZTreeWin's. The exceptions:
 
 | Function | ZTreeWin | xt |
 |---|---|---|
+| Help | F1 | F1 or Alt+H (on GNOME Terminal, F1 opens terminal help) |
 | Configuration | Alt+F10 | F12 or Alt+F10 (on GNOME, Alt+F10 maximizes the window and never reaches xt) |
+| Bookmarks | F11 | F11, Alt+B, or single quote `'` (on GNOME Terminal, F11 toggles fullscreen) |
 | Move tagged | Ctrl+M | Ctrl+M in terminals with the kitty protocol; in others, `F9` `M` (or Alt+M and F6) |
 | `-` in the tree | unloads the branch from memory | only collapses (stays logged) |
 | F2 | (nothing) | rereads the directory, same as F3 |
@@ -680,6 +695,7 @@ The keys follow ZTreeWin's. The exceptions:
 | F12 | macros (not implemented) | configuration |
 | `/` | same as `?` (statistics) | Treespec, like `\` (`?` still shows the statistics) |
 | Ctrl+C, Ctrl+M in the tree | (nothing) | Copy/Move of the current directory's tagged files |
+| Copy path to clipboard | Ctrl+Insert | Y or Ctrl+Insert (Ctrl+Y for tagged; works via OSC 52 and system clipboard) |
 
 All keys can be rebound under `[keys]` in `config.toml`.
 
@@ -693,12 +709,10 @@ All keys can be rebound under `[keys]` in `config.toml`.
   Treespec in edit mode (F5, wildcards) and special folders (F6), type-ahead
   search with prompt (`|`) and active mode, drive switching (`<` and `>`).
 - **Files:** Open in a new terminal window (Alt+O), Batch of the current file (Alt+B), JFC (J, compare the contents of two files), ZAAP
-  (Y), sHortcut (H), Print (P), Rename with mask, find and replace and case change,
+  (external archiver), sHortcut (H), Print (P),
   owner/group (chown), Megaview (Ctrl+F7 in the file window), merge tagged files between
-  windows (Ctrl+F6), Partial Untag (Ctrl+F8), copy path to the
-  clipboard (Ctrl+Insert).
-- **General:** macros (F12), applications menu (F9), bookmarks (F11, `[`
-  and `]`), Quit and shell (Ctrl+Q), saving and
+  windows (Ctrl+F6), Partial Untag (Ctrl+F8).
+- **General:** macros (F12), applications menu (F9), Quit and shell (Ctrl+Q), saving and
   loading the log (Zlist, Ctrl/Alt+Z), recycle bin, colors by name and attribute
   (ZCOLORS.INI), mouse, ZTreeWin command-line options, video
   commands (Alt+F6–F9).
