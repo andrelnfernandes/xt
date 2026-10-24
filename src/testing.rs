@@ -14,3 +14,11 @@ pub fn tempdir() -> tempfile::TempDir {
         .tempdir_in(base)
         .unwrap()
 }
+
+/// Hides a file or directory: the dot in the name is enough on Linux; on
+/// Windows it takes the H attribute.
+pub fn hide(path: &std::path::Path) {
+    #[cfg(windows)]
+    crate::platform::set_mode(path, 0x2).unwrap();
+    let _ = path;
+}
