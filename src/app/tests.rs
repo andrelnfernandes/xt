@@ -1032,7 +1032,7 @@ fn f1_shows_help_in_viewer() {
     let (_tmp, mut app) = sample();
     press(&mut app, KeyCode::F(1));
     let viewer = app.viewer.as_ref().expect("help open");
-    assert!(viewer.visible_lines(1)[0].starts_with("xt - keys in use"));
+    assert!(viewer.visible_lines(1)[0].starts_with("Xylem - keys in use"));
     press(&mut app, KeyCode::Esc);
     assert!(app.viewer.is_none());
 }
@@ -1357,7 +1357,7 @@ fn e_in_viewer_edits_and_reloads() {
     assert!(ext.line.to_string_lossy().contains("a.rs"));
     assert_eq!(ext.cwd, tmp.path());
 
-    // The "editor" changes the file; back in xt, the viewer shows it.
+    // The "editor" changes the file; back in Xylem, the viewer shows it.
     write(&file, "one\ntwo\nthree\n").unwrap();
     app.after_external(Ok(std::process::ExitStatus::default()));
     let v = app.viewer.as_ref().expect("still viewing");
@@ -1784,7 +1784,7 @@ fn alt_q_quits_remembering_the_directory() {
             .as_ref()
             .unwrap()
             .question
-            .starts_with("Quit xt and change to")
+            .starts_with("Quit Xylem and change to")
     );
     press(&mut app, KeyCode::Char('y'));
     assert!(app.should_quit);
@@ -1928,12 +1928,12 @@ fn ctrl_b_writes_a_batch_file() {
     ctrl(&mut app, 'b');
     assert_eq!(
         app.prompt.as_ref().unwrap().input.text,
-        tmp.path().join("xt-batch.sh").to_str().unwrap()
+        tmp.path().join("xy-batch.sh").to_str().unwrap()
     );
     press(&mut app, KeyCode::Enter);
     type_text(&mut app, "wc -c %f");
     press(&mut app, KeyCode::Enter);
-    let script = tmp.path().join("xt-batch.sh");
+    let script = tmp.path().join("xy-batch.sh");
     let text = fs::read_to_string(&script).unwrap();
     let a = tmp.path().join("a.rs");
     assert!(text.starts_with("#!/bin/sh\n"));
@@ -1943,7 +1943,7 @@ fn ctrl_b_writes_a_batch_file() {
         0o111
     );
     assert!(
-        names(&app).contains(&"xt-batch.sh".to_string()),
+        names(&app).contains(&"xy-batch.sh".to_string()),
         "list refreshed"
     );
 
@@ -2031,7 +2031,7 @@ fn info_avail_and_stats_screens() {
     assert!(text.contains("Logged") && text.contains("Tagged"), "{text}");
     let text = app.viewer.as_ref().unwrap().visible_lines(60).join("\n");
     assert!(
-        text.contains("SYSTEM") && text.contains("XT") && text.contains("Version"),
+        text.contains("SYSTEM") && text.contains("XYLEM") && text.contains("Version"),
         "{text}"
     );
 }

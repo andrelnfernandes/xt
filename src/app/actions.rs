@@ -351,7 +351,7 @@ impl App {
 
     /// `O`: opens the file (or the tagged files) in the system's default program.
     /// Inside an archive, extracts first to a temporary folder
-    /// (deleted when xt exits).
+    /// (deleted when Xylem exits).
     pub(crate) fn open_with(&mut self, tagged: bool) {
         let Some(sources) = self.sources_or_warn(tagged) else {
             return;

@@ -4,7 +4,7 @@ impl App {
     /// Back from an external program: the disk may have changed.
     /// Alt+X (or Alt+Z, in full screen): shows the terminal, starting the
     /// shell the first time. If the shell is waiting at the prompt, it goes
-    /// to the tree's directory and `$XT_TAGGED` gets the tagged files.
+    /// to the tree's directory and `$XY_TAGGED` gets the tagged files.
     pub(crate) fn show_terminal(&mut self, full: Option<bool>) {
         let dir = self.current_path();
         let tagged: Vec<PathBuf> = self.sources(true).into_iter().map(|s| s.path).collect();
@@ -44,7 +44,7 @@ impl App {
     }
 
     /// Keys while the terminal is on screen: everything goes to the shell,
-    /// except the terminal commands (Alt+X back to xt, Alt+Z full screen,
+    /// except the terminal commands (Alt+X back to Xylem, Alt+Z full screen,
     /// Alt+O types the tagged files) and Shift+PgUp/PgDn (scrollback).
     pub(crate) fn terminal_key(&mut self, key: KeyEvent) {
         match self.keymap.lookup(key, self.focus) {

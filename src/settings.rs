@@ -161,14 +161,14 @@ impl Opt {
             Opt::Git => yes_no(o.git),
             Opt::CopyPaths => match o.copy_paths {
                 CopyPaths::Full => "Full (root of the disk)",
-                CopyPaths::Tree => "Tree (root of xt's tree)",
+                CopyPaths::Tree => "Tree (root of Xylem's tree)",
                 CopyPaths::Current => "Current (current directory, with its name)",
                 CopyPaths::Relative => "Relative (below the current directory)",
             }
             .into(),
             Opt::TerminalTheme => match o.terminal_theme {
                 TerminalTheme::Native => "Native (the terminal's own)",
-                TerminalTheme::Xt => "xt (background and text of the theme)",
+                TerminalTheme::Xylem => "Xylem (background and text of the theme)",
                 TerminalTheme::Solarized => "Solarized",
                 TerminalTheme::Gruvbox => "Gruvbox",
                 TerminalTheme::Nord => "Nord",
@@ -235,7 +235,7 @@ pub struct Settings {
     pub confirm_discard: bool,
     /// Footer message (e.g. error while saving).
     pub message: Option<String>,
-    /// The file had errors when xt opened it: saving would erase what the user
+    /// The file had errors when Xylem opened it: saving would erase what the user
     /// wrote, so F3 stays blocked until they fix it.
     pub load_error: Option<String>,
 }

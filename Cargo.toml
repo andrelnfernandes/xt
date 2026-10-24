@@ -1,11 +1,11 @@
 [package]
-# On crates.io "xt" belongs to another project; the command is still `xt`.
-name = "xt-fm"
-version = "0.1.0"
+# On crates.io "xylem" and "xy" belong to other projects; the command is `xy`.
+name = "xylem-fm"
+version = "0.2.0"
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/andrelnfernandes/xt"
-homepage = "https://github.com/andrelnfernandes/xt"
+repository = "https://github.com/andrelnfernandes/xylem"
+homepage = "https://github.com/andrelnfernandes/xylem"
 description = "Text-mode file manager inspired by XTree and ZTreeWin"
 readme = "README.md"
 keywords = ["file-manager", "xtree", "ztree", "tui", "terminal"]
@@ -15,7 +15,7 @@ categories = ["command-line-utilities", "filesystem"]
 include = ["/src/**/*.rs", "/Cargo.toml", "/Cargo.lock", "/LICENSE", "/README.md", "/README.pt-BR.md"]
 
 [[bin]]
-name = "xt"
+name = "xy"
 path = "src/main.rs"
 
 [dependencies]

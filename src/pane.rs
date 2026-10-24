@@ -1,4 +1,4 @@
-//! A xt window: tree, file list, filespec and cursors.
+//! A Xylem window: tree, file list, filespec and cursors.
 //!
 //! The normal screen has one; with the window split (F8) there are two, each with
 //! its own tree.

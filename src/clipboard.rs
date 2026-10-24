@@ -38,8 +38,8 @@ pub fn set_clipboard(text: &str) -> io::Result<()> {
 
 /// Copies text to the system clipboard using:
 /// 1. OSC 52 escape sequence to stdout (works across SSH, tmux, etc.)
-/// 2. Background daemon (`xt --clipboard-daemon`) to serve X11/Wayland selections even after exit
-/// 3. In-process worker thread to serve X11/Wayland selections while xt is running
+/// 2. Background daemon (`xy --clipboard-daemon`) to serve X11/Wayland selections even after exit
+/// 3. In-process worker thread to serve X11/Wayland selections while Xylem is running
 /// 4. Native platform clipboard commands as fallback (`wl-copy`, `xclip`, `xsel`, `pbcopy`, `clip`)
 fn set_system_clipboard(text: &str) -> io::Result<()> {
     // 1. Send OSC 52 escape sequence directly to stdout (works across SSH, tmux, etc.)
@@ -48,7 +48,7 @@ fn set_system_clipboard(text: &str) -> io::Result<()> {
     let _ = out.write_all(osc52.as_bytes());
     let _ = out.flush();
 
-    // 2. Spawn clipboard daemon to keep the selection alive even after xt exits.
+    // 2. Spawn clipboard daemon to keep the selection alive even after Xylem exits.
     // When spawned, it runs detached with stdout/stderr directed to null (no TUI pollution).
     if !spawn_daemon(text) {
         // Fallback when daemon process cannot be spawned (e.g. inside cargo test)
@@ -64,7 +64,7 @@ fn set_system_clipboard(text: &str) -> io::Result<()> {
     Ok(())
 }
 
-/// Runs the background daemon process (`xt --clipboard-daemon`).
+/// Runs the background daemon process (`xy --clipboard-daemon`).
 /// Reads text from stdin and serves clipboard requests until replaced.
 pub fn run_daemon() -> io::Result<()> {
     let mut text = String::new();
