@@ -489,8 +489,10 @@ archive, the entry is first extracted to a temporary folder,
 deleted when Xylem exits. Another program can be chosen in `opener` (or in the
 configuration screen).
 
-**Archives:** Alt+F5 in the file window opens `.zip`, `.jar`,
-`.war`, `.apk`, `.tar`, `.tar.gz` or `.tgz` as a tree, read-only:
+**Archives:** Alt+F5 in the file window opens `.zip` (also `.jar`, `.war`,
+`.apk`), `.7z`, and `.tar`, plain or compressed with gzip (`.tar.gz`, `.tgz`),
+xz (`.tar.xz`, `.txz`), bzip2 (`.tar.bz2`, `.tbz2`) or zstd (`.tar.zst`), as a
+tree, read-only (encrypted 7z archives are not supported):
 navigation, Filespec, Branch, Showall, tags, View and Compare work inside
 it, and Copy (including Ctrl+C and Alt+C with paths) extracts the files.
 `Esc` in the tree closes the archive and returns to where you were. For safety,
@@ -696,7 +698,7 @@ screen (Alt+F10).
 | eXecute | batch parameters `%1`–`%8`, new window (NTW) | `sh` with `%f`, `%t` and `%d`; always in Xylem's terminal; also a built-in terminal (Alt+X) |
 | History | history window with bookmarks | ↑/↓ at the prompt, one history per type, saved between runs |
 | Configuration | 7 pages, per-element color editor (F4), Alt-Export | 4 pages with the options that make sense on Linux; F4 chooses among 8 ready-made themes; individual colors in `config.toml` |
-| Archives | any format with an external archiver, create (F5), extract (Alt-F5) | ZIP/JAR/WAR/APK/TAR/TGZ: open (Alt+F5), extract with Copy, create with F5 (ZIP, TAR and TAR.GZ) |
+| Archives | any format with an external archiver, create (F5), extract (Alt-F5) | ZIP/JAR/WAR/APK, 7z, TAR (plain, gzip, xz, bzip2, zstd): open (Alt+F5), extract with Copy, create with F5 (ZIP, TAR and TAR.GZ) |
 | Split screen | optional statistics panels per side | no statistics panel |
 | Menus | Ctrl/Alt menu when holding the key | same in terminals with the kitty protocol; F9 in any terminal |
 
