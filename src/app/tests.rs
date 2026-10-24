@@ -2078,6 +2078,8 @@ fn test_clipboard_copy_tree_dir() {
     assert!(msg.starts_with("Copied to clipboard:"), "{msg}");
     let path = tmp.path().to_string_lossy();
     assert!(msg.contains(path.as_ref()), "{msg}");
+    let copied = crate::clipboard::copied().expect("nothing copied");
+    assert_eq!(msg, format!("Copied to clipboard: {copied}"));
 }
 
 #[test]
@@ -2092,6 +2094,8 @@ fn test_clipboard_copy_file() {
         .expect("message expected after Ctrl+Insert in files");
     assert!(msg.starts_with("Copied to clipboard:"), "{msg}");
     assert!(msg.ends_with("a.rs"), "{msg}");
+    let copied = crate::clipboard::copied().expect("nothing copied");
+    assert_eq!(msg, format!("Copied to clipboard: {copied}"));
 }
 
 #[test]
@@ -2107,6 +2111,11 @@ fn test_clipboard_copy_tagged() {
     ctrl(&mut app, 'y');
     let msg = app.message.expect("message expected after Ctrl+Y");
     assert_eq!(msg, "Copied 1 path to clipboard");
+    let copied = crate::clipboard::copied().expect("nothing copied");
+    assert!(
+        copied.ends_with("a.rs") && !copied.contains('\n'),
+        "{copied}"
+    );
 }
 
 #[test]
@@ -2125,6 +2134,8 @@ fn test_clipboard_viewer_copy() {
         .expect("viewer note");
     assert!(note.starts_with("Copied to clipboard:"), "{note}");
     assert!(note.ends_with("a.rs"), "{note}");
+    let copied = crate::clipboard::copied().expect("nothing copied");
+    assert_eq!(*note, format!("Copied to clipboard: {copied}"));
 }
 
 #[test]
