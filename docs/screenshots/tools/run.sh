@@ -1,5 +1,5 @@
 #!/bin/sh
-# Regenerates the README screenshots (Linux): runs xt in an emulated
+# Regenerates the README screenshots (Linux): runs Xylem in an emulated
 # 120x34 terminal (pyte) on a sample tree and saves each screen as a PNG,
 # with Windows Terminal's "Campbell" colors and DejaVu Sans Mono.
 #
@@ -9,16 +9,16 @@
 #
 # Needs: unshare (util-linux), git, DejaVu Sans Mono and a Python with pyte
 # and Pillow, e.g.
-#   python3 -m venv ~/.cache/xt-screenshots/venv
-#   ~/.cache/xt-screenshots/venv/bin/pip install pyte pillow
-#   PYTHON=~/.cache/xt-screenshots/venv/bin/python docs/screenshots/tools/run.sh
+#   python3 -m venv ~/.cache/xylem-screenshots/venv
+#   ~/.cache/xylem-screenshots/venv/bin/pip install pyte pillow
+#   PYTHON=~/.cache/xylem-screenshots/venv/bin/python docs/screenshots/tools/run.sh
 #
 # Usage: run.sh [shot...]   (default: all; e.g. run.sh tree terminal demo)
 # The PNGs go to docs/screenshots/, the animation (demo) to docs/demo.gif.
 set -e
 TOOLS=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$TOOLS/../../.." && pwd)
-WORK="${XDG_CACHE_HOME:-$HOME/.cache}/xt-screenshots"
+WORK="${XDG_CACHE_HOME:-$HOME/.cache}/xylem-screenshots"
 PYTHON=$(command -v "${PYTHON:-python3}")
 mkdir -p "$WORK"
 (cd "$REPO" && cargo build --release -q)
@@ -43,7 +43,7 @@ run() { name=$1; cfg=$2; shift 2
   case $name in demo) file=docs/demo.gif;; *) file=docs/screenshots/$name.png;; esac
   HOME=/home/user SHELL=/bin/bash XDG_CONFIG_HOME=$W/root/config/$cfg \
   XDG_STATE_HOME=/mnt/tmp/state XDG_CACHE_HOME=/mnt/tmp/cache \
-  "$PY" -I "$T/shot.py" "$X/$file" "$X/target/release/xt" /home/user/projects "$@"
+  "$PY" -I "$T/shot.py" "$X/$file" "$X/target/release/xy" /home/user/projects "$@"
   echo "$file"; }
 run tree classic "*" sleep:1 "$(down 12)"
 run theme-gruvbox gruvbox "*" sleep:1 "$(down 12)"
@@ -53,7 +53,7 @@ run split classic "*" sleep:1 "$(down 12)" "\033[19~" "$(up 8)"
 run terminal classic "*" sleep:1 "$(down 12)" "\033x" sleep:1.5 "cd model && ls\r" sleep:1
 # The animation at the top of the README: the built-in terminal with the
 # tree following a cd; then Branch, tags, and Alt+O typing the tagged files.
-run demo classic hold:1.5 "*" hold:1 "\033x" hold:1 "type:cd xt/src" hold:.4 "\r" hold:2.5 \
+run demo classic hold:1.5 "*" hold:1 "\033x" hold:1 "type:cd xylem/src" hold:.4 "\r" hold:2.5 \
   "\033x" hold:1 "$(up 9)" hold:.8 b hold:1.2 "$D" hold:.4 t hold:.5 "$D" hold:.3 "$D" hold:.4 \
   t hold:.5 t hold:1.5 "send:\033x" "\014" hold:.6 "type:wc -c " hold:.4 "\033o" hold:1 \
   "\r" hold:2.5 "\033x" hold:3
