@@ -1,37 +1,42 @@
-# xt
+# Xylem
 
 [Read in English](README.md)
 
 Gerenciador de arquivos em modo texto para Linux, inspirado no XTree e no ZTreeWin.
 
-![O xt em uso: o terminal embutido com a árvore acompanhando um cd, arquivos marcados num Branch e digitados num comando com Alt+O](docs/demo.gif)
+O Xylem se chamava **xt** até a versão 0.1; o comando agora é `xy`. Na
+primeira execução, ele move a configuração, o histórico e os bookmarks do xt
+para as pastas novas. O nome: o xilema (*xylem*, em inglês) é o tecido que
+leva a água pela árvore, e começa com X, como o XTree.
 
-## Por que o xt?
+![O Xylem em uso: o terminal embutido com a árvore acompanhando um cd, arquivos marcados num Branch e digitados num comando com Alt+O](docs/demo.gif)
+
+## Por que o Xylem?
 
 Uso alguma variação do XTree desde a década de 1990, e o ZTreeWin continua
 sendo, para mim, o melhor gerenciador de arquivos em modo texto. Desenvolvi o
-xt por sentir falta de algo tão bom quanto ele rodando no Linux: as versões
+Xylem por sentir falta de algo tão bom quanto ele rodando no Linux: as versões
 que existem parecem estar abandonadas.
 
 Apesar de gostar muito do ZTreeWin, a evolução dele é extremamente lenta. Por
-isso, provavelmente o xt também terá uma versão para Windows.
+isso, provavelmente o Xylem também terá uma versão para Windows.
 
-O xt segue as teclas e o jeito de trabalhar do ZTreeWin sempre que possível;
+O Xylem segue as teclas e o jeito de trabalhar do ZTreeWin sempre que possível;
 as diferenças estão descritas em [Comparação com o ZTreeWin](#comparação-com-o-ztreewin).
 
 ## Aviso
 
-O xt é um projeto independente, escrito do zero. Não tem ligação com a
+O Xylem é um projeto independente, escrito do zero. Não tem ligação com a
 Zedtek, Inc. (ZTreeWin) nem com os donos do XTree, nem é endossado por eles.
 Não contém código desses programas; os nomes deles aparecem só para descrever
-o que inspirou o xt e como ele se compara. XTree, ZTree e ZTreeWin são marcas
+o que inspirou o Xylem e como ele se compara. XTree, ZTree e ZTreeWin são marcas
 de seus respectivos donos.
 
 ## Telas
 
 A árvore de diretórios, a janela de arquivos e as estatísticas, no tema clássico:
 
-![xt: árvore de diretórios, janela de arquivos e estatísticas, no tema clássico](docs/screenshots/tree.png)
+![Xylem: árvore de diretórios, janela de arquivos e estatísticas, no tema clássico](docs/screenshots/tree.png)
 
 **Branch** (`B`) lista os arquivos de um ramo inteiro; os arquivos marcados
 (`T`) ficam destacados e são contados à direita:
@@ -54,43 +59,43 @@ A árvore de diretórios, a janela de arquivos e as estatísticas, no tema clás
 ## Instalação
 
 **Binário pronto:** baixe o arquivo do seu sistema na página de
-[Releases](https://github.com/andrelnfernandes/xt/releases): Linux x86_64 ou
+[Releases](https://github.com/andrelnfernandes/xylem/releases): Linux x86_64 ou
 ARM64 (estático, roda em qualquer distribuição) ou Windows x86_64. Extraia e
-coloque o `xt` (`xt.exe`) numa pasta do `PATH`, por exemplo:
+coloque o `xy` (`xy.exe`) numa pasta do `PATH`, por exemplo:
 
 ```bash
-tar xzf xt-v0.1.0-x86_64-unknown-linux-musl.tar.gz
-install -m 755 xt-v0.1.0-x86_64-unknown-linux-musl/xt ~/.local/bin/
+tar xzf xy-v0.2.0-x86_64-unknown-linux-musl.tar.gz
+install -m 755 xy-v0.2.0-x86_64-unknown-linux-musl/xy ~/.local/bin/
 ```
 
 Cada arquivo tem um `.sha256` ao lado, para conferir com `sha256sum -c`.
 
 **Com o Cargo** (requer Rust, via [rustup](https://rustup.rs)), a partir do
-[crates.io](https://crates.io/crates/xt-fm), onde o xt se chama `xt-fm` (o
-nome `xt` já era de outro projeto); o comando continua sendo `xt`:
+[crates.io](https://crates.io/crates/xylem-fm), onde o Xylem se chama
+`xylem-fm` (o nome `xylem` já era de outro projeto); o comando é `xy`:
 
 ```bash
-cargo install xt-fm
+cargo install xylem-fm
 ```
 
 Ou o código mais recente, direto do GitHub, ou a partir de um clone do
 repositório (na pasta do projeto):
 
 ```bash
-cargo install --git https://github.com/andrelnfernandes/xt
+cargo install --git https://github.com/andrelnfernandes/xylem
 cargo install --path .
 ```
 
-O binário vai para `~/.cargo/bin/xt` (que o rustup já coloca no `PATH`).
-Para atualizar, rode o mesmo comando de novo; para remover, `cargo uninstall xt-fm`.
+O binário vai para `~/.cargo/bin/xy` (que o rustup já coloca no `PATH`).
+Para atualizar, rode o mesmo comando de novo; para remover, `cargo uninstall xylem-fm`.
 
 ## Uso
 
 ```bash
-xt [diretório]
+xy [diretório]
 ```
 
-Sem argumento, abre o diretório atual. `xt --help` mostra as opções.
+Sem argumento, abre o diretório atual. `xy --help` mostra as opções.
 
 ### Sair mudando o diretório do shell (Alt+Q)
 
@@ -100,24 +105,24 @@ atual num arquivo (`--cwd-file`) e uma pequena função do shell faz o `cd`.
 Coloque no `~/.bashrc` (ou `~/.zshrc`):
 
 ```bash
-xt() {
+xy() {
     local tmp dir
     tmp=$(mktemp) || return
-    command xt --cwd-file "$tmp" "$@"
+    command xy --cwd-file "$tmp" "$@"
     dir=$(cat -- "$tmp")
     rm -f -- "$tmp"
     [ -n "$dir" ] && [ -d "$dir" ] && cd -- "$dir"
 }
 ```
 
-Com ela, `xt` funciona como antes; só ao sair com **Alt+Q** o shell fica no
-diretório em que você estava no xt. `Q` e F10 saem sem mudar nada.
+Com ela, `xy` funciona como antes; só ao sair com **Alt+Q** o shell fica no
+diretório em que você estava no Xylem. `Q` e F10 saem sem mudar nada.
 
 ## Windows (experimental)
 
-O xt também compila para Windows (Windows Terminal ou o console clássico).
+O Xylem também compila para Windows (Windows Terminal ou o console clássico).
 Ele passa nos testes automáticos lá, mas ainda não foi usado no dia a dia,
-então espere arestas. Cada release tem um `xt.exe` pronto (veja
+então espere arestas. Cada release tem um `xy.exe` pronto (veja
 [Instalação](#instalação)), ou instale com o Cargo, do mesmo jeito.
 
 O que muda no Windows:
@@ -130,22 +135,22 @@ O que muda no Windows:
 - **eXecute** e **Edit** passam pelo `cmd`, com os nomes entre aspas duplas.
   Um `%NOME%` dentro de um nome de arquivo ainda é expandido pelo `cmd`.
 - O editor padrão é o `notepad`, `O` usa o `start` e o Ctrl+B sugere
-  `xt-batch.bat` (começando com `@echo off`).
+  `xy-batch.bat` (começando com `@echo off`).
 - Apagar um arquivo somente leitura apaga o arquivo, como o `rm` no Linux.
 - Copiar links simbólicos exige o Modo de Desenvolvedor ou direitos de
   administrador.
-- Configuração em `%APPDATA%\xt\config.toml`, histórico em
-  `%LOCALAPPDATA%\xt\`.
+- Configuração em `%APPDATA%\xylem\config.toml`, histórico em
+  `%LOCALAPPDATA%\xylem\`.
 - O terminal embutido (Alt+X) roda o `cmd` (`%COMSPEC%`). Ao entrar nele, o
   shell ainda vai para o diretório da árvore, mas a árvore não acompanha os
-  `cd`s do shell, e não há `$XT_TAGGED`.
+  `cd`s do shell, e não há `$XY_TAGGED`.
 
 Para o **Alt+Q** no PowerShell, coloque isto no seu `$PROFILE`:
 
 ```powershell
-function xt {
+function xy {
     $tmp = New-TemporaryFile
-    xt.exe --cwd-file $tmp @args
+    xy.exe --cwd-file $tmp @args
     $dir = Get-Content -Raw -Encoding UTF8 $tmp
     Remove-Item $tmp
     if ($dir -and (Test-Path -LiteralPath $dir -PathType Container)) {
@@ -158,7 +163,7 @@ function xt {
 
 A forma mais fácil é a **tela de configuração: F12** (ou Alt+F10, como no
 ZTreeWin; no Ubuntu/GNOME o Alt+F10 costuma maximizar a janela e não chega ao
-xt). Ela tem quatro páginas:
+Xylem). Ela tem quatro páginas:
 
 | Página | Opções |
 |---|---|
@@ -171,12 +176,12 @@ A letra da opção (ou Enter) troca o valor, PgUp/PgDn ou 1–4 mudam de página
 **F4** escolhe o tema numa lista (com prévia na hora), **F3** grava e aplica,
 **Esc** desiste (pergunta se houver mudanças).
 
-Tudo fica em `~/.config/xt/config.toml` (ou `$XDG_CONFIG_HOME/xt/`), que
+Tudo fica em `~/.config/xylem/config.toml` (ou `$XDG_CONFIG_HOME/xylem/`), que
 também pode ser editado à mão; a tela mantém os seus comentários. Para começar
 de um arquivo comentado com todos os padrões:
 
 ```bash
-mkdir -p ~/.config/xt && xt --default-config > ~/.config/xt/config.toml
+mkdir -p ~/.config/xylem && xy --default-config > ~/.config/xylem/config.toml
 ```
 
 - `theme`: `classic` (azul do XTree), `dark`, `light`, `mono` (cores do
@@ -186,10 +191,10 @@ mkdir -p ~/.config/xt && xt --default-config > ~/.config/xt/config.toml
   (`"yellow"`), `"#rrggbb"` ou índices de 0 a 255.
 - `[keys.any]`, `[keys.tree]`, `[keys.files]`: troca teclas, nas duas
   janelas ou só numa (esta tem prioridade). Ex.: `"f3" = "view"`,
-  `"ctrl+r" = "relog"`; `"none"` desliga uma tecla. **F1** dentro do xt
+  `"ctrl+r" = "relog"`; `"none"` desliga uma tecla. **F1** dentro do Xylem
   mostra as teclas em vigor, já com as suas trocas.
 
-Um erro no arquivo não impede o xt de abrir: ele usa os padrões e mostra o
+Um erro no arquivo não impede o Xylem de abrir: ele usa os padrões e mostra o
 erro no rodapé (e a tela de configuração não grava até o arquivo ser
 corrigido, para não apagar o que você escreveu).
 
@@ -211,7 +216,7 @@ preciso ter o programa `git`.
   duas letras do `git status --short`: `M ` no stage, ` M` alterado fora do
   stage, `A ` adicionado, `??` não rastreado, `R ` renomeado. Arquivos sem
   alteração ficam em branco. O estado é relido depois das operações do
-  próprio xt, depois do F3 e a cada 10 segundos (para pegar commits feitos em
+  próprio Xylem, depois do F3 e a cada 10 segundos (para pegar commits feitos em
   outro terminal).
 - No visualizador, **D** mostra o que mudou no arquivo desde o último commit
   (o `git diff HEAD` dele, com cores) e **D** de novo volta ao arquivo, no
@@ -235,7 +240,7 @@ Status colorido, como no terminal (aqui com o tema `dark`):
 ## Terminal embutido (Alt+X)
 
 Não existe no XTree nem no ZTreeWin: o seu shell (`$SHELL`) rodando dentro da
-tela do xt, na parte de baixo, com a árvore e os arquivos ainda visíveis em
+tela do Xylem, na parte de baixo, com a árvore e os arquivos ainda visíveis em
 cima.
 
 Um `cd` no terminal leva a árvore junto:
@@ -246,10 +251,10 @@ Alt+O digita os arquivos marcados no prompt:
 
 ![Três fotos marcadas digitadas num wc -c com Alt+O](docs/screenshots/terminal-tagged.png)
 
-- **Alt+X** abre o terminal e volta ao xt. O shell continua rodando enquanto
+- **Alt+X** abre o terminal e volta ao Xylem. O shell continua rodando enquanto
   está escondido, com o histórico e o que estava na tela; `exit` fecha o
   shell.
-- **Sair do xt encerra o shell** e o que estiver rodando nele. Se houver um
+- **Sair do Xylem encerra o shell** e o que estiver rodando nele. Se houver um
   programa rodando ali (um `vim`, por exemplo), Q e Alt+Q perguntam antes,
   mesmo com `confirm_quit` desligado (Linux e macOS).
 - **Alt+Z** abre em tela cheia; dentro dele, alterna entre tela cheia e
@@ -259,9 +264,9 @@ Alt+O digita os arquivos marcados no prompt:
 - **O shell acompanha a árvore:** ao entrar no terminal a partir de outro
   diretório, ele vai para lá. Isso só acontece com o shell parado no prompt;
   com um programa rodando (vim, less...), nada é digitado.
-- **`$XT_TAGGED`** tem os arquivos marcados, atualizada ao entrar no terminal.
-  É um array: no bash, use `"${XT_TAGGED[@]}"` (`cp "${XT_TAGGED[@]}" ~/backup`);
-  no zsh e no fish, `$XT_TAGGED`. Com outros shells (sh, dash), só há o `cd`.
+- **`$XY_TAGGED`** tem os arquivos marcados, atualizada ao entrar no terminal.
+  É um array: no bash, use `"${XY_TAGGED[@]}"` (`cp "${XY_TAGGED[@]}" ~/backup`);
+  no zsh e no fish, `$XY_TAGGED`. Com outros shells (sh, dash), só há o `cd`.
 - **Alt+O** digita os arquivos marcados no cursor, entre aspas e relativos ao
   diretório do shell (`wc -l 'a.txt' 'b c.txt'`). Na árvore ou na janela de
   arquivos, abre o terminal e digita os nomes.
@@ -269,8 +274,8 @@ Alt+O digita os arquivos marcados no prompt:
 - Ao sair do terminal, os diretórios abertos são relidos.
 - **Histórico próprio:** os comandos digitados nele vão para um histórico do
   shell separado do dos seus outros terminais:
-  `~/.local/state/xt/bash_history` (`zsh_history`...), via `HISTFILE`; no fish,
-  a sessão `xt` (`fish_history`). Se o seu arquivo rc define `HISTFILE` sem
+  `~/.local/state/xylem/bash_history` (`zsh_history`...), via `HISTFILE`; no fish,
+  a sessão `xylem` (`fish_history`). Se o seu arquivo rc define `HISTFILE` sem
   condição, vale o dele. Desligue na **F12** (página 3) ou com
   `terminal_history = false`.
 - Programas de tela cheia (vim, htop, less) funcionam dentro dele; todas as
@@ -279,15 +284,15 @@ Alt+O digita os arquivos marcados no prompt:
 As teclas podem ser trocadas em `[keys.any]` (`terminal`, `terminal_full`,
 `terminal_tagged`): o Alt+T, por exemplo, é o menu "Terminal" em alguns
 terminais. As cores são escolhidas na **F12** (página 2) ou em
-`terminal_theme`, em `[options]`: `native` (as do terminal onde o xt roda),
-`xt` (fundo e texto do tema do xt), `solarized`, `gruvbox`, `nord`, `dracula`
+`terminal_theme`, em `[options]`: `native` (as do terminal onde o Xylem roda),
+`xylem` (fundo e texto do tema do Xylem), `solarized`, `gruvbox`, `nord`, `dracula`
 ou `one_dark`.
 
-Para mudar o diretório e o `$XT_TAGGED`, o xt grava um pequeno script numa
-pasta própria (em `~/.cache/xt/`, legível só por você) e digita
+Para mudar o diretório e o `$XY_TAGGED`, o Xylem grava um pequeno script numa
+pasta própria (em `~/.cache/xylem/`, legível só por você) e digita
 ` . script` no prompt; o espaço no início deixa a linha fora do histórico no
 bash (`ignorespace`) e no zsh (`HIST_IGNORE_SPACE`). Dentro do terminal,
-`XT_TERMINAL=1`, para prompts e scripts que queiram saber.
+`XY_TERMINAL=1`, para prompts e scripts que queiram saber.
 
 ## Teclas
 
@@ -320,7 +325,7 @@ bash (`ignorespace`) e no zsh (`HIST_IGNORE_SPACE`). Dentro do terminal,
 | Alt+F5 | | abre um ZIP/TAR como diretório |
 | `E` | | abre o arquivo no editor |
 | `X` | executa um comando do shell | idem |
-| Alt+X | terminal embutido (e volta ao xt) | idem |
+| Alt+X | terminal embutido (e volta ao Xylem) | idem |
 | Alt+Z | terminal embutido em tela cheia | idem |
 | Alt+O | terminal embutido, digitando os arquivos marcados | idem |
 | `L` | Log: abre outro diretório na janela | |
@@ -377,7 +382,7 @@ para `destino`:
 | Modo | Resultado | |
 |---|---|---|
 | Full | `destino/home/eu/proj/src/ops/mod.rs` | desde a raiz do disco, como no ZTreeWin (padrão) |
-| Tree | `destino/src/ops/mod.rs` | desde a raiz da árvore do xt (aqui `proj`); não existe no ZTreeWin |
+| Tree | `destino/src/ops/mod.rs` | desde a raiz da árvore do Xylem (aqui `proj`); não existe no ZTreeWin |
 | Current | `destino/ops/mod.rs` | desde a raiz da lista, incluindo o nome dela |
 | Relative | `destino/mod.rs` | só o que está abaixo da raiz da lista |
 
@@ -414,7 +419,7 @@ diretório atual com os do diretório da outra janela e marca, à escolha:
 (mesmo tamanho e data), **D**ifferent, ou **A**ll new (únicos + mais novos:
 o que falta copiar para atualizar o outro lado). **B** (ou Alt+C na árvore,
 como no ZTreeWin) troca o escopo para o
-ramo inteiro: o xt loga o ramo, compara seguindo os caminhos relativos
+ramo inteiro: o Xylem loga o ramo, compara seguindo os caminhos relativos
 (`src/a.rs` ↔ `<outro>/src/a.rs`) e abre o Branch com os arquivos marcados.
 Datas com até 2 segundos de diferença contam como iguais (FAT/exFAT).
 
@@ -460,19 +465,19 @@ ainda não logados mostram `?`. Cada janela tem a sua escolha.
 `editor` do Debian/Ubuntu ou `vi`). `X` pede uma linha de comando e a roda com
 `sh` no diretório atual; `%f` vira o arquivo sob o cursor, `%t` os arquivos
 marcados e `%d` o diretório atual, todos já entre aspas (`%%` é um `%`).
-Exemplo: `tar czf backup.tgz %t`. No fim, o xt espera Enter para você ler a
+Exemplo: `tar czf backup.tgz %t`. No fim, o Xylem espera Enter para você ler a
 saída. Ao voltar, os diretórios abertos são relidos.
 
 **Histórico:** nos prompts, ↑/↓ trazem as entradas anteriores. Cada tipo de
 prompt (Filespec, destino do Copy/Move, Log, eXecute...) tem o seu histórico,
-guardado em `~/.local/state/xt/history.toml` (ou `$XDG_STATE_HOME/xt/`), com
+guardado em `~/.local/state/xylem/history.toml` (ou `$XDG_STATE_HOME/xylem/`), com
 permissão só para você, já que pode conter comandos digitados.
 
 **Open (`O`):** abre o arquivo no programa padrão do sistema (`xdg-open`:
 imagens no visualizador de imagens, PDFs no leitor de PDF etc.), em
-segundo plano, sem sair do xt. Ctrl+O abre todos os marcados. Dentro de um
+segundo plano, sem sair do Xylem. Ctrl+O abre todos os marcados. Dentro de um
 arquivo compactado, a entrada é extraída antes para uma pasta temporária,
-apagada ao sair do xt. Outro programa pode ser escolhido em `opener` (ou na
+apagada ao sair do Xylem. Outro programa pode ser escolhido em `opener` (ou na
 tela de configuração).
 
 **Arquivos compactados:** Alt+F5 na janela de arquivos abre `.zip`, `.jar`,
@@ -483,7 +488,7 @@ dele, e Copy (inclusive Ctrl+C e Alt+C com caminhos) extrai os arquivos.
 entradas com `..` ou caminho absoluto são ignoradas, e links simbólicos
 dentro de arquivos compactados nunca são extraídos.
 
-**Atualização automática:** o xt observa (via inotify) o diretório atual de
+**Atualização automática:** o Xylem observa (via inotify) o diretório atual de
 cada janela e relê sozinho quando outro programa cria, apaga, renomeia ou
 altera arquivos ali, mantendo o cursor no mesmo arquivo. As mudanças são
 agrupadas (no máximo uma releitura a cada meio segundo) e esperam o fim de
@@ -496,7 +501,7 @@ Alt+letra (ex.: `F9` `M` = Ctrl+M); `Esc` desiste. Nos terminais com o
 protocolo de teclado do kitty, basta **segurar Ctrl ou Alt** para o menu
 correspondente aparecer enquanto a tecla estiver pressionada.
 
-**Ctrl+M:** na maioria dos terminais, Ctrl+M chega igual a Enter. O xt liga
+**Ctrl+M:** na maioria dos terminais, Ctrl+M chega igual a Enter. O Xylem liga
 automaticamente o protocolo de teclado do kitty quando o terminal o suporta
 (kitty, WezTerm, foot, Ghostty, Alacritty recente, iTerm2), e aí Ctrl+M move
 os arquivos marcados como no ZTree. Nos terminais baseados em VTE (GNOME
@@ -513,7 +518,7 @@ tipos, como no ZTreeWin:
   configurado, com `/`, `.` ou `-` e ano de 2 ou 4 dígitos (`>01/05/2026`;
   `2026-05-01` sempre vale), ou `TODAY` e `TODAY-n` (`>TODAY-7`: últimos 7
   dias);
-- **tamanho:** o mesmo com `s` depois do operador (`>=s200000`); no xt
+- **tamanho:** o mesmo com `s` depois do operador (`>=s200000`); no Xylem
   também valem K, M e G (`>s100M`).
 
 Um `-` na frente nega (`-*.bak`; `-<s1K` é o mesmo que `>=s1K`). Dentro de
@@ -524,7 +529,7 @@ maio); `<>` exclui. Entre os tipos vale "e": `*.txt,=TODAY,<s1000` são os
 
 **Copy/Move:** o destino pode ser um diretório (relativo ao diretório do
 cursor da árvore, absoluto ou com `~`) ou, para um único arquivo, um novo nome. Se o destino já existe,
-o xt pergunta: Yes / No / All / Skip all. A cópia é feita num temporário que
+o Xylem pergunta: Yes / No / All / Skip all. A cópia é feita num temporário que
 só substitui o destino no fim: cancelar (`Esc`) ou um erro nunca deixa um
 arquivo pela metade. Permissões e data de modificação são preservadas, e links
 simbólicos são copiados como links. Mover entre discos copia e depois apaga.
@@ -557,7 +562,7 @@ sistemas de arquivos montados com total, usado, livre e % de uso, como o
 `df`. `?` resume a janela: o que está logado, a lista, os marcados e o disco
 (ponto de montagem, livre e usado); abaixo, a máquina (sistema e kernel, CPU,
 tempo ligado, carga, memória e swap, shell, terminal), a rede (endereços IP
-de cada interface, gateway e DNS) e o próprio xt (versão, PID, memória em uso,
+de cada interface, gateway e DNS) e o próprio Xylem (versão, PID, memória em uso,
 executável e arquivo de configuração).
 
 **Delete e Lixeira:** `D` ou `Del` sempre pede confirmação antes de apagar. Quando `delete_to_trash = true` na configuração (ou pressionando `T` na confirmação), arquivos e diretórios vazios são enviados para a lixeira do sistema (FreeDesktop Trash no Linux, Lixeira no Windows) em vez de apagados de vez. `Shift+Del` apaga de forma permanente. Caso tenha enviado algo para a lixeira por engano, a função **Oops** (`O` na árvore, ou `Ctrl+Z` em ambas as janelas) permite restaurar o item para a sua localização original.
@@ -581,7 +586,7 @@ visualizador lento.
 
 **Visualizador:** setas/PgUp/PgDn/Home/End rolam, ←→ deslocam na horizontal,
 `H` alterna texto/hex, **E** abre o arquivo no editor configurado (de volta ao
-xt, o visualizador mostra o conteúdo novo no mesmo ponto; não vale para
+Xylem, o visualizador mostra o conteúdo novo no mesmo ponto; não vale para
 arquivos dentro de pacotes), `Esc` fecha. Arquivos binários abrem em hex.
 Arquivos acima de 16 MiB mostram só o começo. Busca, como no ZTreeWin:
 **F** procura do início, **B** para trás a partir do fim, **/** (ou S) a
@@ -663,7 +668,7 @@ configuração (Alt+F10).
 
 ### Simplificado
 
-| Recurso | No ZTreeWin | No xt |
+| Recurso | No ZTreeWin | No Xylem |
 |---|---|---|
 | Filespec | nome com regras próprias de nome e extensão, data, tamanho, atributo, filespec invertido (Ctrl+I), rótulos | glob para os nomes, data e tamanho como no ZTreeWin (com K/M/G); sem atributos, inversão e rótulos |
 | Visualizador | modos Alpha, Dump, Hex, Junk e Wrap; conjuntos de caracteres; edição hex; marcadores; auto-scroll | texto (UTF-8) ou hex, com a busca do ZTreeWin (F, B, /, \\, Espaço, + e -), cores de sintaxe (que o ZTreeWin não tem), sem quebra de linha; até 16 MiB |
@@ -674,7 +679,7 @@ configuração (Alt+F10).
 | Prune | apaga só os subdiretórios ou também o atual; só diretórios vazios; lixeira | apaga sempre o diretório inteiro, permanentemente; confirmação configurável |
 | Delete | lixeira opcional | lixeira opcional (via delete_to_trash ou alternância T/P no prompt; Shift+Del definitivo) com restauração Oops (O/Ctrl+Z) |
 | Log | vários drives logados, Global, troca de drive | uma raiz por janela; `L` abre outro diretório |
-| eXecute | parâmetros de batch `%1`–`%8`, nova janela (NTW) | `sh` com `%f`, `%t` e `%d`; sempre no terminal do xt; também um terminal embutido (Alt+X) |
+| eXecute | parâmetros de batch `%1`–`%8`, nova janela (NTW) | `sh` com `%f`, `%t` e `%d`; sempre no terminal do Xylem; também um terminal embutido (Alt+X) |
 | Histórico | janela de histórico com marcadores | ↑/↓ no prompt, um histórico por tipo, salvo entre execuções |
 | Configuração | 7 páginas, editor de cores (F4) por elemento, Alt-Export | 4 páginas com as opções que fazem sentido no Linux; F4 escolhe entre 8 temas prontos; cores individuais no `config.toml` |
 | Arquivos compactados | qualquer formato com archiver externo, criar (F5), extrair (Alt-F5) | ZIP/JAR/WAR/APK/TAR/TGZ: abrir (Alt+F5), extrair com Copy, criar com F5 (ZIP, TAR e TAR.GZ) |
@@ -690,10 +695,10 @@ janela, atalhos (.lnk). As demais dependem de recursos ainda não feitos
 
 As teclas seguem as do ZTreeWin. As exceções:
 
-| Função | ZTreeWin | xt |
+| Função | ZTreeWin | Xylem |
 |---|---|---|
 | Ajuda | F1 | F1 ou Alt+H (no GNOME Terminal, F1 abre a ajuda do terminal) |
-| Configuração | Alt+F10 | F12 ou Alt+F10 (no GNOME, Alt+F10 maximiza a janela e não chega ao xt) |
+| Configuração | Alt+F10 | F12 ou Alt+F10 (no GNOME, Alt+F10 maximiza a janela e não chega ao Xylem) |
 | Marcadores | F11 | F11, Alt+B ou apóstrofo `'` (no GNOME Terminal, F11 alterna tela cheia) |
 | Mover marcados | Ctrl+M | Ctrl+M em terminais com o protocolo do kitty; nos outros, `F9` `M` (ou Alt+M e F6) |
 | `-` na árvore | descarrega o ramo da memória | só recolhe (continua logado) |
@@ -726,4 +731,4 @@ Todas as teclas podem ser trocadas em `[keys]` no `config.toml`.
 
 ## Licença
 
-O xt é distribuído sob a [licença MIT](LICENSE).
+O Xylem é distribuído sob a [licença MIT](LICENSE).
