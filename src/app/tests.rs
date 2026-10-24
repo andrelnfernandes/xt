@@ -198,7 +198,7 @@ fn copy_to_missing_folder_asks_to_create_it() {
     press(&mut app, KeyCode::Enter);
     ctrl(&mut app, 't');
     ctrl(&mut app, 'c');
-    let dest = tmp.path().join("new/deeper");
+    let dest = tmp.path().join("new").join("deeper");
     answer_prompt(&mut app, dest.to_str().unwrap());
     let question = &app.confirm.as_ref().expect("confirmation").question;
     assert_eq!(
@@ -219,7 +219,7 @@ fn declining_to_create_the_folder_copies_nothing() {
     press(&mut app, KeyCode::Char('c'));
     // One file into a missing folder: not a new name, since the parent
     // does not exist either.
-    let dest = tmp.path().join("nope/x.rs");
+    let dest = tmp.path().join("nope").join("x.rs");
     answer_prompt(&mut app, dest.to_str().unwrap());
     assert!(app.confirm.is_some());
     press(&mut app, KeyCode::Char('n'));
