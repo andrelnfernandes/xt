@@ -10,9 +10,10 @@ description = "Text-mode file manager inspired by XTree and ZTreeWin"
 readme = "README.md"
 keywords = ["file-manager", "xtree", "ztree", "tui", "terminal"]
 categories = ["command-line-utilities", "filesystem"]
-# What goes to crates.io: the code, the license and the READMEs (the
-# screenshots stay on GitHub, where the READMEs' images point).
-include = ["/src/**/*.rs", "/Cargo.toml", "/Cargo.lock", "/LICENSE", "/README.md", "/README.pt-BR.md"]
+# What goes to crates.io: the code, the Windows icon (build.rs), the
+# license and the READMEs (the screenshots stay on GitHub, where the
+# READMEs' images point).
+include = ["/src/**/*.rs", "/build.rs", "/docs/icons/xylem.ico", "/Cargo.toml", "/Cargo.lock", "/LICENSE", "/README.md", "/README.pt-BR.md"]
 
 [[bin]]
 name = "xy"
@@ -53,6 +54,10 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_System_SystemInformation",
     "Win32_System_Threading",
 ] }
+
+# The icon of xy.exe (build.rs).
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1.34"
 
 [dev-dependencies]
 tempfile = "3.27.0"

@@ -1,3 +1,5 @@
+<img src="docs/icons/xylem.svg" width="96" align="right" alt="Ícone do Xylem">
+
 # Xylem
 
 [Read in English](README.md)
@@ -88,6 +90,19 @@ cargo install --path .
 
 O binário vai para `~/.cargo/bin/xy` (que o rustup já coloca no `PATH`).
 Para atualizar, rode o mesmo comando de novo; para remover, `cargo uninstall xylem-fm`.
+
+**Atalho no menu (Linux, opcional):** para ter o Xylem no menu de
+aplicativos do seu desktop, abrindo num terminal, rode isto num clone do
+repositório. O `xy` precisa estar no `PATH` que o desktop enxerga
+(`~/.local/bin` costuma estar; `~/.cargo/bin` nem sempre).
+
+```bash
+for s in 16 32 48 64 128 256 512; do
+    install -Dm644 docs/icons/xylem-$s.png ~/.local/share/icons/hicolor/${s}x$s/apps/xylem.png
+done
+install -Dm644 docs/icons/xylem.svg ~/.local/share/icons/hicolor/scalable/apps/xylem.svg
+install -Dm644 packaging/linux/xylem.desktop ~/.local/share/applications/xylem.desktop
+```
 
 ## Uso
 
@@ -630,6 +645,9 @@ Na árvore, `+` no conector (`├─+`) indica um diretório recolhido que tem s
 - `src/model/filespec.rs` — filtro de arquivos
 - `src/ops/` — copiar, mover e apagar, em passos (progresso, conflitos, cancelamento)
 - `docs/screenshots/tools/` — refaz as capturas de tela do README (`run.sh`, Linux)
+- `docs/icons/` — o ícone, em SVG, PNG (16 a 512) e ICO
+- `build.rs` — embute o ícone no `xy.exe` (Windows)
+- `packaging/linux/` — atalho para o menu (`xylem.desktop`)
 
 ## Roteiro
 
