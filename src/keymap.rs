@@ -122,13 +122,40 @@ const COMMANDS: &[(&str, Command, &str)] = &[
     ),
     (
         "delete",
-        Command::Delete { tagged: false },
+        Command::Delete {
+            tagged: false,
+            permanent: false,
+        },
         "delete file (in the tree: empty directory)",
     ),
     (
         "delete_tagged",
-        Command::Delete { tagged: true },
+        Command::Delete {
+            tagged: true,
+            permanent: false,
+        },
         "delete tagged files",
+    ),
+    (
+        "delete_permanent",
+        Command::Delete {
+            tagged: false,
+            permanent: true,
+        },
+        "permanently delete file (without trash)",
+    ),
+    (
+        "delete_tagged_permanent",
+        Command::Delete {
+            tagged: true,
+            permanent: true,
+        },
+        "permanently delete tagged files (without trash)",
+    ),
+    (
+        "oops",
+        Command::Oops,
+        "restore recently deleted file from trash (Oops!)",
     ),
     (
         "attributes",
@@ -140,7 +167,16 @@ const COMMANDS: &[(&str, Command, &str)] = &[
         Command::Attributes { tagged: true },
         "change permissions of tagged files",
     ),
-    ("rename", Command::Rename, "rename file or directory"),
+    (
+        "rename",
+        Command::Rename { tagged: false },
+        "rename file or directory",
+    ),
+    (
+        "rename_tagged",
+        Command::Rename { tagged: true },
+        "rename tagged files with mask",
+    ),
     ("make_dir", Command::MakeDir, "make a subdirectory"),
     (
         "prune",
@@ -256,6 +292,16 @@ const COMMANDS: &[(&str, Command, &str)] = &[
         Command::CreateArchive { tagged: true },
         "create a zip/tar archive with the tagged files",
     ),
+    (
+        "clip",
+        Command::Clipboard { tagged: false },
+        "copy path to clipboard",
+    ),
+    (
+        "clip_tagged",
+        Command::Clipboard { tagged: true },
+        "copy paths of tagged files to clipboard",
+    ),
     ("info", Command::Info, "details of the file or directory"),
     (
         "avail",
@@ -292,6 +338,21 @@ const COMMANDS: &[(&str, Command, &str)] = &[
         Command::QuitChangeDir,
         "quit leaving the shell in the current directory (see README)",
     ),
+    (
+        "bookmarks",
+        Command::Bookmarks,
+        "directory bookmarks list / manager",
+    ),
+    (
+        "bookmark_jump",
+        Command::BookmarkJump,
+        "quick jump to directory bookmark",
+    ),
+    (
+        "bookmark_set",
+        Command::BookmarkSet,
+        "save bookmark for current directory",
+    ),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -315,6 +376,7 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("enter", Any, "switch_window"),
     ("tab", Any, "switch_pane"),
     ("f1", Any, "help"),
+    ("alt+h", Any, "help"),
     ("f3", Any, "relog"),
     ("f2", Any, "relog"),
     ("space", Any, "down"),
@@ -335,14 +397,23 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("alt+f10", Any, "settings"),
     ("b", Any, "branch"),
     ("d", Any, "delete"),
+    ("del", Any, "delete"),
+    ("delete", Any, "delete"),
+    ("shift+del", Any, "delete_permanent"),
+    ("shift+delete", Any, "delete_permanent"),
     ("f", Any, "filespec"),
     ("i", Any, "invert"),
     ("q", Any, "quit"),
     ("alt+q", Any, "quit_cd"),
     ("r", Any, "rename"),
+    ("ctrl+r", Any, "rename_tagged"),
+    ("alt+r", Any, "rename_tagged"),
     ("s", Any, "showall"),
     ("t", Any, "tag"),
     ("u", Any, "untag"),
+    ("y", Any, "clip"),
+    ("ctrl+insert", Any, "clip"),
+    ("ctrl+y", Any, "clip_tagged"),
     ("x", Any, "execute"),
     ("alt+x", Any, "terminal"),
     ("alt+z", Any, "terminal_full"),
@@ -355,6 +426,12 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("ctrl+u", Any, "untag_all"),
     ("alt+a", Any, "attributes_tagged"),
     ("alt+d", Any, "delete_tagged"),
+    ("ctrl+shift+del", Any, "delete_tagged_permanent"),
+    ("ctrl+shift+delete", Any, "delete_tagged_permanent"),
+    ("alt+shift+del", Any, "delete_tagged_permanent"),
+    ("alt+shift+delete", Any, "delete_tagged_permanent"),
+    ("ctrl+z", Any, "oops"),
+    ("o", Tree, "oops"),
     ("alt+t", Any, "tag_all"),
     ("alt+u", Any, "untag_all"),
     ("alt+s", Any, "sort"),
@@ -393,10 +470,15 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("m", Files, "move"),
     ("o", Files, "open"),
     ("v", Files, "view"),
+    ("f11", Any, "bookmarks"),
+    ("alt+b", Any, "bookmarks"),
+    ("'", Any, "bookmark_jump"),
+    ("ctrl+f11", Any, "bookmark_set"),
+    ("ctrl+b", Tree, "bookmark_set"),
 ];
 
 /// A key with modifiers, already normalized: lowercase letters, and only
-/// Ctrl and Alt count (Shift is already part of the letter).
+/// Ctrl and Alt count (Shift is already part of the letter, except for Delete).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct KeySpec {
     code: KeyCode,
@@ -409,14 +491,15 @@ impl KeySpec {
             KeyCode::Char(c) => KeyCode::Char(c.to_ascii_lowercase()),
             other => other,
         };
-        KeySpec {
-            code,
-            mods: key.modifiers & (KeyModifiers::CONTROL | KeyModifiers::ALT),
+        let mut mods = key.modifiers & (KeyModifiers::CONTROL | KeyModifiers::ALT);
+        if code == KeyCode::Delete && key.modifiers.contains(KeyModifiers::SHIFT) {
+            mods |= KeyModifiers::SHIFT;
         }
+        KeySpec { code, mods }
     }
 
-    /// `"x"`, `"F3"`, `"ctrl+r"`, `"alt+shift+x"` (Shift is ignored),
-    /// `"plus"` for `+`.
+    /// `"x"`, `"F3"`, `"ctrl+r"`, `"alt+shift+x"` (Shift is ignored on letters),
+    /// `"shift+del"`, `"plus"` for `+`.
     pub fn parse(text: &str) -> Result<Self, String> {
         let lower = text.trim().to_lowercase();
         let (mods_part, key) = match lower.as_str() {
@@ -429,7 +512,7 @@ impl KeySpec {
             match m {
                 "ctrl" | "control" => mods |= KeyModifiers::CONTROL,
                 "alt" | "meta" => mods |= KeyModifiers::ALT,
-                "shift" => {}
+                "shift" => mods |= KeyModifiers::SHIFT,
                 other => return Err(format!("unknown modifier '{other}' in '{text}'")),
             }
         }
@@ -452,6 +535,7 @@ impl KeySpec {
             "space" => KeyCode::Char(' '),
             "plus" => KeyCode::Char('+'),
             "minus" => KeyCode::Char('-'),
+            "quote" | "apostrophe" => KeyCode::Char('\''),
             k if k.len() > 1 && k.starts_with('f') => match k[1..].parse() {
                 Ok(n @ 1..=24) => KeyCode::F(n),
                 _ => return Err(format!("unknown key '{text}'")),
@@ -464,6 +548,9 @@ impl KeySpec {
                 }
             }
         };
+        if code != KeyCode::Delete {
+            mods.remove(KeyModifiers::SHIFT);
+        }
         Ok(KeySpec { code, mods })
     }
 }
@@ -476,6 +563,9 @@ impl fmt::Display for KeySpec {
         if self.mods.contains(KeyModifiers::ALT) {
             f.write_str("Alt+")?;
         }
+        if self.mods.contains(KeyModifiers::SHIFT) {
+            f.write_str("Shift+")?;
+        }
         match self.code {
             KeyCode::Char(' ') => f.write_str("Space"),
             KeyCode::Char(c) => write!(f, "{}", c.to_ascii_uppercase()),
@@ -483,6 +573,8 @@ impl fmt::Display for KeySpec {
             KeyCode::Enter => f.write_str("Enter"),
             KeyCode::Esc => f.write_str("Esc"),
             KeyCode::Tab => f.write_str("Tab"),
+            KeyCode::BackTab => f.write_str("BackTab"),
+            KeyCode::Delete => f.write_str("Del"),
             KeyCode::PageUp => f.write_str("PgUp"),
             KeyCode::PageDown => f.write_str("PgDn"),
             KeyCode::Up => f.write_str("↑"),
@@ -605,10 +697,10 @@ impl Keymap {
         keys.into_iter().next()
     }
 
-    /// Help text (F1): the keys currently in effect, per window.
+    /// Help text (F1 / Alt+H): the keys currently in effect, per window.
     pub fn help_text(&self) -> String {
         let mut out = String::from(
-            "xt - keys in use (F1 shows this; Esc closes)\n\
+            "xt - keys in use (F1 / Alt+H shows this; Esc closes)\n\
              Change them in ~/.config/xt/config.toml, see xt --default-config.\n",
         );
         for (scope, title) in [
@@ -639,12 +731,20 @@ impl Keymap {
              F7                      in Alt+C/Alt+M: paths from the disk root / tree root / current / below it\n  \
              F2                      in prompts that ask for a folder: pick it in a tree\n  \
              ↑, ↓                    in prompts: history\n  \
-             F2, F4                  in search prompts: match case, text/hex\n\n\
+             F2, F4                  in search prompts: match case, text/hex\n  \
+             F2                      in tagged rename: cycles case (lower, upper, title)\n\n\
+             BOOKMARKS (Alt+B, F11, ')\n  \
+             ' + 0-9 / a-z           instant jump to bookmark\n  \
+             ' + ' / Enter           open bookmarks manager\n  \
+             ' + + / Ins             bookmark current directory\n  \
+             Alt+B / F11             open bookmarks manager\n  \
+             Ctrl+B (in tree)        bookmark current directory\n  \
+             (in manager) Ins / +: add · Del / d: remove · Enter / key: jump\n\n\
              TERMINAL (Alt+X; Alt+Z in full screen)\n  \
              (keys)                  go to the shell, except the terminal commands above\n  \
              Shift+PgUp / PgDn       scroll back through what went off the screen\n  \
              $XT_TAGGED              the tagged files, set on entering the terminal\n  \
-                                     (bash: \"${XT_TAGGED[@]}\"; zsh, fish: $XT_TAGGED)\n  \
+             (bash: \"${XT_TAGGED[@]}\"; zsh, fish: $XT_TAGGED)\n  \
              exit                    closes the shell\n\n\
              VIEWER (V, Ctrl+V)\n  \
              F / B                   find from the start / backward from the end\n  \
@@ -653,7 +753,8 @@ impl Keymap {
              N / P, Alt+Home/End     next / previous / first / last tagged file\n  \
              U                       untag the file being viewed\n  \
              H                       hex / text\n  \
-             E                       edit the file in the configured editor\n\n\
+             E                       edit the file in the configured editor\n  \
+             Y, Ctrl+Insert          copy file path to clipboard\n\n\
              NAVIGATION\n  \
              Shift+letter, 0-9       next directory / file starting with it\n",
         );
@@ -771,6 +872,58 @@ mod tests {
             map(KeyCode::Char(' '), none, Focus::Files),
             Some(Command::Down)
         );
+        assert_eq!(
+            map(KeyCode::F(11), none, Focus::Tree),
+            Some(Command::Bookmarks)
+        );
+        assert_eq!(
+            map(KeyCode::F(11), none, Focus::Files),
+            Some(Command::Bookmarks)
+        );
+        assert_eq!(
+            map(KeyCode::Char('\''), none, Focus::Tree),
+            Some(Command::BookmarkJump)
+        );
+        assert_eq!(
+            map(KeyCode::F(11), KeyModifiers::CONTROL, Focus::Tree),
+            Some(Command::BookmarkSet)
+        );
+        assert_eq!(
+            map(KeyCode::Char('h'), KeyModifiers::ALT, Focus::Tree),
+            Some(Command::Help)
+        );
+        assert_eq!(
+            map(KeyCode::Char('h'), KeyModifiers::ALT, Focus::Files),
+            Some(Command::Help)
+        );
+        assert_eq!(
+            map(KeyCode::Char('b'), KeyModifiers::ALT, Focus::Tree),
+            Some(Command::Bookmarks)
+        );
+        assert_eq!(
+            map(KeyCode::Char('b'), KeyModifiers::ALT, Focus::Files),
+            Some(Command::Bookmarks)
+        );
+        assert_eq!(
+            map(KeyCode::Char('b'), KeyModifiers::CONTROL, Focus::Tree),
+            Some(Command::BookmarkSet)
+        );
+        assert_eq!(
+            map(KeyCode::Char('b'), KeyModifiers::CONTROL, Focus::Files),
+            Some(Command::Batch)
+        );
+        assert_eq!(
+            map(KeyCode::Char('r'), none, Focus::Files),
+            Some(Command::Rename { tagged: false })
+        );
+        assert_eq!(
+            map(KeyCode::Char('r'), KeyModifiers::CONTROL, Focus::Files),
+            Some(Command::Rename { tagged: true })
+        );
+        assert_eq!(
+            map(KeyCode::Char('r'), KeyModifiers::ALT, Focus::Files),
+            Some(Command::Rename { tagged: true })
+        );
     }
 
     #[test]
@@ -779,6 +932,11 @@ mod tests {
         assert_eq!(k("ctrl+r").to_string(), "Ctrl+R");
         assert_eq!(k("Alt+Shift+X").to_string(), "Alt+X");
         assert_eq!(k("F12").to_string(), "F12");
+        assert_eq!(k("F11").to_string(), "F11");
+        assert_eq!(k("ctrl+f11").to_string(), "Ctrl+F11");
+        assert_eq!(k("'").to_string(), "'");
+        assert_eq!(k("quote"), k("'"));
+        assert_eq!(k("apostrophe"), k("'"));
         assert_eq!(k("+"), k("plus"));
         assert_eq!(k("ctrl++").to_string(), "Ctrl++");
         assert_eq!(k("pgdn"), k("pagedown"));

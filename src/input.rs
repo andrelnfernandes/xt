@@ -119,12 +119,27 @@ pub enum Command {
     },
     Delete {
         tagged: bool,
+        permanent: bool,
     },
+    /// Restores the most recently trashed file(s) from system trash (Oops!).
+    Oops,
     Attributes {
         tagged: bool,
     },
-    Rename,
+    Rename {
+        tagged: bool,
+    },
     MakeDir,
+    /// Copies path(s) to the system clipboard (OSC 52 / native tools).
+    Clipboard {
+        tagged: bool,
+    },
+    /// F11: opens the directory bookmarks list / manager.
+    Bookmarks,
+    /// ': quick jump to a bookmark key.
+    BookmarkJump,
+    /// Ctrl+F11: saves a bookmark for the current directory.
+    BookmarkSet,
     Quit,
 }
 

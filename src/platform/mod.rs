@@ -138,3 +138,242 @@ fn env_dir(name: &str) -> Option<PathBuf> {
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)
 }
+
+/// Moves a file or directory to the system trash (FreeDesktop Trash on Linux,
+/// Recycle Bin on Windows). In tests, to a trash of the test's own.
+pub fn trash_file(path: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(test)]
+    {
+        test_trash::trash_file(path)
+    }
+    #[cfg(not(test))]
+    system_trash_file(path)
+}
+
+/// Returns the most recently deleted item from the trash, if any.
+pub fn latest_trash_item() -> Result<Option<TrashEntry>, String> {
+    #[cfg(test)]
+    {
+        Ok(test_trash::latest_item())
+    }
+    #[cfg(not(test))]
+    system_latest_trash_item()
+}
+
+/// Restores the trash items corresponding to the specified original paths.
+pub fn restore_trash_paths(paths: &[PathBuf]) -> Result<usize, String> {
+    #[cfg(test)]
+    {
+        test_trash::restore_paths(paths)
+    }
+    #[cfg(not(test))]
+    system_restore_trash_paths(paths)
+}
+
+fn system_trash_file(path: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(all(
+        unix,
+        not(target_os = "macos"),
+        not(target_os = "ios"),
+        not(target_os = "android")
+    ))]
+    {
+        // Try `gio trash` first if available, which immediately notifies GVFS / desktop
+        // environments (GNOME, XFCE, MATE, Cinnamon) via D-Bus that the trash has changed.
+        if let Ok(status) = std::process::Command::new("gio")
+            .arg("trash")
+            .arg(path)
+            // Its error messages would land on top of the interface.
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            && status.success()
+        {
+            return Ok(());
+        }
+    }
+    trash::delete(path).map_err(|e| std::io::Error::other(e.to_string()))
+}
+
+/// An item in the trash that can be restored.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct TrashEntry {
+    pub name: String,
+    pub original_path: PathBuf,
+    pub time_deleted: i64,
+}
+
+fn system_latest_trash_item() -> Result<Option<TrashEntry>, String> {
+    #[cfg(any(
+        target_os = "windows",
+        all(
+            unix,
+            not(target_os = "macos"),
+            not(target_os = "ios"),
+            not(target_os = "android")
+        )
+    ))]
+    {
+        let mut items = trash::os_limited::list().map_err(|e| e.to_string())?;
+        if items.is_empty() {
+            return Ok(None);
+        }
+        items.sort_by_key(|i| std::cmp::Reverse(i.time_deleted));
+        let item = &items[0];
+        Ok(Some(TrashEntry {
+            name: item.name.to_string_lossy().into_owned(),
+            original_path: item.original_path(),
+            time_deleted: item.time_deleted,
+        }))
+    }
+    #[cfg(not(any(
+        target_os = "windows",
+        all(
+            unix,
+            not(target_os = "macos"),
+            not(target_os = "ios"),
+            not(target_os = "android")
+        )
+    )))]
+    {
+        Err("Trash restore is not supported on this platform".into())
+    }
+}
+
+fn system_restore_trash_paths(paths: &[PathBuf]) -> Result<usize, String> {
+    #[cfg(any(
+        target_os = "windows",
+        all(
+            unix,
+            not(target_os = "macos"),
+            not(target_os = "ios"),
+            not(target_os = "android")
+        )
+    ))]
+    {
+        let all_items = trash::os_limited::list().map_err(|e| e.to_string())?;
+        let mut to_restore = Vec::new();
+        for path in paths {
+            let mut matching: Vec<_> = all_items
+                .iter()
+                .filter(|item| item.original_path() == *path)
+                .cloned()
+                .collect();
+            matching.sort_by_key(|item| std::cmp::Reverse(item.time_deleted));
+            if let Some(item) = matching.into_iter().next() {
+                to_restore.push(item);
+            }
+        }
+        if to_restore.is_empty() {
+            return Err("No matching files found in trash".into());
+        }
+        let count = to_restore.len();
+        trash::os_limited::restore_all(to_restore).map_err(|e| e.to_string())?;
+        Ok(count)
+    }
+    #[cfg(not(any(
+        target_os = "windows",
+        all(
+            unix,
+            not(target_os = "macos"),
+            not(target_os = "ios"),
+            not(target_os = "android")
+        )
+    )))]
+    {
+        Err("Trash restore is not supported on this platform".into())
+    }
+}
+
+/// In tests the user's trash is left alone: trashed items move to a
+/// temporary folder of the test (its thread), which remembers where they
+/// came from.
+#[cfg(test)]
+mod test_trash {
+    use std::cell::RefCell;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    use super::TrashEntry;
+
+    struct Trash {
+        dir: tempfile::TempDir,
+        /// (original path, where it is now), oldest first.
+        items: Vec<(PathBuf, PathBuf)>,
+    }
+
+    thread_local! {
+        static TRASH: RefCell<Option<Trash>> = const { RefCell::new(None) };
+    }
+
+    pub fn trash_file(path: &Path) -> std::io::Result<()> {
+        TRASH.with(|t| {
+            let mut t = t.borrow_mut();
+            let t = t.get_or_insert_with(|| Trash {
+                dir: crate::testing::tempdir(),
+                items: Vec::new(),
+            });
+            let stored = t.dir.path().join(t.items.len().to_string());
+            fs::rename(path, &stored)?;
+            t.items.push((path.to_path_buf(), stored));
+            Ok(())
+        })
+    }
+
+    pub fn latest_item() -> Option<TrashEntry> {
+        TRASH.with(|t| {
+            let t = t.borrow();
+            let (original, _) = t.as_ref()?.items.last()?;
+            Some(TrashEntry {
+                name: original.file_name()?.to_string_lossy().into_owned(),
+                original_path: original.clone(),
+                time_deleted: 0,
+            })
+        })
+    }
+
+    pub fn restore_paths(paths: &[PathBuf]) -> Result<usize, String> {
+        TRASH.with(|t| {
+            let mut t = t.borrow_mut();
+            let mut count = 0;
+            if let Some(t) = t.as_mut() {
+                for path in paths {
+                    if let Some(i) = t.items.iter().rposition(|(o, _)| o == path) {
+                        let (original, stored) = t.items.remove(i);
+                        fs::rename(stored, original).map_err(|e| e.to_string())?;
+                        count += 1;
+                    }
+                }
+            }
+            if count == 0 {
+                return Err("No matching files found in trash".into());
+            }
+            Ok(count)
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Uses the real system trash, so it only runs on request:
+    /// `cargo test -- --ignored system_trash_and_restore`.
+    #[test]
+    #[ignore]
+    fn system_trash_and_restore() {
+        let tmp = crate::testing::tempdir();
+        let file = tmp.path().join("xt-trash-test.txt");
+        std::fs::write(&file, "x").unwrap();
+        system_trash_file(&file).unwrap();
+        assert!(!file.exists());
+        let latest = system_latest_trash_item().unwrap().expect("empty trash");
+        assert_eq!(latest.original_path, file);
+        assert_eq!(
+            system_restore_trash_paths(std::slice::from_ref(&file)),
+            Ok(1)
+        );
+        assert!(file.exists());
+    }
+}

@@ -1,0 +1,179 @@
+use super::*;
+
+impl App {
+    /// Back from an external program: the disk may have changed.
+    /// Alt+X (or Alt+Z, in full screen): shows the terminal, starting the
+    /// shell the first time. If the shell is waiting at the prompt, it goes
+    /// to the tree's directory and `$XT_TAGGED` gets the tagged files.
+    pub(crate) fn show_terminal(&mut self, full: Option<bool>) {
+        let dir = self.current_path();
+        let tagged: Vec<PathBuf> = self.sources(true).into_iter().map(|s| s.path).collect();
+        if self.terminal.is_none() {
+            let history = self
+                .options
+                .terminal_history
+                .then(platform::state_dir)
+                .flatten();
+            match Terminal::spawn(&dir, history.as_deref()) {
+                Ok(t) => {
+                    self.terminal = Some(t);
+                    self.terminal_cwd = Some(dir.clone());
+                    self.terminal_tagged.clear();
+                }
+                Err(e) => {
+                    self.message = Some(format!("Cannot start the shell: {e}"));
+                    return;
+                }
+            }
+        }
+        let shell_dir = self.terminal.as_ref().and_then(Terminal::cwd);
+        let shell_dir = shell_dir.or_else(|| self.terminal_cwd.clone());
+        let cd = (shell_dir.as_ref() != Some(&dir)).then_some(dir.as_path());
+        if let Some(t) = &mut self.terminal
+            && (cd.is_some() || tagged != self.terminal_tagged)
+            && t.at_prompt()
+        {
+            t.sync(cd, &tagged);
+            self.terminal_tagged = tagged;
+        }
+        self.terminal_cwd = Some(dir);
+        self.terminal_focus = true;
+        if let Some(full) = full {
+            self.terminal_full = full;
+        }
+    }
+
+    /// Keys while the terminal is on screen: everything goes to the shell,
+    /// except the terminal commands (Alt+X back to xt, Alt+Z full screen,
+    /// Alt+O types the tagged files) and Shift+PgUp/PgDn (scrollback).
+    pub(crate) fn terminal_key(&mut self, key: KeyEvent) {
+        match self.keymap.lookup(key, self.focus) {
+            Some(Command::Terminal) => return self.hide_terminal(),
+            Some(Command::TerminalFull) => {
+                self.terminal_full = !self.terminal_full;
+                return;
+            }
+            Some(Command::TerminalTagged) => return self.type_tagged(),
+            _ => {}
+        }
+        let shift = key.modifiers == KeyModifiers::SHIFT;
+        let Some(t) = &mut self.terminal else {
+            self.terminal_focus = false;
+            return;
+        };
+        match key.code {
+            KeyCode::PageUp if shift => t.scroll(10),
+            KeyCode::PageDown if shift => t.scroll(-10),
+            _ => t.send_key(key),
+        }
+    }
+
+    /// Types the tagged files at the cursor, quoted and relative to the
+    /// shell's directory when inside it.
+    pub(crate) fn type_tagged(&mut self) {
+        let tagged = self.sources(true);
+        let Some(t) = &mut self.terminal else {
+            return;
+        };
+        if tagged.is_empty() {
+            return;
+        }
+        let cwd = t.cwd().unwrap_or_default();
+        let paths: Vec<PathBuf> = tagged
+            .into_iter()
+            .map(|s| match s.path.strip_prefix(&cwd) {
+                Ok(rel) if !cwd.as_os_str().is_empty() => rel.to_path_buf(),
+                _ => s.path,
+            })
+            .collect();
+        let text = shell::expand("%t ", None, &paths, Path::new(""));
+        t.write(text.as_encoded_bytes());
+    }
+
+    pub(crate) fn hide_terminal(&mut self) {
+        self.terminal_focus = false;
+        // What the commands changed on disk.
+        let dirs: Vec<PathBuf> = self.watched_dirs().into_iter().collect();
+        self.rescan_everywhere(&dirs);
+    }
+
+    /// Called by the main loop: notices when the shell exits and makes the
+    /// tree follow its `cd`s. Returns whether the terminal must be redrawn.
+    pub fn terminal_tick(&mut self) -> bool {
+        let Some(t) = &mut self.terminal else {
+            return false;
+        };
+        if t.exited() {
+            self.terminal = None;
+            self.terminal_cwd = None;
+            self.terminal_tagged.clear();
+            if self.terminal_focus {
+                self.hide_terminal();
+            }
+            self.message = Some("The terminal's shell has exited".into());
+            return true;
+        }
+        let dirty = t.take_dirty();
+        if dirty {
+            t.on_output();
+        }
+        if dirty
+            && let Some(cwd) = t.cwd()
+            && self.terminal_cwd.as_ref() != Some(&cwd)
+        {
+            self.terminal_cwd = Some(cwd.clone());
+            let cwd = dunce::canonicalize(&cwd).unwrap_or(cwd);
+            self.message = None;
+            if self.current_path() != cwd && !self.goto(&cwd) {
+                // Outside the tree's root (or hidden): the tree stays where
+                // it got, and says why.
+                self.message = Some(format!(
+                    "The shell is in {}, outside the tree ({} logs another directory)",
+                    cwd.display(),
+                    self.keymap.key_for(Command::Log).unwrap_or("L".into())
+                ));
+            }
+        }
+        dirty
+    }
+
+    pub fn after_external(&mut self, result: std::io::Result<std::process::ExitStatus>) {
+        let dirs: Vec<PathBuf> = self.watched_dirs().into_iter().collect();
+        self.rescan_everywhere(&dirs);
+        // Back from the editor (E in the viewer): shows the new contents
+        // (in a diff, the new diff).
+        if let Some(v) = &mut self.viewer {
+            let in_diff = v.behind.is_some();
+            let file = match &mut v.behind {
+                Some(file) => &mut **file,
+                None => v,
+            };
+            if file.on_disk
+                && let Err(e) = file.reload()
+            {
+                self.viewer = None;
+                self.tagged_view = None;
+                self.message = Some(format!("Cannot view file: {e}"));
+                return;
+            }
+            if in_diff {
+                let file = self.viewer.take().and_then(|v| v.behind).map(|b| *b);
+                self.viewer = file;
+                self.git_status.invalidate();
+                self.refresh_git();
+                self.toggle_diff();
+            }
+        }
+        self.message = match result {
+            Ok(status) if status.success() => None,
+            Ok(status) => Some(format!("Command finished with {status}")),
+            Err(e) => Some(format!("Cannot run command: {e}")),
+        };
+    }
+
+    /// A program running in the built-in terminal (not just the shell at its
+    /// prompt), which quitting would end, maybe with unsaved work.
+    pub(crate) fn terminal_program(&mut self) -> Option<String> {
+        self.terminal.as_mut()?.foreground_program()
+    }
+}

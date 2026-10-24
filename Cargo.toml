@@ -20,6 +20,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.104"
+arboard = { version = "3.7.0", default-features = false, features = ["wayland-data-control"] }
 chrono = "0.4.45"
 dunce = "1.0.5"
 flate2 = "1.1.10"
@@ -32,6 +33,7 @@ syntect = { version = "5.3.0", default-features = false, features = ["default-sy
 tar = "0.4.46"
 toml = "1.1.8"
 toml_edit = "0.25.17"
+trash = "5.2.9"
 tui-term = "0.3.4"
 vt100 = "0.16.2"
 zip = { version = "9.0.2", default-features = false, features = ["deflate"] }
