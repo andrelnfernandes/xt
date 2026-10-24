@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read, Write};
 use std::path::{Component, Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use crate::archive;
 use crate::platform;
@@ -65,6 +65,34 @@ struct Item {
     is_dir: bool,
 }
 
+/// Size and modification time of one side of a conflict.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Facts {
+    pub size: u64,
+    /// `None` when unknown (e.g. an archive entry without a date).
+    pub modified: Option<SystemTime>,
+}
+
+impl Facts {
+    fn of(meta: &fs::Metadata) -> Self {
+        Facts {
+            size: meta.len(),
+            modified: meta.modified().ok(),
+        }
+    }
+}
+
+/// A destination that already exists, waiting for [`Operation::answer`],
+/// with what is known about both files to help decide.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Conflict {
+    pub dst: PathBuf,
+    /// The file that would be copied or moved.
+    pub new: Facts,
+    /// The file already at `dst`.
+    pub existing: Facts,
+}
+
 /// User's answer to a conflict ("the destination already exists").
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Answer {
@@ -105,7 +133,7 @@ pub struct Operation {
     /// Item `next` already had its conflict resolved with "yes".
     approved: bool,
     /// Conflicting destination, waiting for [`Operation::answer`].
-    pub conflict: Option<PathBuf>,
+    pub conflict: Option<Conflict>,
     pub to_trash: bool,
     /// Successfully trashed paths, for Oops restoration.
     pub trashed: Vec<PathBuf>,
@@ -396,7 +424,15 @@ impl Operation {
             if !self.approved {
                 match self.overwrite {
                     Overwrite::Ask => {
-                        self.conflict = Some(item.dst);
+                        let new = match &src_meta {
+                            Some(meta) => Facts::of(meta),
+                            None => self.archive_facts(&item),
+                        };
+                        self.conflict = Some(Conflict {
+                            dst: item.dst,
+                            new,
+                            existing: Facts::of(&dst_meta),
+                        });
                         return;
                     }
                     Overwrite::Never => return self.skip(),
@@ -464,6 +500,18 @@ impl Operation {
 
     /// Extracts an entry from the archive to the destination, via a
     /// temporary file, with the permissions and date stored in the archive.
+    /// Size and date of an archive entry, from the archive's index.
+    fn archive_facts(&self, item: &Item) -> Facts {
+        let entry = self.archive.as_ref().and_then(|source| {
+            let rel = item.src.strip_prefix(&source.root).unwrap_or(&item.src);
+            source.entries.get(rel)
+        });
+        Facts {
+            size: entry.map_or(item.size, |e| e.size),
+            modified: entry.and_then(|e| e.modified),
+        }
+    }
+
     fn extract_item(&mut self, item: &Item) {
         let source = self.archive.as_mut().expect("archive source");
         let entry = item.src.strip_prefix(&source.root).unwrap_or(&item.src);
@@ -758,10 +806,16 @@ mod tests {
         let mut op = Operation::transfer(OpKind::Copy, sources, &b, None).unwrap();
 
         run(&mut op);
-        assert_eq!(op.conflict.as_deref(), Some(b.join("one.txt").as_path()));
+        assert_eq!(
+            op.conflict.as_ref().map(|c| c.dst.as_path()),
+            Some(b.join("one.txt").as_path())
+        );
         op.answer(Answer::No);
         run(&mut op);
-        assert_eq!(op.conflict.as_deref(), Some(b.join("two.txt").as_path()));
+        assert_eq!(
+            op.conflict.as_ref().map(|c| c.dst.as_path()),
+            Some(b.join("two.txt").as_path())
+        );
         op.answer(Answer::Yes);
         run(&mut op);
 
@@ -769,6 +823,45 @@ mod tests {
         assert_eq!((op.done_files, op.skipped), (1, 1));
         assert_eq!(fs::read_to_string(b.join("one.txt")).unwrap(), "old");
         assert_eq!(fs::read_to_string(b.join("two.txt")).unwrap(), "two!");
+    }
+
+    #[test]
+    fn conflict_tells_size_and_date_of_both_files() {
+        let (_tmp, a, b) = setup();
+        let day = |d: u64| SystemTime::UNIX_EPOCH + Duration::from_secs(d * 86_400);
+        File::options()
+            .write(true)
+            .open(a.join("one.txt"))
+            .unwrap()
+            .set_modified(day(100))
+            .unwrap();
+        fs::write(b.join("one.txt"), "older but bigger").unwrap();
+        File::options()
+            .write(true)
+            .open(b.join("one.txt"))
+            .unwrap()
+            .set_modified(day(50))
+            .unwrap();
+        let sources = vec![src(&a.join("one.txt"))];
+        let mut op = Operation::transfer(OpKind::Copy, sources, &b, None).unwrap();
+
+        run(&mut op);
+        let c = op.conflict.clone().expect("conflict");
+        assert_eq!(c.dst, b.join("one.txt"));
+        assert_eq!(
+            c.new,
+            Facts {
+                size: 3,
+                modified: Some(day(100))
+            }
+        );
+        assert_eq!(
+            c.existing,
+            Facts {
+                size: 16,
+                modified: Some(day(50))
+            }
+        );
     }
 
     #[test]

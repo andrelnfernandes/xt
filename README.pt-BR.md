@@ -543,8 +543,11 @@ maio); `<>` exclui. Entre os tipos vale "e": `*.txt,=TODAY,<s1000` são os
 `.txt` de hoje com menos de 1000 bytes.
 
 **Copy/Move:** o destino pode ser um diretório (relativo ao diretório do
-cursor da árvore, absoluto ou com `~`) ou, para um único arquivo, um novo nome. Se o destino já existe,
-o Xylem pergunta: Yes / No / All / Skip all. A cópia é feita num temporário que
+cursor da árvore, absoluto ou com `~`) ou, para um único arquivo, um novo
+nome. Uma pasta de destino que ainda não existe é criada depois que você
+confirma. Se o arquivo de destino já existe, o Xylem pergunta: Yes / No / All
+/ Skip all, mostrando o tamanho e a data dos dois arquivos e se o existente é
+mais novo ou mais antigo, maior ou menor. A cópia é feita num temporário que
 só substitui o destino no fim: cancelar (`Esc`) ou um erro nunca deixa um
 arquivo pela metade. Permissões e data de modificação são preservadas, e links
 simbólicos são copiados como links. Mover entre discos copia e depois apaga.
