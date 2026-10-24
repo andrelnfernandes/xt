@@ -25,7 +25,7 @@ use crate::config::{self, formats, theme};
 use crate::git::StatusCache;
 use crate::input::Command;
 use crate::model::tree::{FileEntry, FileKind};
-use crate::ops::Operation;
+use crate::ops::{Conflict, Facts, Operation};
 use crate::pane::{Count, FileDisplay, FileRef};
 use crate::platform;
 use crate::settings::{self, Settings};
@@ -1048,7 +1048,7 @@ fn prompt_lines(frame: &mut Frame, prompt: &app::Prompt, area: Rect) -> Vec<Line
 }
 
 /// Footer during Copy/Move/Delete: current file and progress bar,
-/// or the conflict question.
+/// or the conflict question with the size and date of both files.
 fn op_lines(op: &Operation) -> Vec<Line<'static>> {
     let bold = Style::new().add_modifier(Modifier::BOLD);
     let name = |p: &std::path::Path| {
@@ -1059,8 +1059,11 @@ fn op_lines(op: &Operation) -> Vec<Line<'static>> {
     };
 
     let first = match &op.conflict {
-        Some(dst) => Line::from(vec![
-            Span::styled(format!("{} already exists. Overwrite? ", name(dst)), bold),
+        Some(c) => Line::from(vec![
+            Span::styled(
+                format!("{} already exists. Overwrite? ", name(&c.dst)),
+                bold,
+            ),
             key("Y"),
             Span::raw("es  "),
             key("N"),
@@ -1090,6 +1093,10 @@ fn op_lines(op: &Operation) -> Vec<Line<'static>> {
         ]),
     };
 
+    if let Some(c) = &op.conflict {
+        return vec![first, conflict_facts(c)];
+    }
+
     const BAR: usize = 30;
     let fraction = if op.total_bytes == 0 {
         0.0
@@ -1111,6 +1118,40 @@ fn op_lines(op: &Operation) -> Vec<Line<'static>> {
         Span::raw(" cancel"),
     ]);
     vec![first, second]
+}
+
+/// "new: 3 bytes, 2026-10-12 13:02   existing: 16 bytes, 2026-09-30 08:15
+/// (older, larger)": what is being copied against what is already there.
+fn conflict_facts(c: &Conflict) -> Line<'static> {
+    use std::cmp::Ordering::*;
+    let facts = |f: &Facts| {
+        let date = f.modified.map_or_else(|| "date unknown".into(), fmt_time);
+        format!("{} bytes, {date}", fmt_num(f.size))
+    };
+    let when = match (c.existing.modified, c.new.modified) {
+        (Some(existing), Some(new)) => match existing.cmp(&new) {
+            Greater => "newer",
+            Less => "older",
+            Equal => "same date",
+        },
+        _ => "date unknown",
+    };
+    let size = match c.existing.size.cmp(&c.new.size) {
+        Greater => "larger",
+        Less => "smaller",
+        Equal => "same size",
+    };
+    Line::from(vec![
+        Span::raw(format!("{:9}", "")),
+        Span::styled("new: ", Style::new().fg(theme().dim)),
+        Span::raw(format!("{}   ", facts(&c.new))),
+        Span::styled("existing: ", Style::new().fg(theme().dim)),
+        Span::raw(format!("{} ", facts(&c.existing))),
+        Span::styled(
+            format!("({when}, {size})"),
+            Style::new().add_modifier(Modifier::BOLD),
+        ),
+    ])
 }
 
 /// XTree-style menu line: the key of each word is the first uppercase

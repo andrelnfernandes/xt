@@ -537,8 +537,11 @@ May); `<>` excludes. Between kinds, AND applies: `*.txt,=TODAY,<s1000` are the
 `.txt` files from today smaller than 1000 bytes.
 
 **Copy/Move:** the destination can be a directory (relative to the directory under the
-tree cursor, absolute, or with `~`) or, for a single file, a new name. If the destination already exists,
-Xylem asks: Yes / No / All / Skip all. The copy is made to a temporary file that
+tree cursor, absolute, or with `~`) or, for a single file, a new name. A
+destination folder that does not exist yet is created after you confirm. If
+the destination file already exists, Xylem asks: Yes / No / All / Skip all,
+showing the size and date of both files and whether the existing one is
+newer or older, larger or smaller. The copy is made to a temporary file that
 only replaces the destination at the end: canceling (`Esc`) or an error never leaves a
 half-written file. Permissions and modification time are preserved, and symbolic
 links are copied as links. Moving across disks copies and then deletes.
