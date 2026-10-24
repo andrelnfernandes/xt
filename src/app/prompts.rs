@@ -254,6 +254,13 @@ pub(crate) enum ConfirmKind {
         to_trash: bool,
     },
     RestoreTrash(Vec<PathBuf>),
+    /// Copy/Move to a folder that does not exist yet: create it first?
+    CreateDest {
+        kind: OpKind,
+        sources: Vec<Source>,
+        dest: PathBuf,
+        paths_from: Option<PathBuf>,
+    },
     /// `branch`: compares the whole branch, not just the directory.
     Compare {
         branch: bool,
@@ -589,14 +596,20 @@ impl App {
                 // Saves the absolute path: a relative one would change meaning
                 // next time, from another directory.
                 self.last_dest = Some(dest.to_string_lossy().into_owned());
-                let paths_from = paths.then(|| bases.get(mode));
-                let archive = self.archive.clone();
-                Operation::transfer(kind, sources, &dest, paths_from)
-                    .and_then(|op| match &archive {
-                        Some(path) => op.reading_archive(path),
-                        None => Ok(op),
-                    })
-                    .map(|op| self.start_op(op))
+                let paths_from = paths.then(|| bases.get(mode).to_path_buf());
+                if needs_new_dir(&dest, sources.len(), paths_from.is_some()) {
+                    let question = format!("Create the missing folder {}?", dest.display());
+                    let kind = ConfirmKind::CreateDest {
+                        kind,
+                        sources,
+                        dest,
+                        paths_from,
+                    };
+                    self.ask(kind, question);
+                    Ok(())
+                } else {
+                    self.start_transfer(kind, sources, &dest, paths_from.as_deref())
+                }
             }
             PromptKind::RenameFile(path) => self.rename_file(&path, &text),
             PromptKind::RenameDir(id) => self.rename_dir(id, &text),
@@ -643,9 +656,44 @@ impl App {
         }
     }
 
+    /// Starts a Copy/Move to `dest` (reading from the open archive, if any).
+    fn start_transfer(
+        &mut self,
+        kind: OpKind,
+        sources: Vec<Source>,
+        dest: &Path,
+        paths_from: Option<&Path>,
+    ) -> Result<(), String> {
+        let archive = self.archive.clone();
+        Operation::transfer(kind, sources, dest, paths_from)
+            .and_then(|op| match &archive {
+                Some(path) => op.reading_archive(path),
+                None => Ok(op),
+            })
+            .map(|op| self.start_op(op))
+    }
+
     pub(crate) fn confirmed(&mut self, kind: ConfirmKind, choice: char) {
         let yes = choice == 'y';
         match kind {
+            ConfirmKind::CreateDest {
+                kind,
+                sources,
+                dest,
+                paths_from,
+            } => {
+                if !yes {
+                    return;
+                }
+                let started = fs::create_dir_all(&dest)
+                    .map_err(|e| format!("Cannot create {}: {e}", dest.display()))
+                    .and_then(|()| {
+                        self.start_transfer(kind, sources, &dest, paths_from.as_deref())
+                    });
+                if let Err(e) = started {
+                    self.message = Some(e);
+                }
+            }
             ConfirmKind::Compare { branch } => match CompareMode::from_key(choice) {
                 // Not a compare mode: it was "Branch on/off", so ask again.
                 None => self.ask_compare(!branch),
@@ -882,4 +930,11 @@ impl App {
             }
         }
     }
+}
+
+/// A Copy/Move destination that does not exist and is not a new name for a
+/// single file (in an existing folder): it would have to be created first.
+fn needs_new_dir(dest: &Path, sources: usize, paths: bool) -> bool {
+    let new_name = !paths && sources == 1 && dest.parent().is_some_and(Path::is_dir);
+    fs::symlink_metadata(dest).is_err() && !new_name
 }

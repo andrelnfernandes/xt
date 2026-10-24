@@ -193,6 +193,46 @@ fn copy_tagged_files_to_directory() {
 }
 
 #[test]
+fn copy_to_missing_folder_asks_to_create_it() {
+    let (tmp, mut app) = sample();
+    press(&mut app, KeyCode::Enter);
+    ctrl(&mut app, 't');
+    ctrl(&mut app, 'c');
+    let dest = tmp.path().join("new/deeper");
+    answer_prompt(&mut app, dest.to_str().unwrap());
+    let question = &app.confirm.as_ref().expect("confirmation").question;
+    assert_eq!(
+        *question,
+        format!("Create the missing folder {}?", dest.display())
+    );
+    assert!(!dest.exists());
+
+    press(&mut app, KeyCode::Char('y'));
+    assert!(dest.join("a.rs").exists() && dest.join("b.txt").exists());
+    assert!(app.message.as_deref().unwrap().starts_with("Copied 2 of 2"));
+}
+
+#[test]
+fn declining_to_create_the_folder_copies_nothing() {
+    let (tmp, mut app) = sample();
+    press(&mut app, KeyCode::Enter);
+    press(&mut app, KeyCode::Char('c'));
+    // One file into a missing folder: not a new name, since the parent
+    // does not exist either.
+    let dest = tmp.path().join("nope/x.rs");
+    answer_prompt(&mut app, dest.to_str().unwrap());
+    assert!(app.confirm.is_some());
+    press(&mut app, KeyCode::Char('n'));
+    assert!(app.op.is_none() && !tmp.path().join("nope").exists());
+
+    // A new name in an existing folder is still a plain copy.
+    press(&mut app, KeyCode::Char('c'));
+    answer_prompt(&mut app, tmp.path().join("copy.rs").to_str().unwrap());
+    assert!(app.confirm.is_none());
+    assert!(tmp.path().join("copy.rs").exists());
+}
+
+#[test]
 fn move_with_conflict_prompt() {
     let (tmp, mut app) = sample();
     write(tmp.path().join("sub/b.txt"), "old").unwrap();
