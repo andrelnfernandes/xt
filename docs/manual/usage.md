@@ -13,8 +13,11 @@ folder; folder by folder, you get down to what fills the disk.
 ```
 
 - **The bar** is drawn against the largest item of the directory, so the
-  differences between the items show; **the percentage** is the item's share
-  of the directory.
+  differences between the items show, on a track as wide as the largest;
+  **the percentage** is the item's share of the directory. The color says how
+  much that share is: up to 10% (green, in most themes), up to 40% (amber),
+  more (red). Each theme has its own (`bar_low`, `bar_mid` and `bar_high` in
+  `[colors]`).
 - **Folders and files are mixed**, by size: a single large file (an old
   backup, an ISO image) shows among the folders. Folders start with `/`.
 - **The line at the bottom** has the totals of the directory: on the disk,

@@ -72,7 +72,8 @@ espaço que ocupam (aqui no tema nord):
 **Temas**: além do azul clássico, `dark`, `light`, `mono`, `norton`,
 `solarized`, `gruvbox` (abaixo), `nord` e três que combinam com os desktops de
 hoje: `slate` (no estilo do Windows Terminal), `graphite` e `daylight` (macOS
-nos modos escuro e claro):
+nos modos escuro e claro), além do `vivid`, com cores fortes para
+apresentações:
 
 ![O tema gruvbox](docs/screenshots/theme-gruvbox.png)
 

@@ -70,7 +70,8 @@ space they take (here in the nord theme):
 **Themes**: besides the classic blue, `dark`, `light`, `mono`, `norton`,
 `solarized`, `gruvbox` (below), `nord`, and three that look at home on today's
 desktops: `slate` (in the style of Windows Terminal), `graphite` and `daylight`
-(macOS in dark and light mode):
+(macOS in dark and light mode), and `vivid`, with strong colors for
+presentations:
 
 ![The gruvbox theme](docs/screenshots/theme-gruvbox.png)
 
