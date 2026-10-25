@@ -32,6 +32,9 @@ pub struct DiskSpace {
 /// A mounted file system (Linux) or a drive (Windows).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Mount {
+    /// What is mounted: the device, or what a network or FUSE file system
+    /// serves (for rclone, the remote: `gdrive:`). Empty on Windows.
+    pub source: String,
     pub point: PathBuf,
     pub fstype: String,
 }

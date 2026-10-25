@@ -19,6 +19,7 @@ mod ops;
 mod pane;
 mod picker;
 mod platform;
+mod rclone;
 mod remote;
 mod search;
 mod settings;

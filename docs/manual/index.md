@@ -37,6 +37,7 @@ tree or the file window, the help for that window. In the help, **Tab** and
 
 - [The built-in terminal](terminal.md)
 - [Remote machines (SSH)](remote.md): browse another machine, its terminal
+- [Cloud storage (rclone)](cloud.md): Google Drive, S3 and others
 - [Git](git.md)
 - [Bookmarks](bookmarks.md)
 
