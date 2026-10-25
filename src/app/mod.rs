@@ -16,6 +16,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, M
 
 use crate::archive::{self, ArchiveItem, ArchiveJob};
 use crate::config::{self, Choice, Config, CopyPaths, DateFormat, Options, PruneConfirm, Theme};
+use crate::editors::Editors;
 use crate::git;
 use crate::highlight;
 use crate::info;
@@ -146,6 +147,8 @@ pub struct App {
     /// Files or directories trashed during the session, for Oops restoration.
     pub last_trashed: Vec<PathBuf>,
     pub keymap: Keymap,
+    /// The `[editors]` table: which editor E uses for each file.
+    pub editors: Editors,
     pub should_quit: bool,
     /// Alt+Q: the directory for the shell to go to on exit.
     pub quit_dir: Option<PathBuf>,
@@ -229,6 +232,7 @@ impl App {
             pruning: None,
             last_trashed: Vec::new(),
             keymap: Keymap::default(),
+            editors: Editors::default(),
             should_quit: false,
             quit_dir: None,
             held: None,
@@ -260,7 +264,9 @@ impl App {
     pub fn apply_config(&mut self, config: &Config) -> Result<(), String> {
         let keymap = Keymap::from_config(&config.keys, &config.options)?;
         let theme = Theme::from_config(config)?;
+        let editors = Editors::from_config(&config.editors)?;
         self.keymap = keymap;
+        self.editors = editors;
         highlight::set_xt_theme(&config.theme, theme.background);
         highlight::set_enabled(config.options.syntax_highlight);
         config::set_theme(theme);

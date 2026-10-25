@@ -492,7 +492,10 @@ impl App {
                 if let Some(f) = self.selected_file() {
                     let file = self.file_path(f);
                     let cwd = self.current_path();
-                    self.external = Some(shell::editor(&file, &cwd, &self.options.editor));
+                    match self.editor_for(&file, &cwd) {
+                        Ok(external) => self.external = Some(external),
+                        Err(e) => self.message = Some(e),
+                    }
                 }
             }
             Command::Terminal => self.show_terminal(None),
@@ -619,6 +622,23 @@ impl App {
                 Focus::Tree => self.apply_tree(cmd),
                 Focus::Files => self.apply_files(cmd),
             },
+        }
+    }
+}
+
+impl App {
+    /// The editor E opens `file` with, from `[editors]`; a binary file with
+    /// none there gets an explanation instead of the text editor.
+    pub(crate) fn editor_for(&self, file: &Path, cwd: &Path) -> Result<shell::External, String> {
+        use crate::editors;
+        let name = file.file_name().unwrap_or(file.as_os_str());
+        match self.editors.choose(name, || editors::is_binary(file)) {
+            editors::Choice::Command(command) => Ok(shell::editor_command(command, file, cwd)),
+            editors::Choice::Usual => Ok(shell::editor(file, cwd, &self.options.editor)),
+            editors::Choice::None => Err(
+                "Binary file: no editor for it (set one in [editors]). O opens it in its own program"
+                    .into(),
+            ),
         }
     }
 }
