@@ -77,6 +77,9 @@ impl App {
         if self.sticky == MenuMode::Git {
             return "git";
         }
+        if self.usage.is_some() {
+            return "usage";
+        }
         if self.remote.is_some() || self.connecting.is_some() {
             return "remote";
         }

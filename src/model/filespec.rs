@@ -446,6 +446,8 @@ mod tests {
                 let entry = FileEntry {
                     name: name.into(),
                     size,
+                    disk: size,
+                    link: None,
                     modified: Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs)),
                     mode: 0o644,
                     kind: crate::model::tree::FileKind::File,
@@ -535,6 +537,8 @@ mod tests {
         FileEntry {
             name: name.into(),
             size,
+            disk: size,
+            link: None,
             modified: Some(local.into()),
             mode: 0o644,
             kind: crate::model::tree::FileKind::File,
