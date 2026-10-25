@@ -1343,6 +1343,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                         "Prune",
                         "Rename",
                         "Sort",
+                        "usage (W)",
                         "eXecute",
                     ]
                 } else {
@@ -1358,6 +1359,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                         "Open terminal",
                         "Rename",
                         "Sort",
+                        "usage (W)",
                         "eXecute",
                     ]
                 },
@@ -2253,6 +2255,8 @@ mod tests {
         app.held = None;
         app.sticky = MenuMode::Alt;
         assert!(footer(&mut app).starts_with("ALT "));
+        // Alt+W has no letter of its own in a word: it says so.
+        assert!(footer(&mut app).contains("usage (W)"));
     }
 
     #[test]
