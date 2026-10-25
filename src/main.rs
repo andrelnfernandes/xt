@@ -56,9 +56,66 @@ Options:
   --cwd-file FILE    on Alt+Q (quit and change directory), write the current
                      directory to FILE, for a shell function to cd into it
   --default-config   print a commented configuration file
-  --man              print the manual page (for `man`)
+  --man              show the manual page; redirected, print its source
+                     (for `xy --man > ~/.local/share/man/man1/xy.1`)
   -h, --help         show this help
   -V, --version      show the version";
+
+/// In a terminal, the formatted page through `man` (or groff and a pager);
+/// redirected, or without a formatter (Windows), the roff source.
+fn show_man_page(page: &str) {
+    use std::io::IsTerminal;
+    use std::process::{Command, Stdio};
+
+    /// Runs `cmd` with `input` on its stdin; whether it finished well.
+    fn feed(cmd: &mut Command, input: &[u8]) -> bool {
+        let Ok(mut child) = cmd.stdin(Stdio::piped()).spawn() else {
+            return false;
+        };
+        // A pager quit before the end closes the pipe: not a failure.
+        let _ = child.stdin.take().map(|mut stdin| stdin.write_all(input));
+        child.wait().is_ok_and(|status| status.success())
+    }
+
+    if stdout().is_terminal() {
+        // man-db reads the page from stdin with `-l -`.
+        if feed(
+            Command::new("man").args(["-l", "-"]).stderr(Stdio::null()),
+            page.as_bytes(),
+        ) {
+            return;
+        }
+        let formatted = Command::new("groff")
+            .args(["-man", "-Tutf8"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .and_then(|mut child| {
+                if let Some(mut stdin) = child.stdin.take() {
+                    stdin.write_all(page.as_bytes())?;
+                }
+                child.wait_with_output()
+            });
+        if let Ok(output) = formatted
+            && output.status.success()
+        {
+            let pager = std::env::var("PAGER")
+                .ok()
+                .filter(|pager| !pager.trim().is_empty())
+                .unwrap_or_else(|| "less -R".into());
+            let mut words = pager.split_whitespace();
+            let shown = words
+                .next()
+                .is_some_and(|program| feed(Command::new(program).args(words), &output.stdout));
+            if !shown {
+                let _ = stdout().write_all(&output.stdout);
+            }
+            return;
+        }
+    }
+    print!("{page}");
+}
 
 fn main() -> anyhow::Result<()> {
     // Run by ssh as SSH_ASKPASS for a connection Xylem started: the question
@@ -98,7 +155,7 @@ fn main() -> anyhow::Result<()> {
                 return Ok(());
             }
             Some("--man") => {
-                print!("{}", help::man_page());
+                show_man_page(&help::man_page());
                 return Ok(());
             }
             Some(s) if s.starts_with('-') => bail!("unknown option {s}\n\n{USAGE}"),
