@@ -64,6 +64,11 @@ Alt+O digita os arquivos marcados no prompt:
 
 ![Lista de arquivos com as letras de status do Git e o menu GIT no rodapé](docs/screenshots/git-menu.png)
 
+**Usage** (Alt+W): para onde vai o espaço, pastas e arquivos juntos pelo
+espaço que ocupam (aqui no tema nord):
+
+![A visão Usage de uma pasta pessoal: um arquivo de backup antigo no topo, depois as pastas de projetos, vídeos e downloads](docs/screenshots/usage-nord.png)
+
 **Temas**: além do azul clássico, `dark`, `light`, `mono`, `norton`,
 `solarized`, `gruvbox` (abaixo), `nord` e três que combinam com os desktops de
 hoje: `slate` (no estilo do Windows Terminal), `graphite` e `daylight` (macOS
@@ -140,6 +145,10 @@ mkdir -p ~/.local/share/man/man1 && xy --man > ~/.local/share/man/man1/xy.1
 - **Olhar dentro:** um visualizador de texto e hex com busca e cores de
   sintaxe, Autoview ao lado da lista, arquivos ZIP, 7z e TAR abertos como
   diretórios, e modos de exibição que mostram o dono ou o que cada arquivo é.
+- **Para onde vai o espaço:** a visão Usage (Alt+W) lista as pastas e os
+  arquivos de um ramo pelo espaço que ocupam, do maior para o menor, até o
+  que enche o disco; o Alt+K Percent mostra a parte de cada pasta na própria
+  árvore.
 - **Além do XTree:** um terminal embutido cuja árvore acompanha o shell,
   máquinas remotas via SSH (navegar e copiar delas, com o terminal de lá),
   Google Drive, S3 e outros armazenamentos na nuvem via rclone, um menu Git
