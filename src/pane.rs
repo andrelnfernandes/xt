@@ -92,18 +92,22 @@ pub enum KbyteShow {
     None,
     Size,
     Count,
+    /// Share of the directory above, with a bar against the largest of
+    /// its siblings. Always sums whole branches.
+    Percent,
 }
 
 impl Kbyte {
     /// Ex.: "size of branch, tagged".
     pub fn describe(&self) -> String {
+        let tagged = if self.tagged_only { ", tagged" } else { "" };
         let what = match self.show {
             KbyteShow::None => return String::new(),
             KbyteShow::Size => "K",
             KbyteShow::Count => "files",
+            KbyteShow::Percent => return format!("% of parent{tagged}"),
         };
         let scope = if self.branch { "branch" } else { "dir" };
-        let tagged = if self.tagged_only { ", tagged" } else { "" };
         format!("{what} per {scope}{tagged}")
     }
 }
