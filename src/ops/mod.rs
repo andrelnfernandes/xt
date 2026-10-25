@@ -497,7 +497,7 @@ impl Operation {
         if ft.is_symlink() {
             // Copies the link, not the file it points to.
             let result = fs::read_link(&item.src).and_then(|target| {
-                let tmp = tmp_path(&item.dst);
+                let tmp = platform::tmp_path(&item.dst);
                 let is_dir = fs::metadata(&item.src).is_ok_and(|m| m.is_dir());
                 platform::symlink(&target, &tmp, is_dir)?;
                 fs::rename(&tmp, &item.dst)
@@ -511,9 +511,8 @@ impl Operation {
                 Err(e) => self.fail(&item.src, e),
             }
         } else if ft.is_file() {
-            let tmp = tmp_path(&item.dst);
             let opened = File::open(&item.src).and_then(|reader| {
-                let writer = File::create(&tmp)?;
+                let (writer, tmp) = platform::create_tmp(&item.dst)?;
                 Ok(Transfer {
                     reader: Box::new(reader),
                     writer,
@@ -554,7 +553,7 @@ impl Operation {
         };
         if attrs.is_symlink() {
             let result = remote.read_link(&item.src).and_then(|target| {
-                let tmp = tmp_path(&item.dst);
+                let tmp = platform::tmp_path(&item.dst);
                 platform::symlink(Path::new(&target), &tmp, false)?;
                 fs::rename(&tmp, &item.dst)
             });
@@ -570,13 +569,13 @@ impl Operation {
         if !attrs.is_file() {
             return self.fail(&item.src, "special files are not supported");
         }
-        let tmp = tmp_path(&item.dst);
         let opened = remote.open(&item.src).and_then(|reader| {
+            let (writer, tmp) = platform::create_tmp(&item.dst)?;
             Ok(Transfer {
                 reader: Box::new(reader),
-                writer: File::create(&tmp)?,
+                writer,
                 tmp,
-                mode: attrs.permissions.unwrap_or(0o644) & 0o7777,
+                mode: foreign_mode(attrs.permissions.unwrap_or(0o644)),
                 modified: attrs
                     .mtime
                     .map(|s| SystemTime::UNIX_EPOCH + Duration::from_secs(s.into())),
@@ -604,12 +603,12 @@ impl Operation {
         let source = self.archive.as_mut().expect("archive source");
         let entry = item.src.strip_prefix(&source.root).unwrap_or(&item.src);
         let info = source.entries.get(entry).cloned();
-        let tmp = tmp_path(&item.dst);
+        let tmp = platform::tmp_path(&item.dst);
         let result = (|| {
-            let mut file = File::create(&tmp)?;
+            let (mut file, _) = platform::create_tmp(&item.dst)?;
             source.reader.extract(entry, &mut file, u64::MAX)?;
             if let Some(info) = &info {
-                platform::set_file_mode(&file, info.mode)?;
+                platform::set_file_mode(&file, foreign_mode(info.mode))?;
                 if let Some(t) = info.modified {
                     file.set_modified(t)?;
                 }
@@ -721,11 +720,10 @@ impl Operation {
     }
 }
 
-/// Hidden temporary file, in the same directory as the destination (so the final
-/// rename is atomic).
-fn tmp_path(dst: &Path) -> PathBuf {
-    let name = dst.file_name().unwrap_or_default().to_string_lossy();
-    dst.with_file_name(format!(".{name}.xy-{}.tmp", std::process::id()))
+/// Permissions for a file that came from an archive or another machine:
+/// without setuid, setgid and sticky, as `tar` does for a normal user.
+fn foreign_mode(mode: u32) -> u32 {
+    mode & 0o777
 }
 
 /// Interprets the typed destination: `~` becomes home, relative paths
@@ -1134,6 +1132,34 @@ mod tests {
         // Archives are read-only.
         let moving = Operation::transfer(OpKind::Move, vec![virt("README")], &b, None).unwrap();
         assert!(moving.reading_archive(&zip).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn extracted_files_lose_setuid_and_setgid() {
+        let (tmp, _a, b) = setup();
+        let tar = tmp.path().join("p.tar");
+        let mut builder = tar::Builder::new(File::create(&tar).unwrap());
+        let mut header = tar::Header::new_gnu();
+        header.set_size(3);
+        header.set_mode(0o6755);
+        header.set_cksum();
+        builder
+            .append_data(&mut header, "tool", &b"#!\n"[..])
+            .unwrap();
+        builder.finish().unwrap();
+        let source = Source {
+            path: tar.join("tool"),
+            size: 0,
+        };
+        let mut op = Operation::transfer(OpKind::Copy, vec![source], &b, None)
+            .unwrap()
+            .reading_archive(&tar)
+            .unwrap();
+        run(&mut op);
+        assert_eq!(op.done_files, 1, "{:?}", op.errors);
+        let mode = fs::metadata(b.join("tool")).unwrap().permissions().mode();
+        assert_eq!(mode & 0o7777, 0o755);
     }
 
     #[test]
