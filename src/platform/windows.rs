@@ -284,6 +284,11 @@ pub fn mounts() -> Vec<Mount> {
         .collect()
 }
 
+/// Owners on Windows would take the security APIs: not shown.
+pub fn owner(_path: &Path) -> Option<String> {
+    None
+}
+
 pub fn home_dir() -> Option<PathBuf> {
     env_dir("USERPROFILE")
 }

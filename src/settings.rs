@@ -131,6 +131,8 @@ impl Opt {
                 "names" => "Names in columns".into(),
                 "names_size" => "Names and sizes in columns".into(),
                 "details" => "Details".into(),
+                "owner" => "Owner and group".into(),
+                "type" => "File type".into(),
                 _ => "Long names".into(),
             },
             Opt::Sort => o.sort.as_str().into(),
