@@ -32,6 +32,7 @@ pub const TOPICS: &[(&str, &str)] = &[
     ("info", include_str!("../docs/manual/info.md")),
     ("terminal", include_str!("../docs/manual/terminal.md")),
     ("remote", include_str!("../docs/manual/remote.md")),
+    ("cloud", include_str!("../docs/manual/cloud.md")),
     ("git", include_str!("../docs/manual/git.md")),
     ("bookmarks", include_str!("../docs/manual/bookmarks.md")),
     (

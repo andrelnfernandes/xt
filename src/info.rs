@@ -124,9 +124,12 @@ pub fn avail() -> String {
         let free = disk.available;
         let used = disk.total.saturating_sub(disk.free);
         let pct = (used * 100).checked_div(used + free).unwrap_or(0);
+        let remote = crate::rclone::of(&mount)
+            .map(|r| format!("  {}", r.describe()))
+            .unwrap_or_default();
         let _ = writeln!(
             out,
-            "  {:>15} {:>15} {:>15} {:>4}%  {:<10} {}",
+            "  {:>15} {:>15} {:>15} {:>4}%  {:<10} {}{remote}",
             group(disk.total),
             group(used),
             group(free),
@@ -258,6 +261,9 @@ pub fn disk(path: &Path) -> String {
                 format!(" ({})", m.fstype)
             };
             row(&mut out, "Disk", format!("{}{fstype}", m.point.display()));
+            if let Some(remote) = crate::rclone::of(&m) {
+                row(&mut out, "Remote", remote.describe());
+            }
             row(&mut out, "", usage);
         }
         None => row(&mut out, "Disk", usage),

@@ -278,6 +278,7 @@ pub fn mounts() -> Vec<Mount> {
     (0..26)
         .filter(|i| mask & (1 << i) != 0)
         .map(|i| Mount {
+            source: String::new(),
             point: PathBuf::from(format!("{}:\\", char::from(b'A' + i as u8))),
             fstype: String::new(),
         })
