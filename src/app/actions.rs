@@ -360,32 +360,50 @@ impl App {
     }
 
     /// `O`: opens the file (or the tagged files) in the system's default program.
-    /// Inside an archive, extracts first to a temporary folder
-    /// (deleted when Xylem exits).
+    /// Inside an archive or on a remote machine, copies them first to the
+    /// temporary folder (deleted when Xylem exits), in steps like any copy
+    /// (Esc stops it), and opens them at the end.
     pub(crate) fn open_with(&mut self, tagged: bool) {
         let Some(sources) = self.sources_or_warn(tagged) else {
             return;
         };
-        let mut errors = Vec::new();
-        let mut opened = 0;
-        for source in sources {
-            let path = match (&self.remote, &self.archive) {
-                (Some(remote), _) => match download_for_opening(remote, &source.path) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        errors.push(format!("{}: {e}", source.path.display()));
-                        continue;
-                    }
-                },
-                (None, Some(root)) => match extract_for_opening(root, &source.path) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        errors.push(format!("{}: {e}", source.path.display()));
-                        continue;
-                    }
-                },
-                (None, None) => source.path,
+        if self.remote.is_none() && self.archive.is_none() {
+            let paths = sources.into_iter().map(|s| s.path).collect();
+            return self.open_paths(paths, &[]);
+        }
+        let prepared = (|| {
+            let dir = platform::run_dir().map_err(|e| e.to_string())?;
+            let copies: Vec<PathBuf> = sources
+                .iter()
+                .map(|s| dir.join(s.path.file_name().unwrap_or_default()))
+                .collect();
+            // A fresh copy, without asking to overwrite the one opened before.
+            for copy in &copies {
+                let _ = fs::remove_file(copy);
+            }
+            let op = Operation::transfer(OpKind::Copy, sources, &dir, None)?;
+            let op = match (&self.remote, &self.archive) {
+                (Some(remote), _) => op.reading_remote(remote.clone())?,
+                (None, Some(root)) => op.reading_archive(root)?,
+                (None, None) => op,
             };
+            Ok::<_, String>((op, copies))
+        })();
+        match prepared {
+            Ok((op, copies)) => {
+                self.open_after = Some(copies);
+                self.start_op(op);
+            }
+            Err(e) => self.message = Some(format!("Cannot open: {e}")),
+        }
+    }
+
+    /// Opens `paths` in the default program; `errors` come from before (the
+    /// copy that brought them here).
+    pub(crate) fn open_paths(&mut self, paths: Vec<PathBuf>, errors: &[String]) {
+        let mut errors = errors.to_vec();
+        let mut opened = 0;
+        for path in paths {
             match shell::open_detached(&path, &self.options.opener) {
                 Ok(()) => opened += 1,
                 Err(e) => errors.push(format!("{}: {e}", path.display())),
@@ -762,29 +780,6 @@ impl App {
             self.message = Some(format!("Copied to clipboard: {text}"));
         }
     }
-}
-
-/// Extracts an entry of `archive` (virtual path `entry`) to the
-/// temporary folder, so an external program can open it.
-pub(crate) fn extract_for_opening(archive: &Path, entry: &Path) -> std::io::Result<PathBuf> {
-    let rel = entry.strip_prefix(archive).unwrap_or(entry);
-    let dir = platform::run_dir()?;
-    let out = dir.join(rel.file_name().unwrap_or_default());
-    let mut file = fs::File::create(&out)?;
-    archive::Reader::open(archive)?.extract(rel, &mut file, u64::MAX)?;
-    Ok(out)
-}
-
-/// Downloads a remote file to the temporary folder, so a local program can
-/// open it.
-pub(crate) fn download_for_opening(
-    remote: &std::sync::Arc<crate::remote::Remote>,
-    path: &Path,
-) -> std::io::Result<PathBuf> {
-    let out = platform::run_dir()?.join(path.file_name().unwrap_or_default());
-    let mut file = fs::File::create(&out)?;
-    std::io::copy(&mut remote.open(path)?, &mut file)?;
-    Ok(out)
 }
 
 /// Alt+I on a remote machine: what SFTP tells about `path`.

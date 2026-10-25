@@ -1517,6 +1517,13 @@ fn fake_opener(tmp: &Path) -> (String, PathBuf) {
     (format!("cp -t {}", out.display()), out)
 }
 
+/// Runs the ongoing operation to the end, as the main loop would.
+fn finish_op(app: &mut App) {
+    while app.op.is_some() {
+        app.tick(Duration::from_millis(30));
+    }
+}
+
 fn wait_for(path: &Path) -> bool {
     (0..100).any(|_| {
         std::thread::sleep(Duration::from_millis(20));
@@ -1557,6 +1564,7 @@ fn o_inside_archive_extracts_first() {
     alt_f5(&mut app);
     press(&mut app, KeyCode::Enter);
     press(&mut app, KeyCode::Char('o'));
+    finish_op(&mut app);
     assert!(wait_for_text(&out.join("README"), "leia-me"));
     // `main` removes the run's folder on exit; here, the test does.
     let run = platform::run_dir_path(&platform::cache_dir().unwrap());
@@ -2487,6 +2495,27 @@ fn remote_sample() -> Option<(tempfile::TempDir, App)> {
     let remote = crate::remote::for_tests(tmp.path())?;
     app.panes[0] = Pane::from_remote(remote);
     Some((tmp, app))
+}
+
+#[cfg(unix)]
+#[test]
+fn o_on_a_remote_machine_downloads_first() {
+    let Some((tmp, mut app)) = remote_sample() else {
+        return;
+    };
+    let (opener, out) = fake_opener(tmp.path());
+    app.options.opener = opener;
+    press(&mut app, KeyCode::Enter);
+    let i = names(&app).iter().position(|n| n == "b.txt").unwrap();
+    app.file_state.select(Some(i));
+    press(&mut app, KeyCode::Char('o'));
+    finish_op(&mut app);
+    assert_eq!(app.message.as_deref(), Some("Opened 1 file(s)"));
+    let text = fs::read_to_string(tmp.path().join("b.txt")).unwrap();
+    assert!(wait_for_text(&out.join("b.txt"), &text));
+    let run = platform::run_dir_path(&platform::cache_dir().unwrap());
+    let _ = fs::remove_file(run.join("b.txt"));
+    let _ = fs::remove_dir(run);
 }
 
 #[cfg(unix)]
