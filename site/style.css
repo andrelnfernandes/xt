@@ -316,6 +316,8 @@ dialog.lightbox img { border-radius: var(--radius); cursor: zoom-out; }
 
 .author p { color: var(--muted); max-width: 65ch; }
 
+.author .role { margin: -4px 0 12px; color: var(--text); font-weight: 600; }
+
 .buttons.start { justify-content: flex-start; margin-top: 18px; }
 
 @media (max-width: 640px) {
