@@ -134,6 +134,8 @@ pub struct Pane {
     pub archive: Option<PathBuf>,
     /// ...and the window as it was before opening it, to go back with Esc.
     pub outer: Option<Box<Pane>>,
+    /// A window on a remote machine: its files come through SFTP.
+    pub remote: Option<std::sync::Arc<crate::remote::Remote>>,
     /// Type display (Alt+F): what each file is, with the size and date it
     /// had when read, so a changed file is read again.
     pub types: HashMap<PathBuf, (u64, Option<SystemTime>, String)>,
@@ -171,6 +173,14 @@ impl Pane {
         Ok(pane)
     }
 
+    /// Window on a remote machine, starting at its root.
+    pub fn from_remote(remote: std::sync::Arc<crate::remote::Remote>) -> Self {
+        let lister: std::sync::Arc<dyn crate::model::tree::Lister> = remote.clone();
+        let mut pane = Self::with_tree(Tree::with_lister(remote.root.clone(), lister));
+        pane.remote = Some(remote);
+        pane
+    }
+
     fn with_tree(tree: Tree) -> Self {
         let rows = tree.visible_rows();
         let mut pane = Pane {
@@ -190,6 +200,7 @@ impl Pane {
             file_page: 1,
             archive: None,
             outer: None,
+            remote: None,
             types: HashMap::new(),
         };
         pane.refresh_files();

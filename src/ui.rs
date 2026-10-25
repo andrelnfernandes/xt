@@ -149,6 +149,8 @@ fn draw_pane(
     } else if let Some(archive) = &pane.archive {
         let name = archive.file_name().unwrap_or_default().to_string_lossy();
         format!(" Archive: {name} (read-only) ")
+    } else if let Some(remote) = &pane.remote {
+        format!(" Remote: {} (read-only) ", remote.address.destination())
     } else {
         " Tree ".to_string()
     };
@@ -312,7 +314,9 @@ fn draw_files(
     area: Rect,
     git: Option<&StatusCache>,
 ) {
-    let git = git.filter(|g| pane.archive.is_none() && g.in_repo(&pane.current_path()));
+    let git = git.filter(|g| {
+        pane.archive.is_none() && pane.remote.is_none() && g.in_repo(&pane.current_path())
+    });
     // Status letters of a file in the repository ("  " if unchanged).
     let marker =
         |pane: &Pane, f: FileRef| git.map(|g| g.marker(&pane.file_path(f)).unwrap_or(*b"  "));
@@ -522,9 +526,10 @@ fn file_detail(pane: &mut Pane, f: FileRef) -> Detail {
     match pane.display {
         FileDisplay::LongNames => Detail::NamesOnly,
         FileDisplay::Owner => {
-            let owner = match pane.archive {
-                Some(_) => None,
-                None => platform::owner(&pane.file_path(f)),
+            let owner = match (&pane.remote, &pane.archive) {
+                (Some(remote), _) => remote.owner(&pane.file_path(f)),
+                (None, Some(_)) => None,
+                (None, None) => platform::owner(&pane.file_path(f)),
             };
             Detail::Owner(owner.unwrap_or_else(|| "-".into()))
         }
@@ -537,7 +542,16 @@ fn file_detail(pane: &mut Pane, f: FileRef) -> Detail {
             {
                 return Detail::Type(what.clone());
             }
-            let what = filetype::describe(&path, kind, size, pane.archive.is_none());
+            let what = match &pane.remote {
+                Some(remote) => filetype::describe_with(
+                    &path,
+                    kind,
+                    size,
+                    || remote.read(&path, filetype::HEAD_BYTES).ok(),
+                    || remote.read_link(&path).ok(),
+                ),
+                None => filetype::describe(&path, kind, size, pane.archive.is_none()),
+            };
             if pane.types.len() > 10_000 {
                 pane.types.clear();
             }
@@ -736,23 +750,34 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
         prompt_lines(frame, prompt, area)
     } else if app.terminal_focus {
         let key_for = |cmd| app.keymap.key_for(cmd).unwrap_or_default();
-        vec![
-            menu_line(
-                "TERMINAL",
-                &[
-                    (&key_for(Command::Terminal), "back to Xylem"),
-                    (
-                        &key_for(Command::TerminalFull),
-                        if app.terminal_full {
-                            "panel"
-                        } else {
-                            "full screen"
-                        },
-                    ),
-                    (&key_for(Command::TerminalTagged), "type the tagged files"),
-                    ("Shift+PgUp/PgDn", "scroll back"),
-                ],
+        let remote = app.terminal.as_ref().is_some_and(term::Terminal::is_remote);
+        let (back, full, tagged) = (
+            key_for(Command::Terminal),
+            key_for(Command::TerminalFull),
+            key_for(Command::TerminalTagged),
+        );
+        let mut keys = vec![
+            (back.as_str(), "back to Xylem"),
+            (
+                full.as_str(),
+                if app.terminal_full {
+                    "panel"
+                } else {
+                    "full screen"
+                },
             ),
+        ];
+        if !remote {
+            keys.push((tagged.as_str(), "type the tagged files"));
+        }
+        keys.push(("Shift+PgUp/PgDn", "scroll back"));
+        let about = if remote {
+            "a shell on the remote machine; the tree follows its cd if the shell reports it (OSC 7); exit ends the session"
+        } else {
+            "the tree follows the shell's cd; $XY_TAGGED has the tagged files; exit closes the shell"
+        };
+        vec![
+            menu_line("TERMINAL", &keys),
             match &app.message {
                 // E.g. the shell went outside the tree.
                 Some(msg) => Line::from(Span::styled(
@@ -761,13 +786,7 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
                         .fg(theme().message)
                         .add_modifier(Modifier::BOLD),
                 )),
-                None => menu_line(
-                    "",
-                    &[(
-                        "",
-                        "the tree follows the shell's cd; $XY_TAGGED has the tagged files; exit closes the shell",
-                    )],
-                ),
+                None => menu_line("", &[("", about)]),
             },
         ]
     } else if let Some(job) = &app.archive_job {
@@ -841,7 +860,11 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
         ]
     } else {
         let (first, mut second) = idle_menu(app);
-        if app.options.git && app.menu_mode() == MenuMode::Normal && app.archive.is_none() {
+        if app.options.git
+            && app.menu_mode() == MenuMode::Normal
+            && app.archive.is_none()
+            && app.remote.is_none()
+        {
             second.spans.push(key("Ctrl+G"));
             second.spans.push(Span::raw(" git   "));
         }
@@ -887,6 +910,26 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                         },
                     ),
                     ("Esc", "cancel"),
+                ],
+            ),
+        ),
+        MenuMode::Normal if app.remote.is_some() => (
+            menu_words(
+                "REMOTE",
+                &[
+                    "Branch", "Copy", "Filespec", "Invert", "Log", "Open", "Showall", "Tag",
+                    "Untag", "View", "Yank", "Quit",
+                ],
+            ),
+            menu_line(
+                "",
+                &[
+                    (help_key.as_str(), "help"),
+                    ("Enter", if tree { "files" } else { "tree" }),
+                    ("F3", "reread"),
+                    ("Alt+X", "terminal there"),
+                    ("F8", "split with this machine"),
+                    ("F9", "menus"),
                 ],
             ),
         ),
@@ -1110,7 +1153,11 @@ fn prompt_lines(frame: &mut Frame, prompt: &app::Prompt, area: Rect) -> Vec<Line
     vec![
         Line::from(vec![
             Span::styled(prompt.label.clone(), bold),
-            Span::raw(prompt.input.text.clone()),
+            Span::raw(if prompt.is_secret() {
+                "•".repeat(prompt.input.text.chars().count())
+            } else {
+                prompt.input.text.clone()
+            }),
         ]),
         menu_line("", &help),
     ]

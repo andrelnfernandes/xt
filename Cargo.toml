@@ -44,7 +44,7 @@ vt100 = "0.16.2"
 zip = { version = "9.0.2", default-features = false, features = ["deflate"] }
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.31.3", features = ["fs", "net", "user"] }
+nix = { version = "0.31.3", features = ["fs", "net", "process", "user"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = [

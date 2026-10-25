@@ -80,6 +80,10 @@ impl App {
         size: u64,
         limit: u64,
     ) -> std::io::Result<Viewer> {
+        if let Some(remote) = &self.remote {
+            let data = remote.read(&path, limit)?;
+            return Ok(Viewer::from_bytes(path, size, data));
+        }
         match &self.archive {
             Some(root) => {
                 let entry = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
@@ -94,6 +98,12 @@ impl App {
     /// Reads a file's contents for the search: from disk, or from inside the
     /// open ZIP/TAR.
     pub(crate) fn content_opener(&self) -> search::Opener {
+        if let Some(remote) = self.remote.clone() {
+            return Box::new(move |path: &Path| {
+                let file = remote.open(path)?;
+                Ok(Box::new(std::io::BufReader::new(file)) as Box<dyn BufRead>)
+            });
+        }
         match self.archive.clone() {
             Some(root) => Box::new(move |path: &Path| {
                 let entry = path.strip_prefix(&root).unwrap_or(path).to_path_buf();

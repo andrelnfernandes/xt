@@ -42,6 +42,7 @@ mod commands;
 mod context_help;
 mod git_cmd;
 mod prompts;
+mod remote_cmd;
 mod terminal;
 mod view;
 
@@ -122,6 +123,10 @@ pub struct App {
     pub bookmarks_view: Option<BookmarksView>,
     /// F1 / Alt+H: the help, over whatever is open (which it leaves as it is).
     pub help: Option<crate::help::Help>,
+    /// A remote connection being made, for the window at this index.
+    pub connecting: Option<(usize, crate::remote::Connecting)>,
+    /// Connections made so far (each gets a folder of its own).
+    connections: usize,
     /// Where to save the history on each new entry (no file in tests).
     pub history_file: Option<PathBuf>,
     /// External program (editor, command) to be run by the main loop,
@@ -162,6 +167,17 @@ pub struct App {
     terminal_tagged: Vec<PathBuf>,
     /// Last directory of the terminal's shell seen, for the tree to follow it.
     terminal_cwd: Option<PathBuf>,
+    /// The machine of the terminal on screen (`None`: this one), and the
+    /// terminals of the other machines, still running while hidden.
+    terminal_host: Option<String>,
+    parked_terminals: Vec<(
+        Option<String>,
+        Terminal,
+        Option<std::sync::Arc<crate::remote::Remote>>,
+    )>,
+    /// The remote machine of the terminal on screen: keeps its connection
+    /// (which the terminal's ssh shares) and maps its paths.
+    terminal_remote: Option<std::sync::Arc<crate::remote::Remote>>,
 }
 
 /// The active window.
@@ -201,6 +217,8 @@ impl App {
             bookmarks: Bookmarks::new(),
             bookmarks_view: None,
             help: None,
+            connecting: None,
+            connections: 0,
             history_file: None,
             external: None,
             options: Options::default(),
@@ -222,6 +240,9 @@ impl App {
             terminal_full: false,
             terminal_tagged: Vec::new(),
             terminal_cwd: None,
+            terminal_host: None,
+            parked_terminals: Vec::new(),
+            terminal_remote: None,
         }
     }
 
@@ -297,7 +318,7 @@ impl App {
     pub fn watched_dirs(&self) -> HashSet<PathBuf> {
         self.panes
             .iter()
-            .filter(|p| p.archive.is_none())
+            .filter(|p| p.archive.is_none() && p.remote.is_none())
             .map(Pane::current_path)
             .collect()
     }
@@ -443,6 +464,19 @@ impl App {
             let keep = self.panes.swap_remove(self.active);
             self.panes = vec![keep];
             self.active = 0;
+            return;
+        }
+        // From a remote machine, the new window shows this one, where Xylem
+        // started: local on one side, remote on the other.
+        if self.remote.is_some() {
+            let here = std::env::current_dir()
+                .ok()
+                .or_else(platform::home_dir)
+                .unwrap_or_else(|| PathBuf::from("/"));
+            let mut pane = self.new_pane(here);
+            pane.sort = self.sort;
+            pane.display = self.display;
+            self.panes.push(pane);
             return;
         }
         // Inside an archive, the new window shows the disk.
