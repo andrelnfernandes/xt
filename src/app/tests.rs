@@ -2521,3 +2521,38 @@ fn remote_window_logs_and_searches() {
         .collect();
     assert_eq!(tagged, ["a.rs"], "only sub/deep/a.rs has the word");
 }
+
+#[test]
+fn e_on_a_binary_file_needs_an_editor_from_the_config() {
+    let tmp = crate::testing::tempdir();
+    write(
+        tmp.path().join("photo.jpg"),
+        b"\xff\xd8\xff\xe0\0\x10JFIF\0",
+    )
+    .unwrap();
+    let mut app = App::new(tmp.path().to_path_buf());
+    press(&mut app, KeyCode::Enter);
+    press(&mut app, KeyCode::Char('e'));
+    assert!(app.external.is_none(), "no text editor for binary files");
+    assert!(app.message.take().unwrap().starts_with("Binary file"));
+
+    // The same from the viewer (in hex).
+    press(&mut app, KeyCode::Char('v'));
+    press(&mut app, KeyCode::Char('e'));
+    assert!(app.external.is_none());
+    let v = app.viewer.as_ref().expect("still viewing");
+    assert!(v.note.as_deref().unwrap().starts_with("Binary file"));
+    press(&mut app, KeyCode::Esc);
+
+    let mut config = Config::default();
+    config.editors.0 = vec![
+        ("*.png *.JPG".into(), "gimp %f &".into()),
+        ("binary".into(), "hexedit".into()),
+    ];
+    app.apply_config(&config).unwrap();
+    press(&mut app, KeyCode::Char('e'));
+    let line = app.external.take().expect("editor").line;
+    let line = line.to_string_lossy();
+    assert!(line.starts_with("gimp ") && line.ends_with(" &"), "{line}");
+    assert!(line.contains("photo.jpg"), "{line}");
+}

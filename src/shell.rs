@@ -43,6 +43,21 @@ pub fn editor(file: &Path, cwd: &Path, configured: &str) -> External {
     }
 }
 
+/// Opens `file` with a command from `[editors]`: `%f` is the file, or it
+/// goes at the end.
+pub fn editor_command(command: &str, file: &Path, cwd: &Path) -> External {
+    let line = if command.contains("%f") {
+        expand(command, Some(file), &[], cwd)
+    } else {
+        with_file(command, file)
+    };
+    External {
+        line,
+        cwd: cwd.to_path_buf(),
+        wait: false,
+    }
+}
+
 /// Opens `file` in the system's default program (`xdg-open`, `start` on
 /// Windows, or `opener`), without handing over the terminal: the program
 /// runs detached in the background.

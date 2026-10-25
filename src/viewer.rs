@@ -495,9 +495,12 @@ impl Viewer {
     }
 }
 
+/// How far `looks_binary` looks.
+pub const BINARY_PROBE: usize = 8192;
+
 /// Simple heuristic: there is a null byte near the start of the file.
-fn looks_binary(data: &[u8]) -> bool {
-    data.iter().take(8192).any(|&b| b == 0)
+pub fn looks_binary(data: &[u8]) -> bool {
+    data.iter().take(BINARY_PROBE).any(|&b| b == 0)
 }
 
 /// Splits into lines, expands tabs and replaces control characters with `·`.
