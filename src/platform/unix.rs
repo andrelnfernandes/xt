@@ -143,6 +143,45 @@ pub fn mounts() -> Vec<Mount> {
         .collect()
 }
 
+/// "user:group" of `path` (not following symlinks), for the Owner display of
+/// the file window. The names are looked up once per id and remembered.
+pub fn owner(path: &Path) -> Option<String> {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    use nix::unistd::{Gid, Group, Uid, User};
+
+    // (is a group, id) → name.
+    static NAMES: Mutex<Option<HashMap<(bool, u32), String>>> = Mutex::new(None);
+    let meta = fs::symlink_metadata(path).ok()?;
+    let mut names = NAMES.lock().unwrap_or_else(|e| e.into_inner());
+    let names = names.get_or_insert_with(HashMap::new);
+    let mut name = |group: bool, id: u32| {
+        names
+            .entry((group, id))
+            .or_insert_with(|| {
+                let found = if group {
+                    Group::from_gid(Gid::from_raw(id))
+                        .ok()
+                        .flatten()
+                        .map(|g| g.name)
+                } else {
+                    User::from_uid(Uid::from_raw(id))
+                        .ok()
+                        .flatten()
+                        .map(|u| u.name)
+                };
+                found.unwrap_or_else(|| id.to_string())
+            })
+            .clone()
+    };
+    Some(format!(
+        "{}:{}",
+        name(false, meta.uid()),
+        name(true, meta.gid())
+    ))
+}
+
 pub fn home_dir() -> Option<PathBuf> {
     env_dir("HOME")
 }

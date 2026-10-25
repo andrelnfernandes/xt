@@ -14,7 +14,7 @@ use std::sync::{OnceLock, RwLock};
 use ratatui::style::Color;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::{Theme, ThemeSet};
-use syntect::parsing::SyntaxSet;
+use syntect::parsing::{SyntaxReference, SyntaxSet};
 
 /// Lines past this one are shown without colors.
 pub const MAX_LINES: usize = 20_000;
@@ -87,6 +87,29 @@ pub struct Highlighter {
     failed: bool,
 }
 
+/// The language of `path` (by extension, file name or first line, like
+/// `#!/bin/sh`), if known: "Rust", "Python", "Markdown"...
+pub fn language(path: &Path, first_line: &str) -> Option<String> {
+    find_syntax(path, first_line).map(|s| s.name.clone())
+}
+
+fn find_syntax(path: &Path, first_line: &str) -> Option<&'static SyntaxReference> {
+    let ss = syntaxes();
+    let name = path.file_name()?.to_string_lossy();
+    let ext = path.extension().map(|e| e.to_string_lossy());
+    ext.as_deref()
+        .and_then(|e| ss.find_syntax_by_extension(e))
+        // Whole names like "Makefile" or "Rakefile"; short ones ("t",
+        // "go") would be mistaken for extensions.
+        .or_else(|| {
+            (ext.is_none() && name.chars().count() >= 4)
+                .then(|| ss.find_syntax_by_extension(&name))
+                .flatten()
+        })
+        .or_else(|| ss.find_syntax_by_first_line(first_line))
+        .filter(|s| s.name != "Plain Text")
+}
+
 impl Highlighter {
     /// Colors for `name`: a file name, or `GIT_STATUS`.
     pub fn for_name(name: &Path, lines: &[String]) -> Option<Self> {
@@ -145,21 +168,7 @@ impl Highlighter {
         if !enabled() {
             return None;
         }
-        let ss = syntaxes();
-        let name = path.file_name()?.to_string_lossy();
-        let ext = path.extension().map(|e| e.to_string_lossy());
-        let syntax = ext
-            .as_deref()
-            .and_then(|e| ss.find_syntax_by_extension(e))
-            // Whole names like "Makefile" or "Rakefile"; short ones ("t",
-            // "go") would be mistaken for extensions.
-            .or_else(|| {
-                (ext.is_none() && name.chars().count() >= 4)
-                    .then(|| ss.find_syntax_by_extension(&name))
-                    .flatten()
-            })
-            .or_else(|| ss.find_syntax_by_first_line(first_line))
-            .filter(|s| s.name != "Plain Text")?;
+        let syntax = find_syntax(path, first_line)?;
         let (theme_name, background) = *STYLE.read().unwrap_or_else(|e| e.into_inner());
         let theme: &'static Theme = themes().themes.get(theme_name)?;
         Some(Highlighter {

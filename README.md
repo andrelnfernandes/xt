@@ -315,7 +315,7 @@ in bash (`ignorespace`) and in zsh (`HIST_IGNORE_SPACE`). Inside the terminal,
 | → / `+` | expands the directory | |
 | ← / `-` | collapses (or goes to the parent) | page up (in columns: previous file) |
 | → | expands | page down (in columns: next file) |
-| Alt+F | | display mode: name columns, columns with size, details, long names |
+| Alt+F | | display mode: name columns, columns with size, details, owner, type, long names |
 | Backspace | parent directory | shows the files of the parent directory |
 | Space | down one line | same |
 | `*` | logs and expands the whole branch | |
@@ -453,7 +453,11 @@ directory of the selected file, with it highlighted.
 **Display modes (Alt+F):** cycles, in ZTreeWin's order, between
 **names in several columns**, **names and sizes in columns**, **details**
 (one column with size, date and permissions, the default) and **long names** (one
-column, full names only). In the column modes, files run from
+column, full names only). Before long names come two modes ZTreeWin does
+not have: **owner** (size, `user:group` and permissions; not shown on Windows
+or inside archives) and **type** (what each file is, in the spirit of the
+`file` command: "PNG image, 800 x 600", "ELF 64-bit executable", "python3
+script", "Rust, UTF-8 text"..., from the first bytes of the visible files). In the column modes, files run from
 left to right, ← → move one file and ↑ ↓ one row; names longer than
 20 characters are cut off with `…`. The initial mode is set in `file_display`
 (page 2 of the configuration).
