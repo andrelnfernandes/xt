@@ -166,7 +166,7 @@ kbd {
 .window {
   border-radius: var(--radius);
   overflow: hidden;
-  background: #0000aa;
+  background: #0c0c0c;
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
 }
@@ -263,6 +263,24 @@ dialog.lightbox {
 dialog.lightbox::backdrop { background: rgb(0 0 0 / 0.8); }
 
 dialog.lightbox img { border-radius: var(--radius); cursor: zoom-out; }
+
+.themes { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+
+.themes a {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: 0.88rem var(--mono);
+  text-decoration: none;
+}
+
+.themes a:hover { border-color: var(--link); }
+
+.themes a[aria-current] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+
+.theme-view { max-width: 980px; }
 
 /* Why */
 

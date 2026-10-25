@@ -1,6 +1,6 @@
-// Copy buttons on the commands, and the screenshots opened large in place.
-// Without JavaScript the commands are still selectable and the screenshots
-// are plain links to the images.
+// Copy buttons on the commands, the theme switcher, and the screenshots
+// opened large in place. Without JavaScript the commands are still
+// selectable, and the themes and screenshots are plain links to the images.
 
 for (const block of document.querySelectorAll(".code")) {
   const button = document.createElement("button");
@@ -32,4 +32,15 @@ if (lightbox) {
     });
   }
   lightbox.addEventListener("click", () => lightbox.close());
+}
+
+const view = document.querySelector(".theme-view img");
+for (const link of document.querySelectorAll(".themes a")) {
+  link.addEventListener("click", (event) => {
+    event.preventDefault();
+    document.querySelector(".themes [aria-current]")?.removeAttribute("aria-current");
+    link.setAttribute("aria-current", "true");
+    view.src = link.href;
+    view.alt = view.dataset.alt.replace("{}", link.textContent);
+  });
 }
