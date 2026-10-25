@@ -62,6 +62,11 @@ Alt+O types the tagged files at the prompt:
 
 ![File list with Git status letters and the GIT menu in the footer](docs/screenshots/git-menu.png)
 
+**Usage** (Alt+W): where the space goes, folders and files together by the
+space they take (here in the nord theme):
+
+![The Usage view of a home folder: an old backup file at the top, then the projects, videos and downloads folders](docs/screenshots/usage-nord.png)
+
 **Themes**: besides the classic blue, `dark`, `light`, `mono`, `norton`,
 `solarized`, `gruvbox` (below), `nord`, and three that look at home on today's
 desktops: `slate` (in the style of Windows Terminal), `graphite` and `daylight`
@@ -136,6 +141,9 @@ mkdir -p ~/.local/share/man/man1 && xy --man > ~/.local/share/man/man1/xy.1
 - **Looking inside:** a text and hex viewer with search and syntax colors,
   Autoview next to the list, ZIP, 7z and TAR archives opened as directories,
   and display modes that show owners or what each file is.
+- **Where the space goes:** the Usage view (Alt+W) lists a branch's folders
+  and files by the space they take, largest first, down to what fills the
+  disk; Alt+K Percent shows each folder's share right in the tree.
 - **Beyond XTree:** a built-in terminal whose tree follows the shell, remote
   machines over SSH (browse and copy from them, with their own terminal),
   Google Drive, S3 and other cloud storage through rclone, an optional Git

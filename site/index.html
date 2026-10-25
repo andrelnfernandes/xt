@@ -133,6 +133,22 @@
       </div>
     </section>
 
+    <section id="usage" class="alt">
+      <div class="wrap">
+        <p class="eyebrow">Disk usage</p>
+        <h2>Where did the space go?</h2>
+        <p class="section-lead"><kbd>Alt</kbd>+<kbd>W</kbd> lists the folders and files of a branch by the space they
+          take, largest first, with each one's share and, in the panel beside it, its date. Go down
+          folder by folder to what fills the disk: an old backup, a forgotten ISO, a cache that grew.
+          One disk at a time, hard links counted once, and the space on the disk as
+          <code>du</code> counts it.</p>
+        <div class="window theme-view"><img src="assets/screenshots/usage-nord.png" width="1104" height="772" loading="lazy" alt="The Usage view of a home folder: an old 72 MiB backup file at the top with 37%, then the projects, videos and downloads folders"></div>
+        <p class="section-lead after">In the tree, <kbd>Alt</kbd>+<kbd>K</kbd> → <strong>Percent</strong> shows the same shares
+          next to each folder. Pointed at a Google Drive or an S3 bucket mounted with
+          <a href="https://rclone.org">rclone</a>, it shows what fills them, too.</p>
+      </div>
+    </section>
+
     <section id="screenshots">
       <div class="wrap">
         <p class="eyebrow">Screenshots</p>
@@ -223,11 +239,6 @@
         <h2>What is on the way</h2>
         <p class="section-lead">Planned and designed, in this order. Follow the project on GitHub to see them land.</p>
         <div class="features soon">
-          <div class="feature">
-            <p class="badge">Planned</p>
-            <h3>Disk usage</h3>
-            <p>Where did the space go? Every folder and file by size, with its share of the folder, of the used space and of the whole disk, drilling down to what fills it. One disk at a time, hard links counted once, and the numbers follow the changes on disk.</p>
-          </div>
           <div class="feature">
             <p class="badge">Planned</p>
             <h3>Duplicate files</h3>

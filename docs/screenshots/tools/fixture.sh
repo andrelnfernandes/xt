@@ -6,7 +6,8 @@ rm -rf "$out"; mkdir -p "$out"
 P="$out/home/user/projects"
 mkdir -p "$P"/backup "$P"/notes "$P"/photos/2024 "$P"/photos/2025/trip \
          "$P"/website/css "$P"/website/img "$P"/website/js "$P"/xylem/src/model "$P"/xylem/src/ops
-mk() { truncate -s "$2" "$1"; touch -d "$3" "$1"; }
+# Real bytes, not sparse files: the Usage view shows the space on the disk.
+mk() { head -c "$2" /dev/zero > "$1"; touch -d "$3" "$1"; }
 mk "$P/backup/projects-2026-09.tar.gz" 18874368 "2026-09-30 23:00"
 mk "$P/backup/projects-2026-10.tar.gz" 19922944 "2026-10-01 23:00"
 mk "$P/notes/ideas.md" 4211 "2026-10-02 09:14"
@@ -54,6 +55,22 @@ for theme in classic dark light mono norton solarized gruvbox nord slate graphit
   done
 done
 # The built-in terminal's shell (terminal shots).
+# The rest of the home directory, for the Usage view (usage shot): an old
+# backup taking the most, as so often happens.
+H="$out/home/user"
+mkdir -p "$H/Videos" "$H/Downloads" "$H/Documents" "$H/Templates" \
+         "$H/.cache/pip" "$H/.cache/thumbnails" "$H/.cache/browser" "$H/.local/share/Trash"
+mk "$H/vm-backup-2023.tar" 75497472 "2023-03-18 22:10"
+mk "$H/Videos/trip-2025.mp4" 18874368 "2025-08-02 19:30"
+mk "$H/Videos/birthday.mp4" 10485760 "2024-11-10 15:12"
+mk "$H/Downloads/ubuntu-26.04-desktop.iso" 15728640 "2026-04-23 09:40"
+mk "$H/Downloads/setup.zip" 2097152 "2026-02-11 14:05"
+mk "$H/Documents/taxes-2025.pdf" 524288 "2026-04-28 20:15"
+mk "$H/Documents/notes.txt" 8192 "2026-10-01 08:30"
+mk "$H/.cache/pip/wheels.bin" 3145728 "2026-09-12 10:00"
+mk "$H/.cache/thumbnails/cache.db" 1572864 "2026-10-20 18:00"
+mk "$H/.cache/browser/data" 6291456 "2026-10-24 23:00"
+mk "$H/.local/share/Trash/old-photos.zip" 4194304 "2025-12-30 11:11"
 cat > "$out/home/user/.bashrc" <<'RC'
 PS1='\[\e[1;32m\]user@host\[\e[0m\]:\[\e[1;34m\]\w\[\e[0m\]$ '
 alias ls='ls --color=auto'
