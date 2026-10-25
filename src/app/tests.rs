@@ -1067,14 +1067,66 @@ fn quit_without_confirmation_when_configured() {
     assert!(app.confirm.is_none());
 }
 
+fn help_topic_after(app: &mut App, key: KeyEvent) -> String {
+    app.handle_key(key);
+    let topic = app.help.as_ref().expect("help open").topic.clone();
+    press(app, KeyCode::Esc);
+    assert!(app.help.is_none(), "Esc closes the help");
+    topic
+}
+
 #[test]
-fn f1_shows_help_in_viewer() {
+fn f1_opens_the_help_of_the_window() {
+    let (_tmp, mut app) = sample();
+    let f1 = KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE);
+    assert_eq!(help_topic_after(&mut app, f1), "tree");
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(help_topic_after(&mut app, f1), "files");
+    press(&mut app, KeyCode::Char('v'));
+    assert!(app.viewer.is_some());
+    assert_eq!(help_topic_after(&mut app, f1), "viewer");
+    assert!(app.viewer.is_some(), "the viewer is still open");
+}
+
+#[test]
+fn help_in_a_prompt_returns_to_it_as_it_was() {
+    let (_tmp, mut app) = sample();
+    let alt_h = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::ALT);
+    press(&mut app, KeyCode::Enter);
+    press(&mut app, KeyCode::Char('c'));
+    type_text(&mut app, "dest");
+    assert_eq!(help_topic_after(&mut app, alt_h), "copy-move");
+    let prompt = app.prompt.as_ref().expect("the prompt is still open");
+    assert!(prompt.input.text.ends_with("dest"), "{}", prompt.input.text);
+    press(&mut app, KeyCode::Esc);
+
+    press(&mut app, KeyCode::Char('f'));
+    assert_eq!(help_topic_after(&mut app, alt_h), "filespec");
+    press(&mut app, KeyCode::Esc);
+
+    // A question too: after the help, it still takes its answer.
+    press(&mut app, KeyCode::Char('d'));
+    assert_eq!(help_topic_after(&mut app, alt_h), "delete");
+    assert!(app.confirm.is_some());
+    press(&mut app, KeyCode::Char('n'));
+    assert!(app.confirm.is_none());
+}
+
+#[test]
+fn help_shows_the_keys_in_effect() {
     let (_tmp, mut app) = sample();
     press(&mut app, KeyCode::F(1));
-    let viewer = app.viewer.as_ref().expect("help open");
-    assert!(viewer.visible_lines(1)[0].starts_with("Xylem - keys in use"));
-    press(&mut app, KeyCode::Esc);
-    assert!(app.viewer.is_none());
+    press(&mut app, KeyCode::Char('k'));
+    let help = app.help.as_mut().expect("help open");
+    assert_eq!(help.topic, "keys");
+    let text: String = help
+        .page(100)
+        .lines
+        .iter()
+        .flatten()
+        .map(|p| p.text.as_str())
+        .collect();
+    assert!(text.contains("help about what you are doing"), "{text}");
 }
 
 #[test]
@@ -1416,11 +1468,10 @@ fn e_in_viewer_edits_and_reloads() {
             .starts_with("Cannot view file")
     );
 
-    // Help is not a file: E only explains.
+    // The help is not a file: E there edits nothing.
     press(&mut app, KeyCode::F(1));
     press(&mut app, KeyCode::Char('e'));
-    assert!(app.external.is_none());
-    assert!(app.viewer.as_ref().unwrap().note.is_some());
+    assert!(app.help.is_some() && app.external.is_none());
 }
 
 #[test]
