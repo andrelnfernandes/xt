@@ -166,6 +166,35 @@ pub fn run_dir_path(base: &std::path::Path) -> PathBuf {
     base.join(format!("run-{}", std::process::id()))
 }
 
+/// Hidden temporary file next to `dst` (so the final rename is atomic),
+/// named after this run.
+pub fn tmp_path(dst: &std::path::Path) -> PathBuf {
+    let name = dst.file_name().unwrap_or_default().to_string_lossy();
+    dst.with_file_name(format!(".{name}.xy-{}.tmp", std::process::id()))
+}
+
+/// Creates `tmp_path(dst)` for writing, never opening what is already
+/// there: in a shared folder someone else could have put a link with that
+/// name, pointing to one of the user's files. Whatever is there is removed
+/// (a link, not its target) and the creation tried once more.
+pub fn create_tmp(dst: &std::path::Path) -> std::io::Result<(std::fs::File, PathBuf)> {
+    let tmp = tmp_path(dst);
+    let create = || {
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)
+    };
+    let file = match create() {
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            std::fs::remove_file(&tmp)?;
+            create()?
+        }
+        other => other?,
+    };
+    Ok((file, tmp))
+}
+
 fn env_dir(name: &str) -> Option<PathBuf> {
     std::env::var_os(name)
         .filter(|v| !v.is_empty())
@@ -390,6 +419,21 @@ mod test_trash {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn a_planted_link_is_replaced_not_followed() {
+        let tmp = crate::testing::tempdir();
+        let victim = tmp.path().join("victim");
+        std::fs::write(&victim, "keep").unwrap();
+        let dst = tmp.path().join("out.txt");
+        std::os::unix::fs::symlink(&victim, tmp_path(&dst)).unwrap();
+        let (mut file, path) = create_tmp(&dst).unwrap();
+        std::io::Write::write_all(&mut file, b"new").unwrap();
+        assert_eq!(std::fs::read_to_string(&victim).unwrap(), "keep");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new");
+        assert!(!std::fs::symlink_metadata(&path).unwrap().is_symlink());
+    }
 
     #[test]
     fn moves_xt_folders_only_when_new_ones_are_missing() {

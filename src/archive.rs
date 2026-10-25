@@ -370,9 +370,7 @@ impl ArchiveJob {
                 "use a name ending in .zip, .tar, .tar.gz or .tgz",
             )
         })?;
-        let name = dest.file_name().unwrap_or_default().to_string_lossy();
-        let tmp = dest.with_file_name(format!(".{name}.xy-{}.tmp", std::process::id()));
-        let file = File::create(&tmp)?;
+        let (file, tmp) = crate::platform::create_tmp(dest)?;
         let writer = match kind {
             Kind::Zip => Writer::Zip(Box::new(zip::ZipWriter::new(file))),
             Kind::Tar => Writer::Tar(no_follow(tar::Builder::new(file))),
