@@ -99,6 +99,7 @@ impl App {
             }
             if key.code == KeyCode::Esc {
                 op.cancel();
+                self.open_after = None;
                 self.finish_op("Cancelled. ");
             }
             return;

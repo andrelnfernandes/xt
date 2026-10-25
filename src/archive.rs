@@ -13,6 +13,9 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufReader, Read, Write};
 use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
 use std::time::{Duration, SystemTime};
 
 use chrono::{Local, NaiveDate, TimeZone};
@@ -134,7 +137,22 @@ impl Reader {
 
     /// Writes the contents of `entry` to `out`, up to `limit` bytes.
     /// Returns how many bytes were written.
+    ///
+    /// In a TAR or a solid 7z the entries before this one are decompressed
+    /// too. With a `limit` (a preview), that stops at [`MAX_SKIP`] bytes:
+    /// a huge entry at the start would hold the screen up. Between blocks,
+    /// `out.flush()` failing stops it as well (see [`Streamed`]).
     pub fn extract(&mut self, entry: &Path, out: &mut dyn Write, limit: u64) -> io::Result<u64> {
+        let mut skipped = 0u64;
+        let mut skip_past = |size: u64| {
+            skipped = skipped.saturating_add(size);
+            if limit != u64::MAX && skipped > MAX_SKIP {
+                return Err(io::Error::other(
+                    "too deep inside the archive to preview; copy it out to see it",
+                ));
+            }
+            Ok(())
+        };
         match self.kind {
             Kind::Zip => {
                 if self.zip_index.is_empty() {
@@ -164,7 +182,8 @@ impl Reader {
                 sevenz
                     .for_each_entries(|info, data| {
                         if info.name() != name {
-                            io::copy(data, &mut io::sink())?;
+                            skip_past(info.size())?;
+                            read_through(data, out)?;
                             return Ok(true);
                         }
                         written = Some(io::copy(&mut data.take(limit), out)?);
@@ -177,6 +196,8 @@ impl Reader {
                 let mut written = None;
                 self.each_tar_entry(|info, data| {
                     if info.path != entry {
+                        skip_past(info.size)?;
+                        read_through(data, out)?;
                         return Ok(true);
                     }
                     if info.kind == EntryKind::Symlink {
@@ -188,6 +209,18 @@ impl Reader {
                 written.ok_or_else(not_found)
             }
         }
+    }
+
+    /// Extracts entries in a thread of its own, one after the other.
+    pub fn into_extractor(mut self) -> Extractor {
+        let (requests, queue) = mpsc::channel::<(PathBuf, Pipe)>();
+        std::thread::spawn(move || {
+            for (entry, mut pipe) in queue {
+                let result = self.extract(&entry, &mut pipe, u64::MAX);
+                pipe.finish(result);
+            }
+        });
+        Extractor { requests }
     }
 
     fn list_zip(&mut self) -> io::Result<Vec<Entry>> {
@@ -337,6 +370,154 @@ enum Writer {
 pub fn entry_name(relative: &Path) -> String {
     let parts: Vec<_> = relative.iter().map(|c| c.to_string_lossy()).collect();
     parts.join("/")
+}
+
+/// How much of the entries before the wanted one a preview decompresses
+/// before giving up.
+pub const MAX_SKIP: u64 = if cfg!(test) {
+    1024 * 1024
+} else {
+    64 * 1024 * 1024
+};
+
+/// Reads an entry that comes before the wanted one, checking between
+/// blocks that someone still wants the result.
+fn read_through(data: &mut dyn Read, out: &mut dyn Write) -> io::Result<()> {
+    let mut buf = vec![0; 64 * 1024];
+    while data.read(&mut buf)? > 0 {
+        out.flush()?;
+    }
+    Ok(())
+}
+
+/// Size of the blocks sent from the extracting thread.
+const BLOCK: usize = 256 * 1024;
+
+/// An archive being extracted in another thread ([`Reader::into_extractor`]).
+pub struct Extractor {
+    requests: mpsc::Sender<(PathBuf, Pipe)>,
+}
+
+impl Extractor {
+    /// The contents of `entry`, as the thread extracts them (after the
+    /// entries asked for before).
+    pub fn extract(&self, entry: &Path) -> Streamed {
+        let (tx, rx) = mpsc::sync_channel(4);
+        let gone = Arc::new(AtomicBool::new(false));
+        let pipe = Pipe {
+            tx,
+            block: Vec::new(),
+            gone: gone.clone(),
+        };
+        if let Err(mpsc::SendError((_, pipe))) = self.requests.send((entry.to_path_buf(), pipe)) {
+            pipe.finish(Err(io::Error::other("extraction stopped")));
+        }
+        Streamed {
+            rx,
+            block: Vec::new(),
+            pos: 0,
+            gone,
+            wait: None,
+        }
+    }
+}
+
+/// Extracts `entry` of `archive` in another thread, for reading as a
+/// stream: a big entry (or a decompression bomb) never sits whole in memory.
+pub fn extract_streamed(archive: &Path, entry: &Path) -> io::Result<Streamed> {
+    Ok(Reader::open(archive)?.into_extractor().extract(entry))
+}
+
+/// The extracting thread's end: sends what is written in blocks, and fails
+/// once nobody reads (the copy was cancelled), which stops the extraction.
+struct Pipe {
+    tx: SyncSender<io::Result<Vec<u8>>>,
+    block: Vec<u8>,
+    gone: Arc<AtomicBool>,
+}
+
+impl Pipe {
+    fn finish(mut self, result: io::Result<u64>) {
+        let last = match result {
+            Ok(_) => Ok(std::mem::take(&mut self.block)),
+            Err(e) => Err(e),
+        };
+        let _ = self.tx.send(last);
+    }
+}
+
+impl Write for Pipe {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.flush()?;
+        self.block.extend_from_slice(buf);
+        if self.block.len() >= BLOCK {
+            let block = std::mem::take(&mut self.block);
+            self.tx
+                .send(Ok(block))
+                .map_err(|_| io::Error::from(io::ErrorKind::BrokenPipe))?;
+        }
+        Ok(buf.len())
+    }
+
+    /// Only tells whether anyone is still reading.
+    fn flush(&mut self) -> io::Result<()> {
+        if self.gone.load(Ordering::Relaxed) {
+            return Err(io::Error::from(io::ErrorKind::BrokenPipe));
+        }
+        Ok(())
+    }
+}
+
+/// An entry's contents as another thread extracts them. Dropping it stops
+/// the extraction.
+pub struct Streamed {
+    rx: Receiver<io::Result<Vec<u8>>>,
+    block: Vec<u8>,
+    pos: usize,
+    gone: Arc<AtomicBool>,
+    wait: Option<Duration>,
+}
+
+impl Streamed {
+    /// Instead of waiting for the next block, gives up after `wait` with
+    /// `WouldBlock`: a copy in steps keeps the screen responsive.
+    pub fn waiting_at_most(mut self, wait: Duration) -> Self {
+        self.wait = Some(wait);
+        self
+    }
+}
+
+impl Read for Streamed {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        while self.pos == self.block.len() {
+            let next = match self.wait {
+                None => self.rx.recv().ok(),
+                Some(wait) => match self.rx.recv_timeout(wait) {
+                    Ok(next) => Some(next),
+                    Err(RecvTimeoutError::Timeout) => {
+                        return Err(io::Error::from(io::ErrorKind::WouldBlock));
+                    }
+                    Err(RecvTimeoutError::Disconnected) => None,
+                },
+            };
+            match next {
+                Some(Ok(block)) if block.is_empty() => return Ok(0),
+                Some(Ok(block)) => (self.block, self.pos) = (block, 0),
+                Some(Err(e)) => return Err(e),
+                None => return Ok(0),
+            }
+        }
+        let n = buf.len().min(self.block.len() - self.pos);
+        buf[..n].copy_from_slice(&self.block[self.pos..self.pos + n]);
+        self.pos += n;
+        Ok(n)
+    }
+}
+
+impl Drop for Streamed {
+    fn drop(&mut self) {
+        self.gone.store(true, Ordering::Relaxed);
+    }
 }
 
 /// A file to put in the archive: the path on disk and the name inside it.
@@ -626,6 +807,68 @@ pub mod tests {
         let mut p: Vec<String> = entries.iter().map(|e| entry_name(&e.path)).collect();
         p.sort();
         p
+    }
+
+    /// TAR with a 2 MiB `big` (past `MAX_SKIP` in tests), then `small`.
+    fn deep_tar(path: &Path) {
+        let mut tar = tar::Builder::new(File::create(path).unwrap());
+        for (name, data) in [
+            ("big", vec![0u8; 2 * 1024 * 1024]),
+            ("small", b"s".to_vec()),
+        ] {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(data.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            tar.append_data(&mut header, name, &data[..]).unwrap();
+        }
+        tar.finish().unwrap();
+    }
+
+    #[test]
+    fn previews_give_up_deep_inside_an_archive() {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("deep.tar");
+        deep_tar(&path);
+        let mut r = Reader::open(&path).unwrap();
+        let mut out = Vec::new();
+        let err = r.extract(Path::new("small"), &mut out, 1000).unwrap_err();
+        assert!(err.to_string().contains("too deep"), "{err}");
+        // A copy (no limit) goes all the way.
+        r.extract(Path::new("small"), &mut out, u64::MAX).unwrap();
+        assert_eq!(out, b"s");
+    }
+
+    #[test]
+    fn extracts_in_the_background_and_stops_when_dropped() {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("deep.tar");
+        deep_tar(&path);
+        let extractor = Reader::open(&path).unwrap().into_extractor();
+        let mut big = Vec::new();
+        extractor
+            .extract(Path::new("big"))
+            .read_to_end(&mut big)
+            .unwrap();
+        assert_eq!(big.len(), 2 * 1024 * 1024);
+
+        // Abandoned halfway: the thread goes on to the next request.
+        let mut first = [0u8; 10];
+        let mut abandoned = extractor.extract(Path::new("big"));
+        abandoned.read_exact(&mut first).unwrap();
+        drop(abandoned);
+        let mut small = String::new();
+        extractor
+            .extract(Path::new("small"))
+            .read_to_string(&mut small)
+            .unwrap();
+        assert_eq!(small, "s");
+
+        let err = extractor
+            .extract(Path::new("nope"))
+            .read_to_end(&mut Vec::new())
+            .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::NotFound);
     }
 
     #[test]
