@@ -39,6 +39,7 @@ use crate::viewer::{self, Action as ViewerAction, SearchFrom, Viewer};
 
 mod actions;
 mod commands;
+mod context_help;
 mod git_cmd;
 mod prompts;
 mod terminal;
@@ -119,6 +120,8 @@ pub struct App {
     pub bookmarks: Bookmarks,
     /// Active bookmarks manager view (F11), if open.
     pub bookmarks_view: Option<BookmarksView>,
+    /// F1 / Alt+H: the help, over whatever is open (which it leaves as it is).
+    pub help: Option<crate::help::Help>,
     /// Where to save the history on each new entry (no file in tests).
     pub history_file: Option<PathBuf>,
     /// External program (editor, command) to be run by the main loop,
@@ -197,6 +200,7 @@ impl App {
             history: History::new(),
             bookmarks: Bookmarks::new(),
             bookmarks_view: None,
+            help: None,
             history_file: None,
             external: None,
             options: Options::default(),

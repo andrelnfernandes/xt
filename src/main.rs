@@ -8,6 +8,7 @@ mod clipboard;
 mod config;
 mod filetype;
 mod git;
+mod help;
 mod highlight;
 mod info;
 mod input;
@@ -52,6 +53,7 @@ Options:
   --cwd-file FILE    on Alt+Q (quit and change directory), write the current
                      directory to FILE, for a shell function to cd into it
   --default-config   print a commented configuration file
+  --man              print the manual page (for `man`)
   -h, --help         show this help
   -V, --version      show the version";
 
@@ -73,7 +75,7 @@ fn main() -> anyhow::Result<()> {
                 let config =
                     config::Config::path().map_or_else(|| "-".into(), |p| p.display().to_string());
                 println!(
-                    "{USAGE}\n\nConfiguration: {config}\nInside Xylem, press F1 for the list of keys."
+                    "{USAGE}\n\nConfiguration: {config}\nInside Xylem, F1 (or Alt+H) opens the help about what you are doing."
                 );
                 return Ok(());
             }
@@ -83,6 +85,10 @@ fn main() -> anyhow::Result<()> {
             }
             Some("--default-config") => {
                 print!("{}", config::DEFAULT_CONFIG);
+                return Ok(());
+            }
+            Some("--man") => {
+                print!("{}", help::man_page());
                 return Ok(());
             }
             Some(s) if s.starts_with('-') => bail!("unknown option {s}\n\n{USAGE}"),
