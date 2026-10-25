@@ -745,7 +745,8 @@ pub fn man_page() -> String {
          On Alt+Q (quit and change directory), write the current directory to \\fIFILE\\fR, \
          for a shell function to cd into it (see QUITTING AND CHANGING THE SHELL'S DIRECTORY).\n\
          .TP\n\\fB\\-\\-default\\-config\\fR\nPrint a commented configuration file.\n\
-         .TP\n\\fB\\-\\-man\\fR\nPrint this manual page.\n\
+         .TP\n\\fB\\-\\-man\\fR\nShow this manual page; with the output redirected, print its source, \
+         as in \\fBxy \\-\\-man > ~/.local/share/man/man1/xy.1\\fR.\n\
          .TP\n\\fB\\-h\\fR, \\fB\\-\\-help\\fR\nShow the options.\n\
          .TP\n\\fB\\-V\\fR, \\fB\\-\\-version\\fR\nShow the version.\n\
          .SH DESCRIPTION\n"
