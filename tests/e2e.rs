@@ -182,6 +182,17 @@ fn names_in(dir: &Path) -> Vec<String> {
 }
 
 #[test]
+fn man_redirected_prints_the_roff_source() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_xy"))
+        .arg("--man")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(output.stdout.starts_with(b".TH XY 1 "));
+}
+
+#[test]
 fn opens_tags_copies_and_quits() {
     let (home, project) = sample();
     let mut xy = Xy::start(home.path(), &[project.to_str().unwrap()]);

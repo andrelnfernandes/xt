@@ -115,8 +115,9 @@ install -Dm644 docs/icons/xylem.svg ~/.local/share/icons/hicolor/scalable/apps/x
 install -Dm644 packaging/linux/xylem.desktop ~/.local/share/applications/xylem.desktop
 ```
 
-**Man page (optional):** `xy` prints its own (the release archives for Linux
-also include it as `xy.1`):
+**Man page (optional):** in a terminal, `xy --man` shows it; redirected, it
+prints the source to install (the release archives for Linux also include it
+as `xy.1`):
 
 ```bash
 mkdir -p ~/.local/share/man/man1 && xy --man > ~/.local/share/man/man1/xy.1
