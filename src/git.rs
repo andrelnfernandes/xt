@@ -236,6 +236,11 @@ impl StatusCache {
     }
 }
 
+/// Reads the status by itself, just because the user walked into the
+/// directory, so it must not run commands that the repository's own
+/// `.git/config` names: a downloaded or extracted repository could carry
+/// them. `core.fsmonitor` is turned off; clean filters cannot be, so a
+/// repository that defines its own is left without markers.
 fn read_status(root: &Path) -> RepoStatus {
     let mut status = RepoStatus {
         files: HashMap::new(),
@@ -243,11 +248,38 @@ fn read_status(root: &Path) -> RepoStatus {
         read_at: Instant::now(),
         stale: false,
     };
-    let Ok((true, out)) = run(root, &["status", "--porcelain=v1", "-z"], &[]) else {
+    if has_own_filters(root) {
+        return status;
+    }
+    let args = [
+        "-c",
+        "core.fsmonitor=false",
+        "status",
+        "--porcelain=v1",
+        "-z",
+    ];
+    let Ok((true, out)) = run(root, &args, &[]) else {
         return status;
     };
     parse_status(&out, &mut status.files, &mut status.untracked_dirs);
     status
+}
+
+/// Whether the repository's own configuration defines filters (the user's
+/// global ones, such as Git LFS, are trusted).
+fn has_own_filters(root: &Path) -> bool {
+    run(
+        root,
+        &[
+            "config",
+            "--local",
+            "--name-only",
+            "--get-regexp",
+            r"^filter\.",
+        ],
+        &[],
+    )
+    .map_or(true, |(found, _)| found)
 }
 
 /// `git status --porcelain=v1 -z`: `XY path\0`, with the old name in a
@@ -373,6 +405,26 @@ mod tests {
         assert_eq!(repo_root(&worktree), Some(worktree.clone()));
         std::fs::write(worktree.join(".git"), "junk").unwrap();
         assert_eq!(repo_root(&worktree), None);
+    }
+
+    #[test]
+    fn walking_into_a_repository_runs_none_of_its_commands() {
+        let tmp = sample();
+        let root = dunce::canonicalize(tmp.path()).unwrap();
+        let marker = root.join("ran");
+        let touch = format!("touch '{}'", marker.display());
+        git_ok(&root, &["config", "core.fsmonitor", &touch]);
+        let mut cache = StatusCache::default();
+        cache.refresh([root.clone()]);
+        assert_eq!(cache.marker(&root.join("a.txt")), Some(*b" M"));
+
+        git_ok(&root, &["config", "filter.evil.clean", &touch]);
+        fs::write(root.join(".gitattributes"), "* filter=evil\n").unwrap();
+        cache.invalidate();
+        std::thread::sleep(MIN_INTERVAL);
+        cache.refresh([root.clone()]);
+        assert_eq!(cache.marker(&root.join("a.txt")), None, "not read");
+        assert!(!marker.exists());
     }
 
     #[test]
