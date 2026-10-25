@@ -24,6 +24,11 @@ struct Xy {
 impl Xy {
     /// Starts `xy` with `args`, with `home` as its home.
     fn start(home: &Path, args: &[&str]) -> Xy {
+        Self::start_with(home, args, &[])
+    }
+
+    /// The same, with more environment variables.
+    fn start_with(home: &Path, args: &[&str], env: &[(&str, &str)]) -> Xy {
         let pair = native_pty_system()
             .openpty(PtySize {
                 rows: ROWS,
@@ -42,6 +47,9 @@ impl Xy {
             ("SHELL", "/bin/sh"),
             ("LANG", "C.UTF-8"),
         ] {
+            cmd.env(name, value);
+        }
+        for (name, value) in env {
             cmd.env(name, value);
         }
         let child = pair.slave.spawn_command(cmd).unwrap();
@@ -283,6 +291,136 @@ fn f1_opens_the_help_about_what_is_in_front() {
     xy.wait_for("Help: Copy and Move");
     xy.press("\x1b");
     xy.wait_for("COPY"); // the prompt is still there
+    xy.press("\x1b");
+    xy.quit();
+}
+
+/// A throwaway sshd on localhost, run as the current user, with a key that
+/// has a passphrase (so ssh asks through Xylem). `None` without sshd.
+struct Sshd {
+    dir: tempfile::TempDir,
+    child: std::process::Child,
+}
+
+impl Sshd {
+    fn start() -> Option<Sshd> {
+        let sshd = ["/usr/sbin/sshd", "/usr/local/sbin/sshd"]
+            .into_iter()
+            .find(|p| Path::new(p).exists())?;
+        let sftp = [
+            "/usr/lib/openssh/sftp-server",
+            "/usr/libexec/openssh/sftp-server",
+            "/usr/lib/ssh/sftp-server",
+        ]
+        .into_iter()
+        .find(|p| Path::new(p).exists())?;
+        // A short path: Unix sockets and ssh's ControlPath have limits.
+        let dir = tempfile::Builder::new()
+            .prefix("xy-ssh")
+            .tempdir_in("/tmp")
+            .ok()?;
+        let d = dir.path();
+        let run = |cmd: &str, args: &[&str]| {
+            std::process::Command::new(cmd)
+                .args(args)
+                .stdout(std::process::Stdio::null())
+                .status()
+                .is_ok_and(|s| s.success())
+        };
+        let key = |name: &str, pass: &str| {
+            run(
+                "ssh-keygen",
+                &[
+                    "-q",
+                    "-t",
+                    "ed25519",
+                    "-N",
+                    pass,
+                    "-f",
+                    d.join(name).to_str().unwrap(),
+                ],
+            )
+        };
+        if !key("host", "") || !key("user", "xyzzy") {
+            return None;
+        }
+        std::fs::copy(d.join("user.pub"), d.join("authorized_keys")).ok()?;
+        let port = 20_000 + std::process::id() % 20_000;
+        let p = |name: &str| d.join(name).display().to_string();
+        std::fs::write(
+            d.join("sshd_config"),
+            format!(
+                "Port {port}\nListenAddress 127.0.0.1\nHostKey {}\nPidFile {}\n\
+                 AuthorizedKeysFile {}\nPasswordAuthentication no\nKbdInteractiveAuthentication no\n\
+                 UsePAM no\nStrictModes no\nSubsystem sftp {sftp}\n",
+                p("host"),
+                p("sshd.pid"),
+                p("authorized_keys")
+            ),
+        )
+        .ok()?;
+        std::fs::write(
+            d.join("ssh_config"),
+            format!(
+                "Host localhost\n  Port {port}\n  IdentityFile {}\n  IdentitiesOnly yes\n  \
+                 UserKnownHostsFile {}\n  StrictHostKeyChecking ask\n",
+                p("user"),
+                p("known_hosts")
+            ),
+        )
+        .ok()?;
+        let wrapper = d.join("ssh");
+        std::fs::write(
+            &wrapper,
+            format!("#!/bin/sh\nexec ssh -F {} \"$@\"\n", p("ssh_config")),
+        )
+        .ok()?;
+        run("chmod", &["755", wrapper.to_str().unwrap()]);
+        let child = std::process::Command::new(sshd)
+            .args(["-D", "-f", d.join("sshd_config").to_str().unwrap()])
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .ok()?;
+        thread::sleep(Duration::from_millis(500));
+        Some(Sshd { dir, child })
+    }
+
+    fn wrapper(&self) -> String {
+        self.dir.path().join("ssh").display().to_string()
+    }
+}
+
+impl Drop for Sshd {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+/// Needs sshd: `cargo test -- --ignored remote`.
+#[test]
+#[ignore]
+fn remote_machine_asks_through_xylem_and_browses() {
+    let Some(sshd) = Sshd::start() else {
+        eprintln!("sshd not installed: skipped");
+        return;
+    };
+    let (home, project) = sample();
+    let user = std::env::var("USER").unwrap();
+    let address = format!("{user}@localhost:{}", project.display());
+    let mut xy = Xy::start_with(home.path(), &[&address], &[("XY_SSH", &sshd.wrapper())]);
+    xy.wait_for("Unknown host");
+    xy.press("yes\r");
+    xy.wait_for("Enter passphrase");
+    xy.press("xyzzy");
+    assert!(xy.contents().contains("•••••"), "the passphrase is masked");
+    xy.press("\r");
+    xy.wait_for("Connected to");
+    xy.wait_for("Remote:");
+    xy.press("\r");
+    xy.wait_for("a.rs");
+    xy.press("v");
+    xy.wait_for("fn main() {}");
     xy.press("\x1b");
     xy.quit();
 }
