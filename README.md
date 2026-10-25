@@ -315,7 +315,7 @@ in bash (`ignorespace`) and in zsh (`HIST_IGNORE_SPACE`). Inside the terminal,
 | → / `+` | expands the directory | |
 | ← / `-` | collapses (or goes to the parent) | page up (in columns: previous file) |
 | → | expands | page down (in columns: next file) |
-| Alt+F | | display mode: name columns, columns with size, details, long names |
+| Alt+F | | display mode: name columns, columns with size, details, owner, type, long names |
 | Backspace | parent directory | shows the files of the parent directory |
 | Space | down one line | same |
 | `*` | logs and expands the whole branch | |
@@ -453,7 +453,11 @@ directory of the selected file, with it highlighted.
 **Display modes (Alt+F):** cycles, in ZTreeWin's order, between
 **names in several columns**, **names and sizes in columns**, **details**
 (one column with size, date and permissions, the default) and **long names** (one
-column, full names only). In the column modes, files run from
+column, full names only). Before long names come two modes ZTreeWin does
+not have: **owner** (size, `user:group` and permissions; not shown on Windows
+or inside archives) and **type** (what each file is, in the spirit of the
+`file` command: "PNG image, 800 x 600", "ELF 64-bit executable", "python3
+script", "Rust, UTF-8 text"..., from the first bytes of the visible files). In the column modes, files run from
 left to right, ← → move one file and ↑ ↓ one row; names longer than
 20 characters are cut off with `…`. The initial mode is set in `file_display`
 (page 2 of the configuration).
@@ -489,8 +493,10 @@ archive, the entry is first extracted to a temporary folder,
 deleted when Xylem exits. Another program can be chosen in `opener` (or in the
 configuration screen).
 
-**Archives:** Alt+F5 in the file window opens `.zip`, `.jar`,
-`.war`, `.apk`, `.tar`, `.tar.gz` or `.tgz` as a tree, read-only:
+**Archives:** Alt+F5 in the file window opens `.zip` (also `.jar`, `.war`,
+`.apk`), `.7z`, and `.tar`, plain or compressed with gzip (`.tar.gz`, `.tgz`),
+xz (`.tar.xz`, `.txz`), bzip2 (`.tar.bz2`, `.tbz2`) or zstd (`.tar.zst`), as a
+tree, read-only (encrypted 7z archives are not supported):
 navigation, Filespec, Branch, Showall, tags, View and Compare work inside
 it, and Copy (including Ctrl+C and Alt+C with paths) extracts the files.
 `Esc` in the tree closes the archive and returns to where you were. For safety,
@@ -697,7 +703,7 @@ screen (Alt+F10).
 | eXecute | batch parameters `%1`–`%8`, new window (NTW) | `sh` with `%f`, `%t` and `%d`; always in Xylem's terminal; also a built-in terminal (Alt+X) |
 | History | history window with bookmarks | ↑/↓ at the prompt, one history per type, saved between runs |
 | Configuration | 7 pages, per-element color editor (F4), Alt-Export | 4 pages with the options that make sense on Linux; F4 chooses among 8 ready-made themes; individual colors in `config.toml` |
-| Archives | any format with an external archiver, create (F5), extract (Alt-F5) | ZIP/JAR/WAR/APK/TAR/TGZ: open (Alt+F5), extract with Copy, create with F5 (ZIP, TAR and TAR.GZ) |
+| Archives | any format with an external archiver, create (F5), extract (Alt-F5) | ZIP/JAR/WAR/APK, 7z, TAR (plain, gzip, xz, bzip2, zstd): open (Alt+F5), extract with Copy, create with F5 (ZIP, TAR and TAR.GZ) |
 | Split screen | optional statistics panels per side | no statistics panel |
 | Menus | Ctrl/Alt menu when holding the key | same in terminals with the kitty protocol; F9 in any terminal |
 

@@ -22,6 +22,7 @@ use ratatui::widgets::{Block, BorderType, Clear, List, ListItem, ListState, Para
 use crate::app::{self, App, BookmarksView, FileView, Focus, KbyteShow, MenuMode, Pane};
 use crate::config::TerminalTheme;
 use crate::config::{self, formats, theme};
+use crate::filetype;
 use crate::git::StatusCache;
 use crate::input::Command;
 use crate::model::tree::{FileEntry, FileKind};
@@ -332,7 +333,6 @@ fn draw_files(
     pane.file_page = area.height.saturating_sub(2) as usize;
 
     let width = area.width.saturating_sub(2) as usize;
-    let names_only = pane.display == FileDisplay::LongNames;
     let (range, mut state) = visible_window(&mut pane.file_state, pane.files.len(), pane.file_page);
     let error = match pane.view {
         FileView::Dir => pane.tree.node(pane.current()).error.as_ref(),
@@ -349,9 +349,12 @@ fn draw_files(
             Style::new().fg(theme().dim),
         ))]
     } else {
-        pane.files[range]
+        let visible = pane.files[range].to_vec();
+        let details: Vec<Detail> = visible.iter().map(|&f| file_detail(pane, f)).collect();
+        visible
             .iter()
-            .map(|&f| file_line(pane.file(f), width, names_only, marker(pane, f)))
+            .zip(details)
+            .map(|(&f, detail)| file_line(pane.file(f), width, detail, marker(pane, f)))
             .collect()
     };
 
@@ -496,24 +499,82 @@ fn git_text(xy: &[u8; 2]) -> String {
     format!("{}{} ", char::from(xy[0]), char::from(xy[1]))
 }
 
+/// What the one-column file window shows after each name (Alt+F).
+enum Detail {
+    /// Size, date and permissions.
+    Standard,
+    NamesOnly,
+    /// "user:group" ("-" where unknown: inside archives, on Windows).
+    Owner(String),
+    /// What the file is ("PNG image, 800 x 600").
+    Type(String),
+}
+
+/// The detail of file `f` in the current display mode. Owner and Type are
+/// worked out here, for the visible files only (types are remembered).
+fn file_detail(pane: &mut Pane, f: FileRef) -> Detail {
+    match pane.display {
+        FileDisplay::LongNames => Detail::NamesOnly,
+        FileDisplay::Owner => {
+            let owner = match pane.archive {
+                Some(_) => None,
+                None => platform::owner(&pane.file_path(f)),
+            };
+            Detail::Owner(owner.unwrap_or_else(|| "-".into()))
+        }
+        FileDisplay::Type => {
+            let path = pane.file_path(f);
+            let e = pane.file(f);
+            let (size, modified, kind) = (e.size, e.modified, e.kind);
+            if let Some((s, m, what)) = pane.types.get(&path)
+                && (*s, *m) == (size, modified)
+            {
+                return Detail::Type(what.clone());
+            }
+            let what = filetype::describe(&path, kind, size, pane.archive.is_none());
+            if pane.types.len() > 10_000 {
+                pane.types.clear();
+            }
+            pane.types.insert(path, (size, modified, what.clone()));
+            Detail::Type(what)
+        }
+        _ => Detail::Standard,
+    }
+}
+
 fn file_line(
     f: &FileEntry,
     width: usize,
-    names_only: bool,
+    detail: Detail,
     git: Option<[u8; 2]>,
 ) -> ListItem<'static> {
     let size = fmt_num(f.size);
-    let date = f.modified.map(fmt_time).unwrap_or_default();
     let mode = fmt_mode(f.mode, f.kind);
     // In narrow windows (split screen), the least useful columns are dropped.
-    let details = if names_only {
-        String::new()
-    } else if width >= 72 {
-        format!(" {size:>15} {date:16} {mode}")
-    } else if width >= 50 {
-        format!(" {size:>13} {date:16}")
-    } else {
-        format!(" {size:>13}")
+    let details = match detail {
+        Detail::NamesOnly => String::new(),
+        Detail::Standard => {
+            let date = f.modified.map(fmt_time).unwrap_or_default();
+            if width >= 72 {
+                format!(" {size:>15} {date:16} {mode}")
+            } else if width >= 50 {
+                format!(" {size:>13} {date:16}")
+            } else {
+                format!(" {size:>13}")
+            }
+        }
+        Detail::Owner(owner) => {
+            let owner = fit(&owner, 17);
+            if width >= 72 {
+                format!(" {size:>15} {owner} {mode}")
+            } else if width >= 50 {
+                format!(" {size:>13} {owner}")
+            } else {
+                format!(" {owner}")
+            }
+        }
+        // Up to almost half of the line, the rest for the name.
+        Detail::Type(what) => format!(" {}", fit(&what, (width * 45 / 100).clamp(12, 50))),
     };
 
     // 2 columns for the tag mark, 3 for the Git status.

@@ -319,7 +319,7 @@ bash (`ignorespace`) e no zsh (`HIST_IGNORE_SPACE`). Dentro do terminal,
 | → / `+` | expande o diretório | |
 | ← / `-` | recolhe (ou vai para o pai) | página acima (em colunas: arquivo anterior) |
 | → | expande | página abaixo (em colunas: próximo arquivo) |
-| Alt+F | | modo de exibição: colunas de nomes, colunas com tamanho, detalhes, nomes longos |
+| Alt+F | | modo de exibição: colunas de nomes, colunas com tamanho, detalhes, dono, tipo, nomes longos |
 | Backspace | diretório pai | mostra os arquivos do diretório pai |
 | Espaço | desce uma linha | idem |
 | `*` | loga e expande o ramo inteiro | |
@@ -459,7 +459,12 @@ diretório do arquivo selecionado, com ele em destaque.
 **Modos de exibição (Alt+F):** alterna, na ordem do ZTreeWin, entre
 **nomes em várias colunas**, **nomes e tamanhos em colunas**, **detalhes**
 (uma coluna com tamanho, data e permissões, o padrão) e **nomes longos** (uma
-coluna, só os nomes inteiros). Nos modos de colunas, os arquivos seguem da
+coluna, só os nomes inteiros). Antes dos nomes longos vêm dois modos que o
+ZTreeWin não tem: **dono** (tamanho, `usuário:grupo` e permissões; não
+aparece no Windows nem dentro de arquivos compactados) e **tipo** (o que cada
+arquivo é, no espírito do comando `file`: "PNG image, 800 x 600", "ELF 64-bit
+executable", "python3 script", "Rust, UTF-8 text"..., a partir dos primeiros
+bytes dos arquivos visíveis). Nos modos de colunas, os arquivos seguem da
 esquerda para a direita, ← → andam um arquivo e ↑ ↓ uma linha; nomes com mais
 de 20 caracteres são cortados com `…`. O modo inicial fica em `file_display`
 (página 2 da configuração).
@@ -495,8 +500,11 @@ arquivo compactado, a entrada é extraída antes para uma pasta temporária,
 apagada ao sair do Xylem. Outro programa pode ser escolhido em `opener` (ou na
 tela de configuração).
 
-**Arquivos compactados:** Alt+F5 na janela de arquivos abre `.zip`, `.jar`,
-`.war`, `.apk`, `.tar`, `.tar.gz` ou `.tgz` como uma árvore, somente leitura:
+**Arquivos compactados:** Alt+F5 na janela de arquivos abre `.zip` (também
+`.jar`, `.war`, `.apk`), `.7z` e `.tar`, puro ou comprimido com gzip
+(`.tar.gz`, `.tgz`), xz (`.tar.xz`, `.txz`), bzip2 (`.tar.bz2`, `.tbz2`) ou
+zstd (`.tar.zst`), como uma árvore, somente leitura (arquivos 7z
+criptografados não são suportados):
 navegação, Filespec, Branch, Showall, tags, View e Compare funcionam dentro
 dele, e Copy (inclusive Ctrl+C e Alt+C com caminhos) extrai os arquivos.
 `Esc` na árvore fecha o arquivo e volta para onde estava. Por segurança,
@@ -704,7 +712,7 @@ configuração (Alt+F10).
 | eXecute | parâmetros de batch `%1`–`%8`, nova janela (NTW) | `sh` com `%f`, `%t` e `%d`; sempre no terminal do Xylem; também um terminal embutido (Alt+X) |
 | Histórico | janela de histórico com marcadores | ↑/↓ no prompt, um histórico por tipo, salvo entre execuções |
 | Configuração | 7 páginas, editor de cores (F4) por elemento, Alt-Export | 4 páginas com as opções que fazem sentido no Linux; F4 escolhe entre 8 temas prontos; cores individuais no `config.toml` |
-| Arquivos compactados | qualquer formato com archiver externo, criar (F5), extrair (Alt-F5) | ZIP/JAR/WAR/APK/TAR/TGZ: abrir (Alt+F5), extrair com Copy, criar com F5 (ZIP, TAR e TAR.GZ) |
+| Arquivos compactados | qualquer formato com archiver externo, criar (F5), extrair (Alt-F5) | ZIP/JAR/WAR/APK, 7z, TAR (puro, gzip, xz, bzip2, zstd): abrir (Alt+F5), extrair com Copy, criar com F5 (ZIP, TAR e TAR.GZ) |
 | Tela dividida | painéis de estatísticas opcionais por lado | sem painel de estatísticas |
 | Menus | menu de Ctrl/Alt ao segurar a tecla | igual em terminais com o protocolo do kitty; F9 em qualquer terminal |
 
