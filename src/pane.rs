@@ -126,6 +126,8 @@ pub struct Pane {
     pub sort: Sort,
     /// Alt+K: size or file count next to each directory.
     pub kbyte: Kbyte,
+    /// Alt+W: the Usage view, in place of the tree and the files.
+    pub usage: Option<crate::usage::UsageView>,
     /// Alt+F: how the file window displays the list.
     pub display: FileDisplay,
     /// File window columns as of the last draw (multi-column modes),
@@ -160,6 +162,8 @@ impl Pane {
                 let file = (e.kind != EntryKind::Dir).then(|| FileEntry {
                     name: e.path.file_name().unwrap_or_default().to_os_string(),
                     size: e.size,
+                    disk: e.size,
+                    link: None,
                     modified: e.modified,
                     mode: crate::platform::from_unix_mode(e.mode),
                     kind: match e.kind {
@@ -198,6 +202,7 @@ impl Pane {
             filespec: Filespec::default(),
             sort: Sort::default(),
             kbyte: Kbyte::default(),
+            usage: None,
             display: FileDisplay::default(),
             file_cols: 1,
             tree_page: 1,

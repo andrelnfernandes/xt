@@ -259,6 +259,17 @@ pub fn private(options: &mut OpenOptions) -> &mut OpenOptions {
     options
 }
 
+/// Space a file takes on the disk. Windows would need the cluster size
+/// and GetCompressedFileSizeW; the size is close enough for now.
+pub fn disk_usage(meta: &Metadata) -> u64 {
+    meta.len()
+}
+
+/// Hard links are not told apart on Windows (yet): none.
+pub fn hard_link(_meta: &Metadata) -> Option<u64> {
+    None
+}
+
 pub fn disk_space(path: &Path) -> Option<DiskSpace> {
     let wide = wide(path);
     let (mut available, mut total, mut free) = (0u64, 0u64, 0u64);

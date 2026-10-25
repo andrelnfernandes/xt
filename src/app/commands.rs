@@ -294,6 +294,10 @@ impl App {
             }
             _ => {}
         }
+        if self.usage.is_some() {
+            self.usage_key(key);
+            return;
+        }
         // Shift+letter (and digits): jumps to the next name starting with
         // it, as in ZTreeWin.
         if let KeyCode::Char(c) = key.code
@@ -470,6 +474,7 @@ impl App {
                 let k = self.kbyte;
                 self.ask_kbyte(k);
             }
+            Command::Usage => self.open_usage(),
             Command::OpenWith { tagged } => self.open_with(tagged),
             Command::CompareBranch => self.ask_compare(true),
             Command::Parent => {
