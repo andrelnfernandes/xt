@@ -115,6 +115,16 @@ pub fn private(options: &mut OpenOptions) -> &mut OpenOptions {
     options.mode(0o600)
 }
 
+/// Space a file takes on the disk: its allocated blocks, as `du` counts.
+pub fn disk_usage(meta: &Metadata) -> u64 {
+    meta.blocks() * 512
+}
+
+/// The inode of a file that has other hard links (they share its space).
+pub fn hard_link(meta: &Metadata) -> Option<u64> {
+    (meta.is_file() && meta.nlink() > 1).then(|| meta.ino())
+}
+
 pub fn disk_space(path: &Path) -> Option<DiskSpace> {
     let s = nix::sys::statvfs::statvfs(path).ok()?;
     let frag = s.fragment_size() as u64;

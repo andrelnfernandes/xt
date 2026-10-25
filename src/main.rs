@@ -29,6 +29,7 @@ mod term;
 #[cfg(test)]
 mod testing;
 mod ui;
+mod usage;
 mod viewer;
 mod watch;
 

@@ -97,10 +97,13 @@ the space goes before you pay for more. Mount the Drive, go to its root, log
 it all with `*` (on a large Drive it takes a while) and choose Alt+K →
 **Percent** ([Directory sizes](info.md)): each folder shows how much of the
 one above it takes, with a bar against the largest of its siblings. Follow
-the biggest bars down to the old backups, videos and duplicates; Branch
-(`B`) lists the files of a whole folder; [sorted](sort.md) by size, largest
-first (Alt+S, then `O` for descending and `S` for Size), the biggest come on
-top.
+the biggest bars down to the old backups, videos and duplicates.
+
+The [Usage view](usage.md) (Alt+W, at the Drive's root) goes further: the
+files and folders together, largest first, so a single huge file shows as
+well as a full folder. And Branch (`B`) lists the files of a whole folder:
+[sorted](sort.md) by size, largest first (Alt+S, then `O` for descending and
+`S` for Size), the biggest come on top.
 
 A few things count toward the storage plan without showing in the mount:
 

@@ -258,6 +258,11 @@ const COMMANDS: &[(&str, Command, &str)] = &[
         "go to a directory by typing its path (Tab, / complete)",
     ),
     (
+        "usage",
+        Command::Usage,
+        "disk usage of the branch: folders and files by the space they take",
+    ),
+    (
         "kbyte",
         Command::Kbyte,
         "show size or file count of each directory in the tree",
@@ -449,6 +454,7 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("ctrl+f8", Tree, "untag_branch"),
     ("ctrl+f9", Tree, "invert_branch"),
     ("alt+k", Any, "kbyte"),
+    ("alt+w", Any, "usage"),
     ("esc", Files, "back"),
     ("left", Files, "left"),
     ("right", Files, "right"),

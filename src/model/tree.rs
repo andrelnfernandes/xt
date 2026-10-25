@@ -27,6 +27,11 @@ pub enum FileKind {
 pub struct FileEntry {
     pub name: OsString,
     pub size: u64,
+    /// Space it takes on the disk (allocated blocks); the size where that
+    /// is not known (archives, remote machines).
+    pub disk: u64,
+    /// Inode, when the file has other hard links: they share the space.
+    pub link: Option<u64>,
     pub modified: Option<SystemTime>,
     pub mode: u32,
     pub kind: FileKind,
@@ -79,6 +84,28 @@ pub trait Lister: Send + Sync {
     fn list(&self, path: &Path) -> std::io::Result<(Vec<DirName>, Vec<FileEntry>)>;
 }
 
+/// What a branch takes on the disk ([`Tree::usage`]).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Usage {
+    /// Allocated on the disk, as `du` counts.
+    pub disk: u64,
+    /// The files' sizes.
+    pub apparent: u64,
+    pub files: u64,
+    /// Some directory below could not be read: the totals may be short.
+    pub incomplete: bool,
+    /// Mounted from another file system: not in the totals above it.
+    pub other_disk: bool,
+}
+
+/// [`Usage`] of each directory of a branch, and the hard links that did not
+/// count (another link to the same file was found first).
+#[derive(Debug, Default)]
+pub struct UsageMap {
+    pub dirs: HashMap<NodeId, Usage>,
+    pub repeats: HashSet<(NodeId, usize)>,
+}
+
 pub struct Tree {
     nodes: Vec<DirNode>,
     /// Tree of an archive: everything is already read and nothing is reread
@@ -89,6 +116,8 @@ pub struct Tree {
     pub show_hidden: bool,
     /// Reads directories from elsewhere than the local disk.
     lister: Option<std::sync::Arc<dyn Lister>>,
+    /// Goes up whenever what was read changes (to recompute only then).
+    version: u64,
 }
 
 /// Reading of a whole branch done in small steps, so the interface can
@@ -99,6 +128,8 @@ pub struct LogJob {
     expand: bool,
     /// Directories processed so far.
     pub dirs: u64,
+    /// Only directories on this device (the Usage view: one disk).
+    device: Option<u64>,
 }
 
 impl LogJob {
@@ -107,6 +138,16 @@ impl LogJob {
             stack: vec![root],
             expand,
             dirs: 0,
+            device: None,
+        }
+    }
+
+    /// Logs the branch without going into other file systems mounted
+    /// inside it (`device`: the one of `root`).
+    pub fn one_disk(root: NodeId, device: Option<u64>) -> Self {
+        LogJob {
+            device,
+            ..LogJob::new(root, false)
         }
     }
 
@@ -147,6 +188,7 @@ impl Tree {
             is_virtual: false,
             show_hidden: true,
             lister: None,
+            version: 0,
         }
     }
 
@@ -226,6 +268,7 @@ impl Tree {
             return;
         }
         self.nodes[id].scanned = true;
+        self.version += 1;
 
         let path = self.path(id);
         let (dirs, files) = match self.read(&path) {
@@ -263,6 +306,7 @@ impl Tree {
         if !self.nodes[id].scanned || self.is_virtual {
             return;
         }
+        self.version += 1;
         let path = self.path(id);
         let (dirs, mut files) = match self.read(&path) {
             Ok(r) => r,
@@ -323,6 +367,7 @@ impl Tree {
     }
 
     pub fn file_mut(&mut self, dir: NodeId, idx: usize) -> &mut FileEntry {
+        self.version += 1;
         &mut self.nodes[dir].files[idx]
     }
 
@@ -359,12 +404,99 @@ impl Tree {
             }
             job.dirs += 1;
             // Reverse order so children are visited alphabetically.
-            job.stack
-                .extend(self.nodes[n].children.iter().rev().copied());
+            let children = self.nodes[n].children.iter().rev().copied();
+            match job.device {
+                Some(dev) => {
+                    let same: Vec<NodeId> = children
+                        .filter(|&c| self.device(c).is_none_or(|d| d == dev))
+                        .collect();
+                    job.stack.extend(same);
+                }
+                None => job.stack.extend(children),
+            }
             if start.elapsed() >= budget {
                 break;
             }
         }
+    }
+
+    /// Changes whenever something read changes: a directory read again, a
+    /// file tagged.
+    pub fn version(&self) -> u64 {
+        self.version
+    }
+
+    /// Device (file system) of a directory on the local disk; `None` for
+    /// archives and remote machines, or when it cannot be read.
+    pub fn device(&self, id: NodeId) -> Option<u64> {
+        if self.lister.is_some() || self.is_virtual {
+            return None;
+        }
+        let path = self.path(id);
+        let meta = fs::symlink_metadata(&path).ok()?;
+        Some(platform::device(&path, &meta))
+    }
+
+    /// What the branch of `root` takes, for the Usage view: every file
+    /// counts, hidden or not; a hard link only once (the first found takes
+    /// the space, the others are in `repeats`); and directories on another
+    /// file system are marked and left out of the totals above them.
+    /// `devices` keeps the device of each directory between calls.
+    pub fn usage(&self, root: NodeId, devices: &mut HashMap<NodeId, Option<u64>>) -> UsageMap {
+        let mut device = |id| *devices.entry(id).or_insert_with(|| self.device(id));
+        let root_dev = device(root);
+        let mut map = UsageMap::default();
+        // Pre-order, stopping at other file systems.
+        let mut order = Vec::new();
+        let mut stack = vec![root];
+        while let Some(n) = stack.pop() {
+            order.push(n);
+            for &c in self.nodes[n].children.iter().rev() {
+                let other = root_dev.is_some() && device(c).is_some_and(|d| Some(d) != root_dev);
+                if other {
+                    let u = map.dirs.entry(c).or_default();
+                    u.other_disk = true;
+                } else {
+                    stack.push(c);
+                }
+            }
+        }
+        let mut seen = HashSet::new();
+        for &id in &order {
+            for (i, f) in self.nodes[id].files.iter().enumerate() {
+                if let Some(ino) = f.link
+                    && !seen.insert(ino)
+                {
+                    map.repeats.insert((id, i));
+                }
+            }
+        }
+        for &id in order.iter().rev() {
+            let node = &self.nodes[id];
+            let mut u = Usage {
+                incomplete: !node.scanned,
+                ..Usage::default()
+            };
+            for (i, f) in node.files.iter().enumerate() {
+                u.files += 1;
+                if !map.repeats.contains(&(id, i)) {
+                    u.disk += f.disk;
+                    u.apparent += f.size;
+                }
+            }
+            for c in &node.children {
+                let Some(cu) = map.dirs.get(c) else { continue };
+                if cu.other_disk {
+                    continue;
+                }
+                u.disk += cu.disk;
+                u.apparent += cu.apparent;
+                u.files += cu.files;
+                u.incomplete |= cu.incomplete || self.nodes[*c].error.is_some();
+            }
+            map.dirs.insert(id, u);
+        }
+        map
     }
 
     /// `id` and all its descendants already created, in pre-order.
@@ -507,6 +639,8 @@ fn read_dir_entries(path: &Path) -> std::io::Result<(Vec<DirName>, Vec<FileEntry
             files.push(FileEntry {
                 name,
                 size: 0,
+                disk: 0,
+                link: None,
                 modified: None,
                 mode: 0,
                 kind: FileKind::Other,
@@ -530,6 +664,8 @@ fn read_dir_entries(path: &Path) -> std::io::Result<(Vec<DirName>, Vec<FileEntry
         files.push(FileEntry {
             name,
             size: meta.len(),
+            disk: platform::disk_usage(&meta),
+            link: platform::hard_link(&meta),
             modified: meta.modified().ok(),
             mode: platform::mode(&meta),
             kind,
@@ -706,6 +842,8 @@ mod tests {
         let file = |name: &str, size| FileEntry {
             name: name.into(),
             size,
+            disk: size,
+            link: None,
             modified: None,
             mode: 0o644,
             kind: FileKind::File,
