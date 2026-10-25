@@ -98,3 +98,5 @@ fi
 Inside Xylem the shell does not need tmux to survive: it keeps running while
 Xylem is open, and if the connection drops, the remote window goes with it
 anyway.
+
+For Google Drive, S3 and other cloud storage, see [Cloud storage](cloud.md).

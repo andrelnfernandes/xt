@@ -659,13 +659,27 @@ fn draw_stats(frame: &mut Frame, app: &App, area: Rect) {
     let mut disk = Vec::new();
     let mut total_lines = 0;
     if let Some(space) = crate::platform::disk_space(&path) {
-        let point = crate::info::mount_of(&path)
-            .map(|m| m.point.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        disk.push(Line::from(vec![
-            label("DISK ".into()),
-            Span::raw(fit_tail(&point, width.saturating_sub(5))),
-        ]));
+        let mount = crate::info::mount_of(&path);
+        match mount.as_ref().and_then(crate::rclone::of) {
+            // A cloud service mounted by rclone: its name, then the remote.
+            Some(remote) => {
+                let service = remote.service.as_deref().unwrap_or("rclone");
+                disk.push(Line::from(vec![
+                    label("DISK ".into()),
+                    bold(fit(service, width.saturating_sub(5))),
+                ]));
+                disk.push(Line::from(fit(&format!("rclone {}", remote.spec), width)));
+            }
+            None => {
+                let point = mount
+                    .map(|m| m.point.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                disk.push(Line::from(vec![
+                    label("DISK ".into()),
+                    Span::raw(fit_tail(&point, width.saturating_sub(5))),
+                ]));
+            }
+        }
         disk.extend(value("Available", space.available));
         // Lines of "Total": one, or two when the number goes below.
         let total = value("Total", space.total);
