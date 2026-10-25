@@ -84,8 +84,8 @@ ARM64 (estático, roda em qualquer distribuição) ou Windows x86_64. Extraia e
 coloque o `xy` (`xy.exe`) numa pasta do `PATH`, por exemplo:
 
 ```bash
-tar xzf xy-v0.3.0-x86_64-unknown-linux-musl.tar.gz
-install -m 755 xy-v0.3.0-x86_64-unknown-linux-musl/xy ~/.local/bin/
+tar xzf xy-v0.4.0-x86_64-unknown-linux-musl.tar.gz
+install -m 755 xy-v0.4.0-x86_64-unknown-linux-musl/xy ~/.local/bin/
 ```
 
 Cada arquivo tem um `.sha256` ao lado, para conferir com `sha256sum -c`.
