@@ -18,7 +18,8 @@ A path outside the tree becomes a Log when confirmed. In Branch and Showall,
 ## Log (L)
 
 Opens another directory in the window, replacing the tree (a directory inside
-the current tree just moves the cursor there). The path can be absolute,
+the current tree just moves the cursor there). An address like `user@host:`
+opens a [remote machine](remote.md). The path can be absolute,
 relative to the current directory or start with `~`; **F2**
 [picks it from a tree](picker.md) and ↑ brings up earlier ones. New windows
 keep the current [sort order](sort.md) and display mode.
