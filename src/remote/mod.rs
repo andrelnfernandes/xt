@@ -521,6 +521,7 @@ pub fn for_tests(dir: &Path) -> Option<Arc<Remote>> {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     #[test]
     fn maps_paths_both_ways() {
         let tmp = crate::testing::tempdir();
