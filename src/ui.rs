@@ -169,6 +169,7 @@ fn draw_usage(frame: &mut Frame, pane: &mut Pane, active: bool, area: Rect) {
     let items: Vec<ListItem> = rows
         .iter()
         .map(|r| {
+            let weight = usage::weight(r.size, whole);
             let (size, bar, pct) = if r.mark == '>' {
                 // Another file system: what it uses, not part of this one.
                 let other = match r.item {
@@ -177,7 +178,7 @@ fn draw_usage(frame: &mut Frame, pane: &mut Pane, active: bool, area: Rect) {
                         .unwrap_or_default(),
                     Item::File(_) => String::new(),
                 };
-                (other, " ".repeat(bar_width), "-".to_string())
+                (other, String::new(), "-".to_string())
             } else {
                 (
                     usage::size(r.size),
@@ -192,9 +193,13 @@ fn draw_usage(frame: &mut Frame, pane: &mut Pane, active: bool, area: Rect) {
             let mut spans = vec![
                 Span::styled(format!("{} ", r.mark), Style::new().fg(theme().key)),
                 Span::raw(format!("{size:>10} ")),
-                Span::styled(bar, Style::new().fg(theme().key)),
-                Span::styled(format!(" {pct:>6}"), dim),
             ];
+            if r.mark == '>' {
+                spans.push(Span::raw(" ".repeat(bar_width)));
+            } else {
+                spans.extend(bar_spans(bar, bar_width, weight));
+            }
+            spans.push(Span::styled(format!(" {pct:>6}"), dim));
             if view.counts {
                 spans.push(Span::styled(format!(" {:>10}", fmt_num(r.files)), dim));
             }
@@ -386,11 +391,13 @@ fn draw_tree(frame: &mut Frame, pane: &mut Pane, active: bool, title: String, ar
                     }
                     _ => fmt_num(count),
                 };
-                let bar_len = bar.as_ref().map_or(0, |b| b.chars().count() + 1);
+                let bar_len = bar.as_ref().map_or(0, |_| SHARE_BAR + 1);
                 let pad = width.saturating_sub(used + bar_len + value.chars().count() + 1);
                 spans.push(Span::raw(" ".repeat(pad + 1)));
                 if let Some(bar) = bar {
-                    spans.push(Span::styled(bar, Style::new().fg(theme().key)));
+                    let whole = node.parent.map_or(bytes, |p| totals[p].1);
+                    let weight = crate::usage::weight(bytes, whole);
+                    spans.extend(bar_spans(bar, SHARE_BAR, weight));
                     spans.push(Span::raw(" "));
                 }
                 spans.push(Span::styled(value, Style::new().fg(theme().dim)));
@@ -434,18 +441,24 @@ fn share(bytes: u64, whole: u64, largest: u64, room: usize) -> (Option<String>, 
     if room < SHARE_BAR + 1 + text.len() {
         return (None, text);
     }
-    const PARTS: [&str; 8] = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"];
-    let eighths = if largest == 0 {
-        0
-    } else {
-        ((bytes as u128 * (SHARE_BAR * 8) as u128 + largest as u128 / 2) / largest as u128) as usize
-    }
-    .min(SHARE_BAR * 8);
-    let mut bar = "█".repeat(eighths / 8);
-    bar.push_str(PARTS[eighths % 8]);
-    let len = bar.chars().count();
-    bar.push_str(&" ".repeat(SHARE_BAR - len));
-    (Some(bar), text)
+    (Some(crate::usage::bar(bytes, largest, SHARE_BAR)), text)
+}
+
+/// A bar for the Alt+K Percent and the Usage view: the filled part in the
+/// color of its weight (the theme's bar_low, bar_mid, bar_high), on a track
+/// that shows the whole width.
+fn bar_spans(filled: String, width: usize, weight: crate::usage::Weight) -> Vec<Span<'static>> {
+    use crate::usage::Weight;
+    let color = match weight {
+        Weight::Light => theme().bar_low,
+        Weight::Medium => theme().bar_mid,
+        Weight::Heavy => theme().bar_high,
+    };
+    let track = width.saturating_sub(filled.chars().count());
+    vec![
+        Span::styled(filled, Style::new().fg(color)),
+        Span::styled("░".repeat(track), Style::new().fg(theme().border)),
+    ]
 }
 
 /// `7/2,027` on a window's border: the cursor's line and how many there are.
@@ -2310,18 +2323,15 @@ mod tests {
         );
         assert_eq!(
             share(15, 100, 30, 40),
-            (Some("████    ".into()), "  15%".into())
+            (Some("████".into()), "  15%".into())
         );
         // Eighths of a character: 1/16 of the largest is one cell.
-        assert_eq!(share(2, 100, 32, 40).0.as_deref(), Some("▌       "));
+        assert_eq!(share(2, 100, 32, 40).0.as_deref(), Some("▌"));
         assert_eq!(share(1, 1000, 30, 40).1, " 0.1%");
         assert_eq!(share(58, 1000, 30, 40).1, " 5.8%");
         // Something, but too little to show: not "0.0%".
         assert_eq!(share(1, 100_000, 30, 40).1, "<0.1%");
-        assert_eq!(
-            share(0, 0, 0, 40),
-            (Some("        ".into()), "   0%".into())
-        );
+        assert_eq!(share(0, 0, 0, 40), (Some(String::new()), "   0%".into()));
         // No room for the bar: only the share.
         assert_eq!(share(30, 100, 30, 10), (None, "  30%".into()));
     }
@@ -2351,7 +2361,7 @@ mod tests {
         };
         assert!(line("big").contains("████████   75%"), "{}", line("big"));
         assert!(
-            line("small").contains("██▋        25%"),
+            line("small").contains("██▋░░░░░   25%"),
             "{}",
             line("small")
         );
