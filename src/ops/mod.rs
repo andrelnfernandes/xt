@@ -15,6 +15,8 @@ use crate::archive;
 use crate::platform;
 
 const CHUNK: usize = 1024 * 1024;
+/// How long a step waits for the next block of an archive entry.
+const WAIT: Duration = Duration::from_millis(10);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpKind {
@@ -111,7 +113,7 @@ enum Overwrite {
 
 /// Origin of the files when they come from inside a ZIP/TAR.
 struct ArchiveSource {
-    reader: archive::Reader,
+    extractor: archive::Extractor,
     /// Path of the archive: root of the virtual paths.
     root: PathBuf,
     entries: HashMap<PathBuf, archive::Entry>,
@@ -289,7 +291,7 @@ impl Operation {
             .map(|e| (e.path.clone(), e))
             .collect();
         self.archive = Some(ArchiveSource {
-            reader,
+            extractor: reader.into_extractor(),
             root: archive.to_path_buf(),
             entries,
         });
@@ -599,32 +601,26 @@ impl Operation {
         }
     }
 
+    /// Starts extracting an entry, in another thread: the copy goes on in
+    /// steps like any other, so Esc stops even a decompression bomb.
     fn extract_item(&mut self, item: &Item) {
-        let source = self.archive.as_mut().expect("archive source");
+        let source = self.archive.as_ref().expect("archive source");
         let entry = item.src.strip_prefix(&source.root).unwrap_or(&item.src);
-        let info = source.entries.get(entry).cloned();
-        let tmp = platform::tmp_path(&item.dst);
-        let result = (|| {
-            let (mut file, _) = platform::create_tmp(&item.dst)?;
-            source.reader.extract(entry, &mut file, u64::MAX)?;
-            if let Some(info) = &info {
-                platform::set_file_mode(&file, foreign_mode(info.mode))?;
-                if let Some(t) = info.modified {
-                    file.set_modified(t)?;
-                }
+        let info = source.entries.get(entry);
+        let mode = info.map_or(0o644, |i| foreign_mode(i.mode));
+        let modified = info.and_then(|i| i.modified);
+        let reader = source.extractor.extract(entry).waiting_at_most(WAIT);
+        match platform::create_tmp(&item.dst) {
+            Ok((writer, tmp)) => {
+                self.transfer = Some(Transfer {
+                    reader: Box::new(reader),
+                    writer,
+                    tmp,
+                    mode,
+                    modified,
+                })
             }
-            drop(file);
-            fs::rename(&tmp, &item.dst)
-        })();
-        match result {
-            Ok(()) => {
-                self.done_bytes += item.size;
-                self.finish_item();
-            }
-            Err(e) => {
-                let _ = fs::remove_file(&tmp);
-                self.fail(&item.src, e);
-            }
+            Err(e) => self.fail(&item.src, e),
         }
     }
 
@@ -646,6 +642,8 @@ impl Operation {
         match result {
             Ok(0) => self.finish_transfer(),
             Ok(n) => self.done_bytes += n as u64,
+            // Still extracting: next step.
+            Err(e) if e.kind() == ErrorKind::WouldBlock => {}
             Err(e) => {
                 let t = self.transfer.take().unwrap();
                 let _ = fs::remove_file(&t.tmp);
@@ -1132,6 +1130,46 @@ mod tests {
         // Archives are read-only.
         let moving = Operation::transfer(OpKind::Move, vec![virt("README")], &b, None).unwrap();
         assert!(moving.reading_archive(&zip).is_err());
+    }
+
+    #[test]
+    fn extraction_runs_in_steps_and_cancel_cleans_up() {
+        let (tmp, _a, b) = setup();
+        let tar = tmp.path().join("p.tar");
+        let mut builder = tar::Builder::new(File::create(&tar).unwrap());
+        let mut header = tar::Header::new_gnu();
+        header.set_size(CHUNK as u64 * 3);
+        header.set_mode(0o644);
+        header.set_cksum();
+        builder
+            .append_data(&mut header, "big", &vec![7u8; CHUNK * 3][..])
+            .unwrap();
+        builder.finish().unwrap();
+        let copy = || {
+            let source = Source {
+                path: tar.join("big"),
+                size: CHUNK as u64 * 3,
+            };
+            Operation::transfer(OpKind::Copy, vec![source], &b, None)
+                .unwrap()
+                .reading_archive(&tar)
+                .unwrap()
+        };
+
+        let mut op = copy();
+        op.step(Duration::ZERO); // starts extracting
+        while op.done_bytes == 0 {
+            op.step(Duration::ZERO);
+        }
+        assert!(!op.is_done());
+        op.cancel();
+        assert!(!b.join("big").exists());
+        assert!(no_temp_files(&b));
+
+        let mut op = copy();
+        run(&mut op);
+        assert_eq!(op.done_files, 1, "{:?}", op.errors);
+        assert_eq!(fs::metadata(b.join("big")).unwrap().len(), CHUNK as u64 * 3);
     }
 
     #[cfg(unix)]
