@@ -3,7 +3,9 @@
 //! The normal screen has one; with the window split (F8) there are two, each with
 //! its own tree.
 
+use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
+use std::time::SystemTime;
 
 use ratatui::widgets::ListState;
 
@@ -49,6 +51,10 @@ pub enum FileDisplay {
     /// One column: name, size, date and permissions.
     #[default]
     Details,
+    /// One column: name, size, owner and group, and permissions.
+    Owner,
+    /// One column: name and what the file is ("PNG image, 800 x 600").
+    Type,
     /// One column, names only (full length).
     LongNames,
 }
@@ -58,7 +64,9 @@ impl FileDisplay {
         match self {
             FileDisplay::Names => FileDisplay::NamesSize,
             FileDisplay::NamesSize => FileDisplay::Details,
-            FileDisplay::Details => FileDisplay::LongNames,
+            FileDisplay::Details => FileDisplay::Owner,
+            FileDisplay::Owner => FileDisplay::Type,
+            FileDisplay::Type => FileDisplay::LongNames,
             FileDisplay::LongNames => FileDisplay::Names,
         }
     }
@@ -126,6 +134,9 @@ pub struct Pane {
     pub archive: Option<PathBuf>,
     /// ...and the window as it was before opening it, to go back with Esc.
     pub outer: Option<Box<Pane>>,
+    /// Type display (Alt+F): what each file is, with the size and date it
+    /// had when read, so a changed file is read again.
+    pub types: HashMap<PathBuf, (u64, Option<SystemTime>, String)>,
 }
 
 impl Pane {
@@ -179,6 +190,7 @@ impl Pane {
             file_page: 1,
             archive: None,
             outer: None,
+            types: HashMap::new(),
         };
         pane.refresh_files();
         pane
@@ -842,6 +854,10 @@ mod tests {
         pane.file_page = 3;
         pane.apply_files(Command::Right);
         assert_eq!(sel(&pane), 7);
+        pane.cycle_display();
+        assert_eq!(pane.display, FileDisplay::Owner);
+        pane.cycle_display();
+        assert_eq!(pane.display, FileDisplay::Type);
         pane.cycle_display();
         assert_eq!(pane.display, FileDisplay::LongNames);
         pane.cycle_display();

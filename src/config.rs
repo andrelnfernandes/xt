@@ -44,8 +44,9 @@ enter_views = false
 syntax_highlight = true
 # Initial mode of the files window (Alt+F changes it while running): "names"
 # (several columns), "names_size" (columns with size), "details" (one
-# column with size, date and permissions) or "long_names" (one column, names
-# only).
+# column with size, date and permissions), "owner" (size, owner and group,
+# permissions), "type" (what each file is, as the `file` command says) or
+# "long_names" (one column, names only).
 file_display = "details"
 # Initial file sort order: "name", "ext", "date" or "size"
 # (Alt+S changes it while running).
@@ -442,6 +443,8 @@ impl Choice for FileDisplay {
         FileDisplay::Names,
         FileDisplay::NamesSize,
         FileDisplay::Details,
+        FileDisplay::Owner,
+        FileDisplay::Type,
         FileDisplay::LongNames,
     ];
     fn as_str(self) -> &'static str {
@@ -449,6 +452,8 @@ impl Choice for FileDisplay {
             FileDisplay::Names => "names",
             FileDisplay::NamesSize => "names_size",
             FileDisplay::Details => "details",
+            FileDisplay::Owner => "owner",
+            FileDisplay::Type => "type",
             FileDisplay::LongNames => "long_names",
         }
     }

@@ -319,7 +319,7 @@ bash (`ignorespace`) e no zsh (`HIST_IGNORE_SPACE`). Dentro do terminal,
 | → / `+` | expande o diretório | |
 | ← / `-` | recolhe (ou vai para o pai) | página acima (em colunas: arquivo anterior) |
 | → | expande | página abaixo (em colunas: próximo arquivo) |
-| Alt+F | | modo de exibição: colunas de nomes, colunas com tamanho, detalhes, nomes longos |
+| Alt+F | | modo de exibição: colunas de nomes, colunas com tamanho, detalhes, dono, tipo, nomes longos |
 | Backspace | diretório pai | mostra os arquivos do diretório pai |
 | Espaço | desce uma linha | idem |
 | `*` | loga e expande o ramo inteiro | |
@@ -459,7 +459,12 @@ diretório do arquivo selecionado, com ele em destaque.
 **Modos de exibição (Alt+F):** alterna, na ordem do ZTreeWin, entre
 **nomes em várias colunas**, **nomes e tamanhos em colunas**, **detalhes**
 (uma coluna com tamanho, data e permissões, o padrão) e **nomes longos** (uma
-coluna, só os nomes inteiros). Nos modos de colunas, os arquivos seguem da
+coluna, só os nomes inteiros). Antes dos nomes longos vêm dois modos que o
+ZTreeWin não tem: **dono** (tamanho, `usuário:grupo` e permissões; não
+aparece no Windows nem dentro de arquivos compactados) e **tipo** (o que cada
+arquivo é, no espírito do comando `file`: "PNG image, 800 x 600", "ELF 64-bit
+executable", "python3 script", "Rust, UTF-8 text"..., a partir dos primeiros
+bytes dos arquivos visíveis). Nos modos de colunas, os arquivos seguem da
 esquerda para a direita, ← → andam um arquivo e ↑ ↓ uma linha; nomes com mais
 de 20 caracteres são cortados com `…`. O modo inicial fica em `file_display`
 (página 2 da configuração).
