@@ -36,6 +36,7 @@ tree or the file window, the help for that window. In the help, **Tab** and
 ## Beyond XTree
 
 - [The built-in terminal](terminal.md)
+- [Remote machines (SSH)](remote.md): browse another machine, its terminal
 - [Git](git.md)
 - [Bookmarks](bookmarks.md)
 
