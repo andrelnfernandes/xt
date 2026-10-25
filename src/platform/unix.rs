@@ -131,11 +131,12 @@ pub fn mounts() -> Vec<Mount> {
     text.lines()
         .filter_map(|line| {
             let fields: Vec<&str> = line.split_whitespace().collect();
-            let [_, point, fstype, ..] = fields[..] else {
+            let [source, point, fstype, ..] = fields[..] else {
                 return None;
             };
             // "\040" is the space in /proc/mounts names.
             Some(Mount {
+                source: source.replace("\\040", " "),
                 point: PathBuf::from(point.replace("\\040", " ")),
                 fstype: fstype.to_string(),
             })

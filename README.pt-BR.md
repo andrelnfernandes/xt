@@ -140,9 +140,9 @@ mkdir -p ~/.local/share/man/man1 && xy --man > ~/.local/share/man/man1/xy.1
   sintaxe, Autoview ao lado da lista, arquivos ZIP, 7z e TAR abertos como
   diretórios, e modos de exibição que mostram o dono ou o que cada arquivo é.
 - **Além do XTree:** um terminal embutido cuja árvore acompanha o shell,
-  máquinas remotas via SSH (navegar e copiar delas, com o terminal de lá), um
-  menu Git opcional, a área de transferência, uma tela de configuração e
-  temas.
+  máquinas remotas via SSH (navegar e copiar delas, com o terminal de lá),
+  Google Drive, S3 e outros armazenamentos na nuvem via rclone, um menu Git
+  opcional, a área de transferência, uma tela de configuração e temas.
 
 ## Uso
 
@@ -168,7 +168,8 @@ tópicos: [a janela da árvore](docs/manual/tree.md),
 [a janela de arquivos](docs/manual/files.md),
 [tags e operações em grupo](docs/manual/tagging.md),
 [Copy e Move](docs/manual/copy-move.md), [Filespec](docs/manual/filespec.md),
-[o terminal embutido](docs/manual/terminal.md), [Git](docs/manual/git.md),
+[o terminal embutido](docs/manual/terminal.md),
+[armazenamento na nuvem (rclone)](docs/manual/cloud.md), [Git](docs/manual/git.md),
 [configuração](docs/manual/configuration.md),
 [Windows](docs/manual/windows.md) (experimental) e a
 [comparação com o ZTreeWin](docs/manual/ztreewin.md).
@@ -191,6 +192,7 @@ tópicos: [a janela da árvore](docs/manual/tree.md),
 - `src/editors.rs` — qual editor o E usa para cada arquivo (`[editors]`)
 - `src/term.rs` — terminal embutido (pseudoterminal, códigos de teclas, cores)
 - `src/git.rs` — menu Git (Ctrl+G) e marcadores de estado, pelo programa `git`
+- `src/rclone.rs` — qual serviço de nuvem é uma pasta montada pelo rclone
 - `src/config.rs` — arquivo de configuração, temas e formatos
 - `src/settings.rs` — tela de configuração (F12)
 - `src/state.rs` — histórico dos prompts entre execuções

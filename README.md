@@ -136,8 +136,9 @@ mkdir -p ~/.local/share/man/man1 && xy --man > ~/.local/share/man/man1/xy.1
   Autoview next to the list, ZIP, 7z and TAR archives opened as directories,
   and display modes that show owners or what each file is.
 - **Beyond XTree:** a built-in terminal whose tree follows the shell, remote
-  machines over SSH (browse and copy from them, with their own terminal), an
-  optional Git menu, the clipboard, a configuration screen and themes.
+  machines over SSH (browse and copy from them, with their own terminal),
+  Google Drive, S3 and other cloud storage through rclone, an optional Git
+  menu, the clipboard, a configuration screen and themes.
 
 ## Usage
 
@@ -161,7 +162,8 @@ and the man page (`xy --man`). Some topics:
 [the tree window](docs/manual/tree.md), [the file window](docs/manual/files.md),
 [tags and group operations](docs/manual/tagging.md),
 [Copy and Move](docs/manual/copy-move.md), [Filespec](docs/manual/filespec.md),
-[the built-in terminal](docs/manual/terminal.md), [Git](docs/manual/git.md),
+[the built-in terminal](docs/manual/terminal.md),
+[cloud storage (rclone)](docs/manual/cloud.md), [Git](docs/manual/git.md),
 [configuration](docs/manual/configuration.md),
 [Windows](docs/manual/windows.md) (experimental) and the
 [comparison with ZTreeWin](docs/manual/ztreewin.md).
@@ -184,6 +186,7 @@ and the man page (`xy --man`). Some topics:
 - `src/editors.rs` — which editor E uses for each file (`[editors]`)
 - `src/term.rs` — built-in terminal (pseudo-terminal, key codes, colors)
 - `src/git.rs` — Git menu (Ctrl+G) and status markers, through the `git` program
+- `src/rclone.rs` — which cloud service a folder mounted by rclone is
 - `src/config.rs` — configuration file, themes and formats
 - `src/settings.rs` — configuration screen (F12)
 - `src/state.rs` — prompt history between runs

@@ -1,0 +1,80 @@
+# Cloud storage (rclone)
+
+Xylem has no Google Drive or S3 client of its own, but it does not need one:
+[rclone](https://rclone.org) mounts them (and some 70 other services:
+OneDrive, Dropbox, Backblaze B2, Cloudflare R2, MinIO...) as a folder, and
+Xylem works on that folder like on any other. Everything works there:
+logging, Branch, tags, the viewer, Copy and Move in both directions, Rename,
+Makedir, Delete.
+
+## Setting up (once)
+
+Install rclone (`apt install rclone`, `dnf install rclone`, `brew install
+rclone`, or from [rclone.org](https://rclone.org/downloads/)) and create a
+remote with `rclone config`. You give it a name, which is what goes before
+the colon below.
+
+- **Google Drive:** storage type `drive`; the defaults are fine. rclone opens
+  the browser for you to sign in with Google and allow it. On a machine
+  without a browser (over SSH), answer *no* to the browser question: rclone
+  shows a command to run with `rclone authorize` on a machine that has one.
+- **Amazon S3:** storage type `s3`, provider `AWS`, then either the access key
+  and secret, or *env_auth* to use what the AWS tools already use
+  (`~/.aws/credentials`, environment variables, the instance's role). Other
+  S3 services (R2, MinIO, Wasabi...) are other providers in the same list.
+
+`rclone lsd gdrive:` (or `rclone lsd s3:`) lists the top folders (the
+buckets, in S3): if it works, the remote is ready.
+
+## Mounting and opening
+
+Linux, with a remote called `gdrive`:
+
+```bash
+mkdir -p ~/gdrive
+rclone mount gdrive: ~/gdrive --vfs-cache-mode writes --daemon
+xy ~/gdrive
+```
+
+For S3, the same with `s3:` (every bucket) or `s3:my-bucket` (one of them).
+`fusermount -u ~/gdrive` unmounts.
+
+- `--vfs-cache-mode writes` keeps a local copy of files being written, which
+  editors (`E`) and some programs need.
+- `--dir-cache-time 1h` keeps directory listings longer than the default 5
+  minutes: logging again (F3) is faster, but changes made elsewhere take
+  longer to show.
+
+On **macOS**, `rclone mount` needs [macFUSE](https://osxfuse.github.io);
+`rclone nfsmount gdrive: ~/gdrive` needs nothing extra. On **Windows**, it
+needs [WinFsp](https://winfsp.dev) and mounts on a drive letter:
+`rclone mount gdrive: X:`, then `xy X:\`.
+
+To have the folder at hand, save it as a [bookmark](bookmarks.md) (Alt+B).
+
+On Linux, Xylem notices the folders mounted by rclone: the DISK panel shows
+the service (Google Drive, Amazon S3, OneDrive...) and, below it, the remote
+(`rclone gdrive:`). Info (Alt+I) and Avail (`A`) show them too. The service
+comes from rclone's configuration file (`~/.config/rclone/rclone.conf`, or
+`$RCLONE_CONFIG`); when it is encrypted, the panel just says rclone.
+
+## What is different there
+
+- **Everything goes over the network.** Each directory read is a request: on
+  a large Drive or bucket, `*` (log the whole branch) and Branch (`B`) can
+  take a while. Opening just the directories you need (→ or `+`) is quick,
+  since they are read as you open them.
+- **Changes made elsewhere** (in the browser, on the phone) show up only after
+  F3, and after the directory cache expires (`--dir-cache-time`).
+- **Delete:** answer `P` (permanently) rather than `T`: on Linux, the trash
+  of a mounted folder is a `.Trash-` folder (with your user number) at its
+  top, so the file would stay in the remote, taking space. Google Drive
+  keeps what rclone deletes in the Drive's own trash anyway; on S3 a deleted
+  file is gone, unless the bucket has versioning.
+- **Permissions and owners** are not kept: the mount shows the same ones for
+  every file, and Attributes cannot change them. Dates are kept.
+- **Google Docs, Sheets and Slides** are not files: rclone shows them exported
+  (`.docx`, `.xlsx`, `.pptx`), with size 0. `--drive-skip-gdocs` hides them.
+- **S3 has no real directories**, only names with `/` in them: an empty
+  directory may vanish once unmounted, and renaming or moving a directory
+  copies and deletes each file in it.
