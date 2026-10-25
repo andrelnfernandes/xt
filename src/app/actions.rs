@@ -95,7 +95,8 @@ impl App {
         if self.archive.is_some() {
             self.message = Some("Archives inside archives are not supported".into());
         } else if archive::Kind::detect(&path).is_none() {
-            self.message = Some("Not an archive (zip, jar, tar, tar.gz, tgz)".into());
+            self.message =
+                Some("Not an archive (zip, jar, 7z, tar, tar.gz, tar.xz, tar.bz2, tar.zst)".into());
         } else {
             match Pane::from_archive(&path) {
                 Ok(pane) => {
