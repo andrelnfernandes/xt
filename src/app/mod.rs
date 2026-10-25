@@ -45,6 +45,7 @@ mod git_cmd;
 mod prompts;
 mod remote_cmd;
 mod terminal;
+mod usage_cmd;
 mod view;
 
 #[cfg(test)]
@@ -77,6 +78,8 @@ pub(crate) enum AfterLog {
     CompareBranch(NodeId, CompareMode),
     /// Asks for confirmation of the Prune of this directory.
     Prune(NodeId),
+    /// Opens the Usage view of this branch.
+    Usage(NodeId),
 }
 
 /// Which menu the footer shows: the normal one or the Ctrl/Alt commands one.
@@ -420,6 +423,7 @@ impl App {
                 return;
             }
             AfterLog::Refresh => pane.refresh_files(),
+            AfterLog::Usage(id) => pane.usage = Some(crate::usage::UsageView::new(id)),
         }
         self.job = None;
     }

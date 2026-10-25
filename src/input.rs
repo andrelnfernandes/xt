@@ -63,6 +63,8 @@ pub enum Command {
     Treespec,
     /// Alt+K: size or number of files per directory in the tree.
     Kbyte,
+    /// Alt+W: where the space of the branch goes.
+    Usage,
     /// Alt+Q: quits, leaving the shell in the current directory.
     QuitChangeDir,
     /// Alt+F: display mode of the file window.

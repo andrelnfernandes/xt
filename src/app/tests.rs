@@ -1869,6 +1869,45 @@ fn alt_k_chooses_what_to_show() {
 }
 
 #[test]
+fn alt_w_opens_the_usage_view() {
+    let (_tmp, mut app) = sample();
+    alt(&mut app, 'w');
+    while app.busy() {
+        app.tick(Duration::from_millis(50));
+    }
+    let active = app.active;
+    let pane = &mut app.panes[active];
+    let (tree, view) = (&pane.tree, pane.usage.as_mut().expect("open"));
+    let names: Vec<String> = view.rows(tree).into_iter().map(|r| r.name).collect();
+    // sub (c.rs and deep/a.rs) is the largest on disk only by blocks; by
+    // the apparent size, a.rs (13 bytes) wins.
+    assert!(names.contains(&"sub".to_string()) && names.contains(&"a.rs".to_string()));
+    view.apparent = true;
+    assert_eq!(view.rows(tree)[0].name, "a.rs");
+    // Into "sub", and from there to the tree.
+    view.order = crate::usage::Order::Name;
+    let at = view
+        .rows(tree)
+        .iter()
+        .position(|r| r.name == "sub")
+        .unwrap();
+    view.list.select(Some(at));
+    press(&mut app, KeyCode::Enter);
+    let pane = &mut app.panes[app.active];
+    let dir = pane.usage.as_ref().unwrap().dir;
+    assert_eq!(pane.tree.node(dir).name, "sub");
+    press(&mut app, KeyCode::Char('\\'));
+    assert!(app.usage.is_none());
+    assert_eq!(app.current_path().file_name().unwrap(), "sub");
+    alt(&mut app, 'w');
+    while app.busy() {
+        app.tick(Duration::from_millis(50));
+    }
+    press(&mut app, KeyCode::Esc);
+    assert!(app.usage.is_none());
+}
+
+#[test]
 fn alt_q_quits_remembering_the_directory() {
     let (tmp, mut app) = sample();
     press(&mut app, KeyCode::Down);

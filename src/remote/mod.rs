@@ -310,6 +310,8 @@ fn file_entry(name: Vec<u8>, a: &Attrs) -> FileEntry {
     FileEntry {
         name: bytes_os(name),
         size: a.size.unwrap_or(0),
+        disk: a.size.unwrap_or(0),
+        link: None,
         modified: a
             .mtime
             .map(|s| SystemTime::UNIX_EPOCH + Duration::from_secs(s.into())),
