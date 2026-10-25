@@ -46,7 +46,9 @@ run() { name=$1; cfg=$2; shift 2
   "$PY" -I "$T/shot.py" "$X/$file" "$X/target/release/xy" /home/user/projects "$@"
   echo "$file"; }
 run tree classic "*" sleep:1 "$(down 12)"
-run theme-gruvbox gruvbox "*" sleep:1 "$(down 12)"
+for theme in gruvbox slate graphite daylight; do
+  run theme-$theme $theme "*" sleep:1 "$(down 12)"
+done
 run branch-tagged classic "*" sleep:1 "$(down 3)" b "$D" t "$D$D" t t "$D$D"
 run git-menu git "*" sleep:1 "$(down 12)" "\r" "$(down 7)" "\007"
 run split classic "*" sleep:1 "$(down 12)" "\033[19~" "$(up 8)"

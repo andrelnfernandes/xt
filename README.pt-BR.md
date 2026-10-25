@@ -64,7 +64,9 @@ Alt+O digita os arquivos marcados no prompt:
 ![Lista de arquivos com as letras de status do Git e o menu GIT no rodapé](docs/screenshots/git-menu.png)
 
 **Temas**: além do azul clássico, `dark`, `light`, `mono`, `norton`,
-`solarized`, `gruvbox` (abaixo) e `nord`:
+`solarized`, `gruvbox` (abaixo), `nord` e três que combinam com os desktops de
+hoje: `slate` (no estilo do Windows Terminal), `graphite` e `daylight` (macOS
+nos modos escuro e claro):
 
 ![O tema gruvbox](docs/screenshots/theme-gruvbox.png)
 
