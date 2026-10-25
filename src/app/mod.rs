@@ -114,6 +114,9 @@ pub struct App {
     pub archive_job: Option<ArchiveJob>,
     /// Ongoing Copy/Move/Delete.
     pub op: Option<Operation>,
+    /// Files the ongoing copy brings to the temporary folder for `O`, to
+    /// open when it ends.
+    pub(crate) open_after: Option<Vec<PathBuf>>,
     pub viewer: Option<Viewer>,
     /// Last destination typed in Copy/Move.
     last_dest: Option<String>,
@@ -216,6 +219,7 @@ impl App {
             autoview: None,
             archive_job: None,
             op: None,
+            open_after: None,
             viewer: None,
             last_dest: None,
             pending_changes: HashSet::new(),
@@ -457,6 +461,10 @@ impl App {
             self.goto(parent);
         }
         self.message = Some(format!("{prefix}{}", op.summary()));
+        if let Some(copies) = self.open_after.take() {
+            let ready = copies.into_iter().filter(|c| c.exists()).collect();
+            self.open_paths(ready, &op.errors);
+        }
     }
 
     /// Re-reads `dirs` in all windows (both may show the same place).

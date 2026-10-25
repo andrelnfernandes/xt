@@ -105,11 +105,11 @@ impl App {
             });
         }
         match self.archive.clone() {
+            // Streamed, never whole in memory.
             Some(root) => Box::new(move |path: &Path| {
-                let entry = path.strip_prefix(&root).unwrap_or(path).to_path_buf();
-                let mut data = Vec::new();
-                archive::Reader::open(&root)?.extract(&entry, &mut data, u64::MAX)?;
-                Ok(Box::new(std::io::Cursor::new(data)) as Box<dyn BufRead>)
+                let entry = path.strip_prefix(&root).unwrap_or(path);
+                let data = archive::extract_streamed(&root, entry)?;
+                Ok(Box::new(std::io::BufReader::new(data)) as Box<dyn BufRead>)
             }),
             None => Box::new(search::open_file),
         }
