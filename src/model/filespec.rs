@@ -382,6 +382,106 @@ fn local_day(t: SystemTime) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+
+    /// Specs made of the pieces the parser understands: globs, quotes,
+    /// negation, operators, dates (some absurd) and sizes.
+    fn spec() -> impl Strategy<Value = String> {
+        let piece = prop::sample::select(vec![
+            "*",
+            "?",
+            "[a-c]",
+            "[!x]",
+            "{a,b}",
+            "a",
+            "B",
+            ".",
+            "rs",
+            " ",
+            ",",
+            ";",
+            "-",
+            "\"",
+            "<",
+            ">",
+            "=",
+            "<=",
+            ">=",
+            "<>",
+            "s",
+            "S",
+            "0",
+            "1",
+            "9",
+            "K",
+            "M",
+            "G",
+            "T",
+            "TODAY",
+            "today",
+            "TODAY-7",
+            "TODAY+99999999999",
+            "2026-10-24",
+            "01/05/2026",
+            "31/02/2026",
+            "9999-99-99",
+            "99999999999",
+            "/",
+            "\\",
+            "ç",
+        ]);
+        prop::collection::vec(piece, 0..10).prop_map(|p| p.concat())
+    }
+
+    proptest! {
+        /// Whatever is typed, parsing and matching never panic.
+        #[test]
+        fn never_panics(
+            text in prop_oneof![spec(), any::<String>()],
+            name in "\\PC{0,16}",
+            size in any::<u64>(),
+            secs in 0u64..8_000_000_000,
+        ) {
+            if let Ok(f) = Filespec::parse(&text) {
+                let entry = FileEntry {
+                    name: name.into(),
+                    size,
+                    modified: Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs)),
+                    mode: 0o644,
+                    kind: crate::model::tree::FileKind::File,
+                    tagged: false,
+                };
+                let _ = f.matches_entry(&entry);
+            }
+        }
+
+        /// The normalized text means the same: parsing it again gives it back.
+        #[test]
+        fn normalized_text_is_stable(text in spec()) {
+            if let Ok(f) = Filespec::parse(&text) {
+                let again = Filespec::parse(f.text()).expect("normalized text parses");
+                prop_assert_eq!(again.text(), f.text());
+            }
+        }
+
+        /// A plain name matches itself, whatever the case.
+        #[test]
+        fn a_name_matches_itself(name in "[a-zA-Z0-9_][a-zA-Z0-9_.]{0,15}") {
+            prop_assert!(m(&name, &name));
+            prop_assert!(m(&name.to_uppercase(), &name.to_lowercase()));
+        }
+
+        /// `-p` keeps exactly what `p` leaves out; two patterns are "or".
+        #[test]
+        fn negation_and_union(
+            p in "[a-c*?]{1,4}",
+            q in "[a-c*?]{1,4}",
+            name in "[a-c.]{1,6}",
+        ) {
+            prop_assert_eq!(m(&format!("-{p}"), &name), !m(&p, &name));
+            prop_assert_eq!(m(&format!("{p} {q}"), &name), m(&p, &name) || m(&q, &name));
+        }
+    }
 
     fn m(spec: &str, name: &str) -> bool {
         Filespec::parse(spec).unwrap().matches(OsStr::new(name))
