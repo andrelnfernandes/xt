@@ -89,3 +89,27 @@ comes from rclone's configuration file (`~/.config/rclone/rclone.conf`, or
 - **S3 has no real directories**, only names with `/` in them: an empty
   directory may vanish once unmounted, and renaming or moving a directory
   copies and deletes each file in it.
+
+## Finding what fills your Google Drive
+
+When the Drive keeps asking for a bigger storage plan, Xylem can show where
+the space goes before you pay for more. Mount the Drive, go to its root, log
+it all with `*` (on a large Drive it takes a while) and choose Alt+K →
+**Percent** ([Directory sizes](info.md)): each folder shows how much of the
+one above it takes, with a bar against the largest of its siblings. Follow
+the biggest bars down to the old backups, videos and duplicates; Branch
+(`B`) lists the files of a whole folder; [sorted](sort.md) by size, largest
+first (Alt+S, then `O` for descending and `S` for Size), the biggest come on
+top.
+
+A few things count toward the storage plan without showing in the mount:
+
+- **The Drive's trash** takes space until it is emptied (or 30 days pass).
+  `rclone about gdrive:` shows the total, used and trashed; mounting with
+  `--drive-trashed-only` shows only what is in the trash.
+- **Gmail and Google Photos** share the same storage, and only the Drive's
+  files are in the mount. If `rclone about` shows much more used than the
+  mount adds up to, the rest is probably there.
+- **Google Docs, Sheets and Slides** show with size 0, but newer ones count
+  toward the storage.
+- Files **shared with you** do not count: they are in their owner's storage.

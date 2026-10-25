@@ -26,4 +26,5 @@ drawn in proportion, so the one taking the space stands out. It always adds
 up whole branches. The files of the directory above count in its total, so
 the shares of its subdirectories may add up to less than 100%. To find what
 fills a disk, log the branch with `*` first: a directory not yet logged
-counts as empty.
+counts as empty. With Google Drive or S3 mounted through rclone, this is how to
+find what fills them: see [Cloud storage](cloud.md).
