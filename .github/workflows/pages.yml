@@ -8,10 +8,10 @@ on:
     branches: [main]
     paths:
       - "site/**"
-      - "docs/demo.gif"
       - "docs/social-preview.png"
       - "docs/icons/**"
       - "docs/screenshots/*.png"
+      - "docs/screenshots/*.gif"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
