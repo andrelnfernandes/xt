@@ -18,7 +18,8 @@ leva a água pela árvore, e começa com X, como o XTree.
 Uso alguma variação do XTree desde a década de 1990, e o ZTreeWin continua
 sendo, para mim, o melhor gerenciador de arquivos em modo texto. Desenvolvi o
 Xylem por sentir falta de algo tão bom quanto ele rodando no Linux: as versões
-que existem parecem estar abandonadas.
+que existem parecem abandonadas ou se afastaram demais do visual e do jeito
+clássicos.
 
 Apesar de gostar muito do ZTreeWin, a evolução dele é extremamente lenta. Por
 isso, provavelmente o Xylem também terá uma versão para Windows.
@@ -64,7 +65,9 @@ Alt+O digita os arquivos marcados no prompt:
 ![Lista de arquivos com as letras de status do Git e o menu GIT no rodapé](docs/screenshots/git-menu.png)
 
 **Temas**: além do azul clássico, `dark`, `light`, `mono`, `norton`,
-`solarized`, `gruvbox` (abaixo) e `nord`:
+`solarized`, `gruvbox` (abaixo), `nord` e três que combinam com os desktops de
+hoje: `slate` (no estilo do Windows Terminal), `graphite` e `daylight` (macOS
+nos modos escuro e claro):
 
 ![O tema gruvbox](docs/screenshots/theme-gruvbox.png)
 
