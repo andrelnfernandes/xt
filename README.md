@@ -17,8 +17,8 @@ tree, and it starts with an X, like XTree.
 
 I have used some flavor of XTree since the 1990s, and ZTreeWin is still, to
 me, the best text-mode file manager there is. I wrote Xylem because I missed
-something as good as it running on Linux: the existing alternatives seem to be
-abandoned.
+something as good as it running on Linux: the existing alternatives seem
+abandoned or have drifted too far from the classic look and feel.
 
 As much as I like ZTreeWin, its development is extremely slow. That is why Xylem
 will probably get a Windows version too.
