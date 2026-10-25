@@ -14,6 +14,7 @@ use std::time::SystemTime;
 
 use chrono::{DateTime, Local};
 use ratatui::Frame;
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -24,6 +25,7 @@ use crate::config::TerminalTheme;
 use crate::config::{self, formats, theme};
 use crate::filetype;
 use crate::git::StatusCache;
+use crate::help::{self, Help};
 use crate::input::Command;
 use crate::model::tree::{FileEntry, FileKind};
 use crate::ops::{Conflict, Facts, Operation};
@@ -42,6 +44,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let base = Style::new().fg(theme().text).bg(theme().background);
     frame.render_widget(Block::new().style(base), frame.area());
 
+    if let Some(help) = &mut app.help {
+        draw_help(frame, help);
+        return;
+    }
     if app.viewer.is_some() {
         draw_viewer(frame, app);
         return;
@@ -865,6 +871,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
         ("F9", "next menu")
     };
 
+    let help_key = help_key(app);
     match app.menu_mode() {
         MenuMode::Git => (
             menu_words("GIT", crate::git::MENU),
@@ -894,8 +901,8 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
             menu_line(
                 "",
                 &[
+                    (help_key.as_str(), "help"),
                     ("Esc", "close archive"),
-                    ("←→", "close/open"),
                     ("Enter", "files (Copy extracts)"),
                     ("Alt+X", "terminal"),
                     ("F8", "split"),
@@ -914,7 +921,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
             menu_line(
                 "",
                 &[
-                    ("←→", "close/open"),
+                    (help_key.as_str(), "help"),
                     ("*", "log branch"),
                     ("F3", "relog"),
                     ("Enter", "files"),
@@ -951,6 +958,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
             menu_line(
                 "",
                 &[
+                    (help_key.as_str(), "help"),
                     ("F3", "relog"),
                     ("Esc", "tree"),
                     ("Alt+X", "terminal"),
@@ -1482,6 +1490,107 @@ fn draw_bookmarks(frame: &mut Frame, app: &App, view: &BookmarksView) {
                 ("Esc", "exit"),
             ],
         ),
+        menu,
+    );
+}
+
+/// The help key to show in the footer: F1, unless the terminal is one of
+/// those that keep F1 for their own help (VTE: GNOME Terminal, Ptyxis,
+/// Terminator, Tilix) and Alt+H also opens it.
+fn help_key(app: &App) -> String {
+    let alt_h = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::ALT);
+    let vte = std::env::var_os("VTE_VERSION").is_some();
+    if vte && app.keymap.lookup(alt_h, app.focus) == Some(Command::Help) {
+        "Alt+H".into()
+    } else {
+        app.keymap
+            .key_for(Command::Help)
+            .unwrap_or_else(|| "F1".into())
+    }
+}
+
+/// The help (F1 / Alt+H): a topic of the manual, with its links.
+fn draw_help(frame: &mut Frame, help: &mut Help) {
+    let [header, body, menu] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(1),
+        Constraint::Length(2),
+    ])
+    .areas(frame.area());
+    frame.render_widget(
+        Line::from(vec![
+            Span::styled("Help: ", Style::new().fg(theme().key)),
+            Span::styled(
+                help.title().to_string(),
+                Style::new().add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        header,
+    );
+
+    let block = panel("", true);
+    let inner = block.inner(body);
+    frame.render_widget(block, body);
+    help.height = inner.height as usize;
+    let selected = help.selected;
+    let scroll = help.scroll;
+    let page = help.page(inner.width as usize);
+    let total = page.lines.len();
+    let style = |kind: help::Kind| match kind {
+        help::Kind::Text => Style::new(),
+        help::Kind::Heading => Style::new().fg(theme().key).add_modifier(Modifier::BOLD),
+        help::Kind::Strong => Style::new().add_modifier(Modifier::BOLD),
+        help::Kind::Code => Style::new().fg(theme().key),
+        help::Kind::Link(id) if Some(id) == selected => highlight(true),
+        help::Kind::Link(_) => Style::new().add_modifier(Modifier::UNDERLINED),
+    };
+    let lines: Vec<Line> = page
+        .lines
+        .iter()
+        .skip(scroll)
+        .take(inner.height as usize)
+        .map(|pieces| {
+            Line::from(
+                pieces
+                    .iter()
+                    .map(|p| Span::styled(p.text.clone(), style(p.kind)))
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect();
+    frame.render_widget(Paragraph::new(lines), inner);
+
+    let percent = ((scroll + inner.height as usize).min(total.max(1)) * 100) / total.max(1);
+    let keys = |pairs: &[(&str, &str)]| {
+        let mut spans = vec![Span::raw(format!("{:9}", ""))];
+        for (k, what) in pairs {
+            spans.push(key(k));
+            spans.push(Span::raw(format!(" {what}   ")));
+        }
+        Line::from(spans)
+    };
+    frame.render_widget(
+        Paragraph::new(vec![
+            {
+                let mut first = keys(&[
+                    ("Tab", "link"),
+                    ("Enter", "follow"),
+                    ("Backspace", "back"),
+                    ("I", "index"),
+                    ("K", "keys"),
+                    ("Esc", "close"),
+                ]);
+                first.spans[0] = Span::styled(
+                    format!("{:<9}", "HELP"),
+                    Style::new().add_modifier(Modifier::BOLD),
+                );
+                first
+            },
+            Line::from(Span::styled(
+                format!("{:9}{percent}%", ""),
+                Style::new().fg(theme().dim),
+            )),
+        ]),
         menu,
     );
 }

@@ -21,6 +21,12 @@ impl App {
         if key.kind == KeyEventKind::Release {
             return;
         }
+        if let Some(help) = &mut self.help {
+            if !help.handle_key(key) {
+                self.help = None;
+            }
+            return;
+        }
         if self.terminal_focus {
             self.terminal_key(key);
             return;
@@ -37,6 +43,13 @@ impl App {
         }
 
         self.message = None;
+
+        // Help about whatever is in front: the prompt or question stays
+        // open underneath, and Esc in the help goes back to it.
+        if self.is_help_key(key) {
+            self.open_help();
+            return;
+        }
 
         if let Some(confirm) = self.confirm.take() {
             if let KeyCode::Char(c) = key.code {
@@ -438,11 +451,7 @@ impl App {
                     self.config_error.clone(),
                 ));
             }
-            Command::Help => {
-                let text = self.keymap.help_text().into_bytes();
-                let size = text.len() as u64;
-                self.viewer = Some(Viewer::from_bytes("Xylem help".into(), size, text));
-            }
+            Command::Help => self.open_help(),
             Command::Edit => {
                 if let Some(f) = self.selected_file() {
                     let file = self.file_path(f);

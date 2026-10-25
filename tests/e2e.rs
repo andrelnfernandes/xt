@@ -261,3 +261,28 @@ fn moves_the_configuration_of_xt() {
     xy.press("q");
     assert!(xy.wait_exit());
 }
+
+#[test]
+fn f1_opens_the_help_about_what_is_in_front() {
+    let (home, project) = sample();
+    let mut xy = Xy::start(home.path(), &[project.to_str().unwrap()]);
+    xy.wait_for("b.txt");
+    xy.press("\x1bOP"); // F1, as the terminal sends it
+    xy.wait_for("Help: The tree window");
+    xy.press("\x1b");
+    xy.wait_for("DIR");
+    xy.press("\r");
+    xy.press("c");
+    xy.wait_for("COPY");
+    xy.press("\x1bh"); // Alt+H, inside the prompt
+    xy.wait_for("Help: Copy and Move");
+    xy.press("\t"); // a link...
+    xy.press("\r"); // ...followed
+    xy.wait_for("Help: Split screen");
+    xy.press("\x7f"); // Backspace: back
+    xy.wait_for("Help: Copy and Move");
+    xy.press("\x1b");
+    xy.wait_for("COPY"); // the prompt is still there
+    xy.press("\x1b");
+    xy.quit();
+}
