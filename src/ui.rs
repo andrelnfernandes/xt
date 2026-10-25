@@ -27,7 +27,7 @@ use crate::filetype;
 use crate::git::StatusCache;
 use crate::help::{self, Help};
 use crate::input::Command;
-use crate::model::tree::{FileEntry, FileKind};
+use crate::model::tree::{FileEntry, FileKind, NodeId};
 use crate::ops::{Conflict, Facts, Operation};
 use crate::pane::{Count, FileDisplay, FileRef};
 use crate::platform;
@@ -210,10 +210,24 @@ fn draw_tree(frame: &mut Frame, pane: &mut Pane, active: bool, title: String, ar
     pane.tree_page = area.height.saturating_sub(2) as usize;
 
     let (range, mut state) = visible_window(&mut pane.tree_state, pane.rows.len(), pane.tree_page);
-    // Alt+K: size or file count to the right of each directory.
+    // Alt+K: size, file count or share to the right of each directory.
     let kbyte = pane.kbyte;
-    let totals = (kbyte.show != KbyteShow::None)
-        .then(|| pane.tree.dir_totals(kbyte.branch, kbyte.tagged_only));
+    let percent = kbyte.show == KbyteShow::Percent;
+    let totals = (kbyte.show != KbyteShow::None).then(|| {
+        pane.tree
+            .dir_totals(kbyte.branch || percent, kbyte.tagged_only)
+    });
+    // Percent: the largest subdirectory of each parent, for the bars.
+    let largest = |parent: NodeId, totals: &[(u64, u64)]| {
+        let tree = &pane.tree;
+        tree.node(parent)
+            .children
+            .iter()
+            .filter(|&&c| tree.show_hidden || !tree.node(c).hidden)
+            .map(|&c| totals[c].1)
+            .max()
+            .unwrap_or(0)
+    };
     let width = area.width.saturating_sub(2) as usize;
     let items: Vec<ListItem> = pane.rows[range]
         .iter()
@@ -231,14 +245,29 @@ fn draw_tree(frame: &mut Frame, pane: &mut Pane, active: bool, title: String, ar
             ];
             if let Some(totals) = &totals {
                 let (count, bytes) = totals[row.id];
+                let used = row.prefix.chars().count() + name.chars().count();
+                let mut bar = None;
                 let value = match (node.scanned, kbyte.show) {
                     (false, _) => "?".to_string(),
                     (_, KbyteShow::Size) => format!("{}K", fmt_num(bytes.div_ceil(1024))),
+                    (_, KbyteShow::Percent) => {
+                        let (whole, top) = match node.parent {
+                            Some(p) => (totals[p].1, largest(p, totals)),
+                            None => (bytes, bytes),
+                        };
+                        let (b, pct) = share(bytes, whole, top, width.saturating_sub(used + 1));
+                        bar = b;
+                        pct
+                    }
                     _ => fmt_num(count),
                 };
-                let used = row.prefix.chars().count() + name.chars().count();
-                let pad = width.saturating_sub(used + value.chars().count() + 1);
+                let bar_len = bar.as_ref().map_or(0, |b| b.chars().count() + 1);
+                let pad = width.saturating_sub(used + bar_len + value.chars().count() + 1);
                 spans.push(Span::raw(" ".repeat(pad + 1)));
+                if let Some(bar) = bar {
+                    spans.push(Span::styled(bar, Style::new().fg(theme().key)));
+                    spans.push(Span::raw(" "));
+                }
                 spans.push(Span::styled(value, Style::new().fg(theme().dim)));
             }
             ListItem::new(Line::from(spans))
@@ -255,6 +284,43 @@ fn draw_tree(frame: &mut Frame, pane: &mut Pane, active: bool, title: String, ar
         .block(panel(title, active).title_top(position))
         .highlight_style(highlight(active));
     frame.render_stateful_widget(list, area, &mut state);
+}
+
+/// Width of the Alt+K Percent bars.
+const SHARE_BAR: usize = 8;
+
+/// Alt+K Percent: `bytes` as a share of `whole` ("41%", "5.8%", "<0.1%"), and a bar
+/// of `bytes` against `largest` (the biggest sibling fills it), in eighths
+/// of a character. Without `room` for both, only the share.
+fn share(bytes: u64, whole: u64, largest: u64, room: usize) -> (Option<String>, String) {
+    let pct = if whole == 0 {
+        0.0
+    } else {
+        bytes as f64 * 100.0 / whole as f64
+    };
+    let text = if pct > 0.0 && pct < 0.05 {
+        "<0.1%".to_string()
+    } else if pct == 0.0 || pct >= 9.95 {
+        format!("{pct:.0}%")
+    } else {
+        format!("{pct:.1}%")
+    };
+    let text = format!("{text:>5}");
+    if room < SHARE_BAR + 1 + text.len() {
+        return (None, text);
+    }
+    const PARTS: [&str; 8] = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"];
+    let eighths = if largest == 0 {
+        0
+    } else {
+        ((bytes as u128 * (SHARE_BAR * 8) as u128 + largest as u128 / 2) / largest as u128) as usize
+    }
+    .min(SHARE_BAR * 8);
+    let mut bar = "█".repeat(eighths / 8);
+    bar.push_str(PARTS[eighths % 8]);
+    let len = bar.chars().count();
+    bar.push_str(&" ".repeat(SHARE_BAR - len));
+    (Some(bar), text)
 }
 
 /// `7/2,027` on a window's border: the cursor's line and how many there are.
@@ -2020,6 +2086,63 @@ mod tests {
             !screen.contains("DISK Statistics"),
             "no stats panel when split"
         );
+    }
+
+    #[test]
+    fn share_and_bar() {
+        // The largest sibling fills the bar; half of it, half the bar.
+        assert_eq!(
+            share(30, 100, 30, 40),
+            (Some("████████".into()), "  30%".into())
+        );
+        assert_eq!(
+            share(15, 100, 30, 40),
+            (Some("████    ".into()), "  15%".into())
+        );
+        // Eighths of a character: 1/16 of the largest is one cell.
+        assert_eq!(share(2, 100, 32, 40).0.as_deref(), Some("▌       "));
+        assert_eq!(share(1, 1000, 30, 40).1, " 0.1%");
+        assert_eq!(share(58, 1000, 30, 40).1, " 5.8%");
+        // Something, but too little to show: not "0.0%".
+        assert_eq!(share(1, 100_000, 30, 40).1, "<0.1%");
+        assert_eq!(
+            share(0, 0, 0, 40),
+            (Some("        ".into()), "   0%".into())
+        );
+        // No room for the bar: only the share.
+        assert_eq!(share(30, 100, 30, 10), (None, "  30%".into()));
+    }
+
+    #[test]
+    fn alt_k_percent_in_the_tree() {
+        use ratatui::{Terminal, backend::TestBackend};
+        let tmp = crate::testing::tempdir();
+        for (dir, size) in [("big", 3000), ("small", 1000)] {
+            std::fs::create_dir(tmp.path().join(dir)).unwrap();
+            std::fs::write(tmp.path().join(dir).join("f"), vec![0u8; size]).unwrap();
+        }
+        let mut app = App::new(tmp.path().to_path_buf());
+        app.apply(crate::input::Command::ExpandAll);
+        while app.busy() {
+            app.tick(std::time::Duration::from_millis(50));
+        }
+        app.kbyte.show = KbyteShow::Percent;
+        let mut term = Terminal::new(TestBackend::new(100, 30)).unwrap();
+        term.draw(|f| draw(f, &mut app)).unwrap();
+        let buf = term.backend().buffer();
+        let line = |name: &str| {
+            (0..30)
+                .map(|y| (0..100).map(|x| buf[(x, y)].symbol()).collect::<String>())
+                .find(|l| l.contains(name))
+                .unwrap_or_default()
+        };
+        assert!(line("big").contains("████████   75%"), "{}", line("big"));
+        assert!(
+            line("small").contains("██▋        25%"),
+            "{}",
+            line("small")
+        );
+        assert!(line("% of parent").contains("Tree"));
     }
 
     #[test]

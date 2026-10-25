@@ -285,6 +285,7 @@ pub(crate) enum ConfirmKind {
 const KBYTE_OPTIONS: &[&str] = &[
     "Size",
     "Count",
+    "Percent",
     "None",
     "All",
     "Tagged",
@@ -735,6 +736,7 @@ impl App {
                 match choice {
                     's' => k.show = KbyteShow::Size,
                     'c' => k.show = KbyteShow::Count,
+                    'p' => k.show = KbyteShow::Percent,
                     'n' => k.show = KbyteShow::None,
                     other => {
                         match other {
