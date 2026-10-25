@@ -309,7 +309,7 @@ const COMMANDS: &[(&str, Command, &str)] = &[
         "mounted file systems and free space",
     ),
     ("stats", Command::Stats, "statistics of the pane"),
-    ("help", Command::Help, "this help"),
+    ("help", Command::Help, "help about what you are doing"),
     (
         "file_display",
         Command::FileDisplay,
@@ -697,12 +697,11 @@ impl Keymap {
         keys.into_iter().next()
     }
 
-    /// Help text (F1 / Alt+H): the keys currently in effect, per window.
+    /// The keys currently in effect, per window: the "keys" topic of the
+    /// help (K in the help).
     pub fn help_text(&self) -> String {
-        let mut out = String::from(
-            "Xylem - keys in use (F1 / Alt+H shows this; Esc closes)\n\
-             Change them in ~/.config/xylem/config.toml, see xy --default-config.\n",
-        );
+        let mut out =
+            String::from("Change them in ~/.config/xylem/config.toml, see xy --default-config.\n");
         for (scope, title) in [
             (Tree, "TREE WINDOW"),
             (Files, "FILE WINDOW"),
