@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Xylem — text-mode file manager inspired by XTree</title>
+  <meta name="description" content="Xylem is a text-mode file manager for Linux, inspired by XTree and ZTreeWin: a directory tree, tags and group operations, plus a built-in terminal, SSH, Git and themes.">
+  <link rel="canonical" href="https://andrelnfernandes.github.io/xylem/">
+  <link rel="alternate" hreflang="en" href="https://andrelnfernandes.github.io/xylem/">
+  <link rel="alternate" hreflang="pt-BR" href="https://andrelnfernandes.github.io/xylem/pt-br/">
+  <link rel="icon" href="assets/xylem.svg" type="image/svg+xml">
+  <link rel="icon" href="assets/xylem-32.png" sizes="32x32" type="image/png">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Xylem — text-mode file manager inspired by XTree">
+  <meta property="og:description" content="A directory tree, tags and ZTreeWin's keys, plus a built-in terminal, SSH, Git and themes.">
+  <meta property="og:url" content="https://andrelnfernandes.github.io/xylem/">
+  <meta property="og:image" content="https://andrelnfernandes.github.io/xylem/assets/social-preview.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <a class="brand" href="./"><img src="assets/xylem.svg" alt="">Xylem</a>
+      <nav>
+        <a href="#features">Features</a>
+        <a href="#screenshots">Screenshots</a>
+        <a href="#install">Install</a>
+        <a href="#docs">Manual</a>
+        <a class="gh" href="https://github.com/andrelnfernandes/xylem">GitHub</a>
+        <a class="lang" href="pt-br/" hreflang="pt-BR" lang="pt-BR" title="Leia em português">PT</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="hero">
+      <div class="wrap">
+        <h1>The <em>XTree</em> way, in a modern terminal</h1>
+        <p class="lead">Xylem is a text-mode file manager for Linux, inspired by XTree and ZTreeWin:
+          a directory tree, tags and group operations, ZTreeWin's keys — plus a built-in terminal,
+          remote machines over SSH, Git and themes.</p>
+        <div class="buttons">
+          <a class="button primary" href="#install">Install</a>
+          <a class="button" href="https://github.com/andrelnfernandes/xylem">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+            Source on GitHub</a>
+        </div>
+        <p class="note">Free and open source (MIT) · Linux x86_64 and ARM64 · Windows (experimental)</p>
+
+        <div class="window demo">
+          <div class="bar"><i></i><i></i><i></i><span>xy ~/projects</span></div>
+          <img src="assets/screenshots/demo-nord.gif" width="1104" height="772"
+               alt="Xylem in use: the built-in terminal with the tree following a cd, tagging files in a Branch and typing them into a command with Alt+O">
+        </div>
+      </div>
+    </div>
+
+    <section id="features" class="alt">
+      <div class="wrap">
+        <p class="eyebrow">What it does</p>
+        <h2>Everything you remember, and more</h2>
+        <p class="section-lead">Xylem follows ZTreeWin's keys and way of working whenever possible,
+          so your fingers already know it. Then it adds what a file manager needs today.</p>
+        <div class="features">
+          <div class="feature">
+            <h3>The XTree way</h3>
+            <p>A directory tree logged into memory with the file window below it, Branch and Showall
+              to list the files of a whole branch or of everything logged, and tags that group
+              operations act on.</p>
+          </div>
+          <div class="feature">
+            <h3>File operations</h3>
+            <p>Copy and move with or without the paths, with progress and conflict details. Delete to
+              the trash with Oops to restore, Prune, rename with masks, permissions and dates,
+              Compare between two windows.</p>
+          </div>
+          <div class="feature">
+            <h3>Finding things</h3>
+            <p>Filespec by name, date and size, Treespec to type a path, bookmarks, and
+              <kbd>Ctrl</kbd>+<kbd>S</kbd> to search the tagged files for text.</p>
+          </div>
+          <div class="feature">
+            <h3>Looking inside</h3>
+            <p>A text and hex viewer with search and syntax colors, Autoview next to the list, and
+              ZIP, 7z and TAR archives opened as directories.</p>
+          </div>
+          <div class="feature">
+            <h3>Built-in terminal</h3>
+            <p><kbd>Alt</kbd>+<kbd>X</kbd> opens a shell whose <code>cd</code> takes the tree along;
+              <kbd>Alt</kbd>+<kbd>O</kbd> types the tagged files at the prompt.</p>
+          </div>
+          <div class="feature">
+            <h3>Remote, Git and themes</h3>
+            <p>Browse and copy from machines over SSH, with their own terminal. An optional Git menu,
+              the clipboard, a configuration screen and eleven themes.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="themes">
+      <div class="wrap">
+        <p class="eyebrow">Themes</p>
+        <h2>Not a fan of the classic blue?</h2>
+        <p class="section-lead">Pick a theme with <kbd>F4</kbd>, or set <code>theme</code> in the
+          configuration file. Every color can also be changed one by one.</p>
+        <div class="themes">
+          <a href="assets/screenshots/theme-nord.png" aria-current="true">nord</a>
+          <a href="assets/screenshots/theme-slate.png">slate</a>
+          <a href="assets/screenshots/theme-graphite.png">graphite</a>
+          <a href="assets/screenshots/theme-daylight.png">daylight</a>
+          <a href="assets/screenshots/theme-dark.png">dark</a>
+          <a href="assets/screenshots/theme-light.png">light</a>
+          <a href="assets/screenshots/theme-gruvbox.png">gruvbox</a>
+          <a href="assets/screenshots/theme-solarized.png">solarized</a>
+          <a href="assets/screenshots/theme-mono.png">mono</a>
+          <a href="assets/screenshots/theme-norton.png">norton</a>
+          <a href="assets/screenshots/tree.png">classic</a>
+        </div>
+        <div class="window theme-view"><img src="assets/screenshots/theme-nord.png" width="1104" height="772" loading="lazy" alt="The same screen in the nord theme" data-alt="The same screen in the {} theme"></div>
+      </div>
+    </section>
+
+    <section id="screenshots">
+      <div class="wrap">
+        <p class="eyebrow">Screenshots</p>
+        <h2>A look around</h2>
+        <p class="section-lead">Click a screenshot to see it larger.</p>
+        <div class="shots">
+          <figure class="shot">
+            <a href="assets/screenshots/tree-nord.png"><div class="window"><img src="assets/screenshots/tree-nord.png" width="1104" height="772" loading="lazy" alt="Directory tree, file window and statistics, in the nord theme"></div></a>
+            <figcaption><strong>The tree</strong> — directories, the file window and the statistics, in the nord theme.</figcaption>
+          </figure>
+          <figure class="shot">
+            <a href="assets/screenshots/branch-tagged-dark.png"><div class="window"><img src="assets/screenshots/branch-tagged-dark.png" width="1104" height="772" loading="lazy" alt="Branch view with three tagged files"></div></a>
+            <figcaption><strong>Branch</strong> (<kbd>B</kbd>) lists the files of a whole branch; tagged files (<kbd>T</kbd>) are highlighted and counted.</figcaption>
+          </figure>
+          <figure class="shot">
+            <a href="assets/screenshots/split-gruvbox.png"><div class="window"><img src="assets/screenshots/split-gruvbox.png" width="1104" height="772" loading="lazy" alt="Split window: photos on the left, source code on the right"></div></a>
+            <figcaption><strong>Split window</strong> (<kbd>F8</kbd>), each side with its own directory.</figcaption>
+          </figure>
+          <figure class="shot">
+            <a href="assets/screenshots/viewer-nord.png"><div class="window"><img src="assets/screenshots/viewer-nord.png" width="1104" height="772" loading="lazy" alt="Viewer showing Rust code with syntax colors"></div></a>
+            <figcaption><strong>Viewer</strong> (<kbd>V</kbd>), with syntax colors.</figcaption>
+          </figure>
+          <figure class="shot">
+            <a href="assets/screenshots/terminal-tagged-nord.png"><div class="window"><img src="assets/screenshots/terminal-tagged-nord.png" width="1104" height="772" loading="lazy" alt="Three tagged photos typed into wc -c with Alt+O"></div></a>
+            <figcaption><strong>Built-in terminal</strong> (<kbd>Alt</kbd>+<kbd>X</kbd>): tagged files typed at the prompt with <kbd>Alt</kbd>+<kbd>O</kbd>.</figcaption>
+          </figure>
+          <figure class="shot">
+            <a href="assets/screenshots/git-menu-dark.png"><div class="window"><img src="assets/screenshots/git-menu-dark.png" width="1104" height="772" loading="lazy" alt="File list with Git status letters and the Git menu in the footer"></div></a>
+            <figcaption><strong>Git</strong> (optional): status letters in the file list and the Git menu (<kbd>Ctrl</kbd>+<kbd>G</kbd>).</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="alt">
+      <div class="wrap why">
+        <div>
+          <p class="eyebrow">Why Xylem?</p>
+          <h2>Something as good as ZTreeWin, on Linux</h2>
+          <p>I have used some flavor of XTree since the 1990s, and ZTreeWin is still, to me, the best
+            text-mode file manager there is. I wrote Xylem because I missed something as good as it
+            running on Linux: the existing alternatives seem abandoned
+            or have drifted too far from the classic look and feel.</p>
+          <p>The differences from ZTreeWin are listed in the
+            <a href="https://github.com/andrelnfernandes/xylem/blob/main/docs/manual/ztreewin.md">comparison with ZTreeWin</a>.</p>
+        </div>
+        <blockquote>The name: the xylem is the tissue that carries water through a tree — and it
+          starts with an X, like XTree.</blockquote>
+      </div>
+    </section>
+
+    <section id="install">
+      <div class="wrap">
+        <p class="eyebrow">Install</p>
+        <h2>Get it running in a minute</h2>
+        <p class="section-lead">The command is <code>xy</code>. Run <code>xy</code> to open the current
+          directory, or <code>xy some/directory</code>.</p>
+        <div class="install">
+          <div class="card">
+            <h3>Ready-made binary</h3>
+            <p>Download the archive for your system from the
+              <a href="https://github.com/andrelnfernandes/xylem/releases/latest">Releases</a> page:
+              Linux x86_64 or ARM64 (static, runs on any distribution) or Windows x86_64. Then put
+              <code>xy</code> on your <code>PATH</code>:</p>
+            <div class="code"><pre>tar xzf xy-*-x86_64-unknown-linux-musl.tar.gz
+install -m 755 xy-*-x86_64-unknown-linux-musl/xy ~/.local/bin/</pre></div>
+            <p>Each archive has a <code>.sha256</code> next to it, to check with <code>sha256sum -c</code>.</p>
+          </div>
+          <div class="card">
+            <h3>With Cargo</h3>
+            <p>Needs Rust, via <a href="https://rustup.rs">rustup</a>. On
+              <a href="https://crates.io/crates/xylem-fm">crates.io</a> Xylem is called
+              <code>xylem-fm</code>:</p>
+            <div class="code"><pre>cargo install xylem-fm</pre></div>
+            <p>Or the latest code, straight from GitHub:</p>
+            <div class="code"><pre>cargo install --git https://github.com/andrelnfernandes/xylem</pre></div>
+          </div>
+        </div>
+        <p class="section-lead" style="margin-top: 28px">There are also a
+          <a href="https://github.com/andrelnfernandes/xylem#installation">menu entry and a man page</a>
+          (<code>xy --man</code>), and a shell function to end up in the directory you were in when you
+          quit with <kbd>Alt</kbd>+<kbd>Q</kbd>.</p>
+      </div>
+    </section>
+
+    <section id="docs" class="alt">
+      <div class="wrap">
+        <p class="eyebrow">Documentation</p>
+        <h2>Help is one key away</h2>
+        <p class="section-lead"><kbd>F1</kbd> (or <kbd>Alt</kbd>+<kbd>H</kbd>) opens help about what you
+          are doing: inside a prompt, the help for that prompt; in a window, the help for that window.
+          The same help is the manual, readable on GitHub:</p>
+        <div class="topics">
+          <a href="https://github.com/andrelnfernandes/xylem/blob/main/docs/manual/index.md">The whole manual</a>
+          <a href="https://github.com/andrelnfernandes/xylem/blob/main/docs/manual/tree.md">The tree window</a>
+          <a href="https://github.com/andrelnfernandes/xylem/blob/main/docs/manual/files.md">The file window</a>
+          <a href="https://github.com/andrelnfernandes/xylem/blob/main/docs/manual/tagging.md">Tags</a>
+          <a href="https://github.com/andrelnfernandes/xylem/blob/main/docs/manual/copy-move.md">Copy and Move</a>
+          <a href="https://github.com/andrelnfernandes/xylem/blob/main/docs/manual/filespec.md">Filespec</a>
+          <a href="https://github.com/andrelnfernandes/xylem/blob/main/docs/manual/terminal.md">Built-in terminal</a>
+          <a href="https://github.com/andrelnfernandes/xylem/blob/main/docs/manual/remote.md">Remote machines</a>
+          <a href="https://github.com/andrelnfernandes/xylem/blob/main/docs/manual/git.md">Git</a>
+          <a href="https://github.com/andrelnfernandes/xylem/blob/main/docs/manual/configuration.md">Configuration</a>
+          <a href="https://github.com/andrelnfernandes/xylem/blob/main/docs/manual/keys.md">Keys</a>
+          <a href="https://github.com/andrelnfernandes/xylem/blob/main/docs/manual/windows.md">Windows</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <p>Xylem is released under the <a href="https://github.com/andrelnfernandes/xylem/blob/main/LICENSE">MIT License</a>.
+        · <a href="https://github.com/andrelnfernandes/xylem">GitHub</a>
+        · <a href="https://github.com/andrelnfernandes/xylem/issues">Issues</a>
+        · <a href="pt-br/" hreflang="pt-BR" lang="pt-BR">Português</a></p>
+      <p>Xylem is an independent project, written from scratch. It is not affiliated with, endorsed by or
+        connected to Zedtek, Inc. (ZTreeWin) or to the owners of XTree. It contains no code from those
+        programs; their names are mentioned only to describe what inspired Xylem and how it compares.
+        XTree, ZTree and ZTreeWin are trademarks of their respective owners.</p>
+    </div>
+  </footer>
+
+  <dialog class="lightbox"><img alt=""></dialog>
+  <script src="site.js"></script>
+</body>
+</html>
