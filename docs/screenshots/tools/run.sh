@@ -46,7 +46,7 @@ run() { name=$1; cfg=$2; shift 2
   "$PY" -I "$T/shot.py" "$X/$file" "$X/target/release/xy" "${root:-/home/user/projects}" "$@"
   echo "$file"; }
 run tree classic "*" sleep:1 "$(down 12)"
-for theme in dark light mono norton solarized gruvbox nord slate graphite daylight; do
+for theme in dark light mono norton solarized gruvbox nord slate graphite daylight vivid; do
   run theme-$theme $theme "*" sleep:1 "$(down 12)"
 done
 run branch-tagged classic "*" sleep:1 "$(down 3)" b "$D" t "$D$D" t t "$D$D"
@@ -70,6 +70,9 @@ run terminal-tagged-nord nord "*" sleep:1 "$(down 3)" b "$D" t "$D$D" t t "\033x
 # The Usage view (Alt+W) of the whole home directory.
 root=/home/user
 run usage-nord nord sleep:1 "\033w" sleep:2
+run usage-vivid vivid sleep:1 "\033w" sleep:2
+# Alt+K Percent in the tree, the whole home logged.
+run percent-vivid vivid "*" sleep:1.5 "\033k" sleep:.3 p sleep:.5
 root=
 run demo-nord nord hold:1.5 "*" hold:1 "\033x" hold:1 "type:cd xylem/src" hold:.4 "\r" hold:2.5 \
   "\033x" hold:1 "$(up 9)" hold:.8 b hold:1.2 "$D" hold:.4 t hold:.5 "$D" hold:.3 "$D" hold:.4 \

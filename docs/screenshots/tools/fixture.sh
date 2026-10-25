@@ -45,7 +45,7 @@ chmod 644 $(find "$P" -type f -not -path '*/.git/*')
 find "$P" -type d -not -path "*/.git*" -exec chmod 755 {} +
 # Configurations: one per theme (classic is the defaults), and each of them
 # again with Git on (git = classic, git-dark, ...).
-for theme in classic dark light mono norton solarized gruvbox nord slate graphite daylight; do
+for theme in classic dark light mono norton solarized gruvbox nord slate graphite daylight vivid; do
   for git in false true; do
     name=$theme
     [ $git = false ] || { [ $theme = classic ] && name=git || name=git-$theme; }

@@ -72,7 +72,8 @@ espaço que ocupam (aqui no tema nord):
 **Temas**: além do azul clássico, `dark`, `light`, `mono`, `norton`,
 `solarized`, `gruvbox` (abaixo), `nord` e três que combinam com os desktops de
 hoje: `slate` (no estilo do Windows Terminal), `graphite` e `daylight` (macOS
-nos modos escuro e claro):
+nos modos escuro e claro), além do `vivid`, com cores fortes para
+apresentações:
 
 ![O tema gruvbox](docs/screenshots/theme-gruvbox.png)
 
@@ -84,8 +85,8 @@ ARM64 (estático, roda em qualquer distribuição) ou Windows x86_64. Extraia e
 coloque o `xy` (`xy.exe`) numa pasta do `PATH`, por exemplo:
 
 ```bash
-tar xzf xy-v0.3.0-x86_64-unknown-linux-musl.tar.gz
-install -m 755 xy-v0.3.0-x86_64-unknown-linux-musl/xy ~/.local/bin/
+tar xzf xy-v0.4.0-x86_64-unknown-linux-musl.tar.gz
+install -m 755 xy-v0.4.0-x86_64-unknown-linux-musl/xy ~/.local/bin/
 ```
 
 Cada arquivo tem um `.sha256` ao lado, para conferir com `sha256sum -c`.

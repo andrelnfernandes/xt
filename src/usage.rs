@@ -262,8 +262,9 @@ pub fn percent(part: u64, whole: u64) -> String {
     }
 }
 
-/// A bar of `width` cells for `part` against `largest` (which fills it),
-/// in eighths of a cell.
+/// The filled part of a bar of `width` cells for `part` against `largest`
+/// (which fills it all), in eighths of a cell; the rest is the track, drawn
+/// by the caller.
 pub fn bar(part: u64, largest: u64, width: usize) -> String {
     const PARTS: [&str; 8] = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"];
     let eighths = if largest == 0 {
@@ -274,9 +275,31 @@ pub fn bar(part: u64, largest: u64, width: usize) -> String {
     .min(width * 8);
     let mut out = "█".repeat(eighths / 8);
     out.push_str(PARTS[eighths % 8]);
-    let len = out.chars().count();
-    out.push_str(&" ".repeat(width - len));
     out
+}
+
+/// How much of the whole a share is, for its color: up to 10%, up to 40%,
+/// more.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Weight {
+    Light,
+    Medium,
+    Heavy,
+}
+
+pub fn weight(part: u64, whole: u64) -> Weight {
+    let pct = if whole == 0 {
+        0.0
+    } else {
+        part as f64 * 100.0 / whole as f64
+    };
+    if pct > 40.0 {
+        Weight::Heavy
+    } else if pct > 10.0 {
+        Weight::Medium
+    } else {
+        Weight::Light
+    }
 }
 
 #[cfg(test)]
@@ -298,8 +321,12 @@ mod tests {
         assert_eq!(percent(0, 10), "0%");
         assert_eq!(percent(3, 0), "-");
         assert_eq!(bar(10, 10, 4), "████");
-        assert_eq!(bar(5, 10, 4), "██  ");
-        assert_eq!(bar(1, 16, 2), "▏ ");
+        assert_eq!(bar(5, 10, 4), "██");
+        assert_eq!(bar(1, 16, 2), "▏");
+        assert_eq!(bar(0, 16, 2), "");
+        assert_eq!(weight(5, 100), Weight::Light);
+        assert_eq!(weight(30, 100), Weight::Medium);
+        assert_eq!(weight(41, 100), Weight::Heavy);
         assert_eq!(size(512), "512 B");
         assert_eq!(size(1536), "1.5 KiB");
         assert_eq!(size(35_325_000_000), "32.9 GiB");
