@@ -42,10 +42,13 @@ touch -d "2026-10-13 13:44" "$P/xylem/src/git.rs" "$P/xylem/src/viewer.rs"
 touch -d "2026-10-13 13:45" "$P/xylem/src/keymap.rs"
 chmod 644 $(find "$P" -type f -not -path '*/.git/*')
 find "$P" -type d -not -path "*/.git*" -exec chmod 755 {} +
-# Configurations: classic (defaults), gruvbox, and Git on.
-mkdir -p "$out/config/classic/xylem" "$out/config/gruvbox/xylem" "$out/config/git/xylem"
+# Configurations: classic (defaults), the other themes, and Git on.
+mkdir -p "$out/config/classic/xylem" "$out/config/git/xylem"
 printf '[options]\nconfirm_quit = false\nshow_hidden = false\n' > "$out/config/classic/xylem/config.toml"
-printf 'theme = "gruvbox"\n[options]\nconfirm_quit = false\nshow_hidden = false\n' > "$out/config/gruvbox/xylem/config.toml"
+for theme in gruvbox slate graphite daylight; do
+  mkdir -p "$out/config/$theme/xylem"
+  printf 'theme = "%s"\n[options]\nconfirm_quit = false\nshow_hidden = false\n' "$theme" > "$out/config/$theme/xylem/config.toml"
+done
 printf '[options]\nconfirm_quit = false\nshow_hidden = false\ngit = true\n' > "$out/config/git/xylem/config.toml"
 # The built-in terminal's shell (terminal shots).
 cat > "$out/home/user/.bashrc" <<'RC'
