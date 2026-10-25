@@ -23,7 +23,8 @@ pub const DEFAULT_CONFIG: &str = r##"# Xylem configuration: ~/.config/xylem/conf
 
 # Theme: "classic" (XTree blue), "dark", "light", "mono" (the terminal's
 # own colors), "norton", "solarized", "gruvbox", "nord", "slate" (Windows
-# Terminal style), "graphite" (macOS dark) or "daylight" (macOS light).
+# Terminal style), "graphite" (macOS dark), "daylight" (macOS light) or
+# "vivid" (strong colors, for presentations and screenshots).
 theme = "classic"
 
 [options]
@@ -92,7 +93,8 @@ terminal_history = true
 # "lightblue", "darkgray"...), "#rrggbb" or an index from 0 to 255.
 # Names: background, text, border, active_border, key, dim, highlight,
 # highlight_text, inactive_highlight, error, message, tagged, executable,
-# symlink, special.
+# symlink, special, bar_low, bar_mid, bar_high (the bars of Alt+K Percent
+# and Alt+W, by share: up to 10%, up to 40%, more).
 [colors]
 # key = "yellow"
 # background = "#1e1e2e"
@@ -589,6 +591,11 @@ pub struct Theme {
     pub executable: Color,
     pub symlink: Color,
     pub special: Color,
+    /// The bars of Alt+K Percent and Alt+W, by how much of the whole they
+    /// take: up to 10%, up to 40%, more.
+    pub bar_low: Color,
+    pub bar_mid: Color,
+    pub bar_high: Color,
 }
 
 /// A ready-made theme: name and how to build it.
@@ -607,6 +614,7 @@ pub const THEMES: &[NamedTheme] = &[
     ("slate", Theme::slate),
     ("graphite", Theme::graphite),
     ("daylight", Theme::daylight),
+    ("vivid", Theme::vivid),
 ];
 
 const fn rgb(hex: u32) -> Color {
@@ -631,6 +639,9 @@ impl Theme {
             executable: Color::LightGreen,
             symlink: Color::LightCyan,
             special: Color::LightMagenta,
+            bar_low: Color::LightGreen,
+            bar_mid: Color::Yellow,
+            bar_high: Color::LightRed,
         }
     }
 
@@ -665,6 +676,9 @@ impl Theme {
             executable: Color::Green,
             symlink: Color::Cyan,
             special: Color::Magenta,
+            bar_low: Color::Green,
+            bar_mid: rgb(0xb36b00),
+            bar_high: Color::Red,
         }
     }
 
@@ -686,6 +700,9 @@ impl Theme {
             executable: Color::Reset,
             symlink: Color::Reset,
             special: Color::Reset,
+            bar_low: Color::Reset,
+            bar_mid: Color::Reset,
+            bar_high: Color::Reset,
         }
     }
 
@@ -717,6 +734,9 @@ impl Theme {
             executable: rgb(0x859900),
             symlink: rgb(0x2aa198),
             special: rgb(0x6c71c4),
+            bar_low: rgb(0x859900),
+            bar_mid: rgb(0xb58900),
+            bar_high: rgb(0xdc322f),
         }
     }
 
@@ -737,6 +757,9 @@ impl Theme {
             executable: rgb(0xb8bb26),
             symlink: rgb(0x8ec07c),
             special: rgb(0xd3869b),
+            bar_low: rgb(0xb8bb26),
+            bar_mid: rgb(0xfabd2f),
+            bar_high: rgb(0xfb4934),
         }
     }
 
@@ -757,6 +780,9 @@ impl Theme {
             executable: rgb(0xa3be8c),
             symlink: rgb(0x8fbcbb),
             special: rgb(0xb48ead),
+            bar_low: rgb(0xa3be8c),
+            bar_mid: rgb(0xebcb8b),
+            bar_high: rgb(0xbf616a),
         }
     }
 
@@ -779,6 +805,9 @@ impl Theme {
             executable: rgb(0x16c60c),
             symlink: rgb(0x61d6d6),
             special: rgb(0xb4009e),
+            bar_low: rgb(0x16c60c),
+            bar_mid: rgb(0xc19c00),
+            bar_high: rgb(0xe74856),
         }
     }
 
@@ -801,6 +830,9 @@ impl Theme {
             executable: rgb(0x30d158),
             symlink: rgb(0x64d2ff),
             special: rgb(0xbf5af2),
+            bar_low: rgb(0x30d158),
+            bar_mid: rgb(0xffd60a),
+            bar_high: rgb(0xff453a),
         }
     }
 
@@ -822,6 +854,35 @@ impl Theme {
             executable: rgb(0x248a3d),
             symlink: rgb(0x0071a4),
             special: rgb(0x8944ab),
+            bar_low: rgb(0x248a3d),
+            bar_mid: rgb(0xb36b00),
+            bar_high: rgb(0xd70015),
+        }
+    }
+
+    /// Strong colors on a deep indigo, for presentations, videos and
+    /// screenshots: magenta selection, cyan and lime, a sun yellow for the
+    /// keys; the bars of Alt+K and Alt+W go lime, yellow and coral.
+    pub fn vivid() -> Self {
+        Theme {
+            background: rgb(0x1a1238),
+            text: rgb(0xf4f1ff),
+            border: rgb(0x6c5ce7),
+            active_border: rgb(0x00e5ff),
+            key: rgb(0xffd400),
+            dim: rgb(0xa79bd8),
+            highlight: rgb(0xff2e93),
+            highlight_text: rgb(0xffffff),
+            inactive_highlight: rgb(0x4b3a8f),
+            error: rgb(0xff5e5b),
+            message: rgb(0x00e5ff),
+            tagged: rgb(0xff9f1c),
+            executable: rgb(0x7cff6b),
+            symlink: rgb(0x00e5ff),
+            special: rgb(0xc77dff),
+            bar_low: rgb(0x7cff6b),
+            bar_mid: rgb(0xffd400),
+            bar_high: rgb(0xff5e5b),
         }
     }
 
@@ -855,6 +916,9 @@ impl Theme {
                 "executable" => &mut theme.executable,
                 "symlink" => &mut theme.symlink,
                 "special" => &mut theme.special,
+                "bar_low" => &mut theme.bar_low,
+                "bar_mid" => &mut theme.bar_mid,
+                "bar_high" => &mut theme.bar_high,
                 other => return Err(format!("unknown color name '{other}'")),
             };
             *slot = color;
