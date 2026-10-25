@@ -44,8 +44,8 @@ mod context_help;
 mod git_cmd;
 mod prompts;
 mod remote_cmd;
-mod usage_cmd;
 mod terminal;
+mod usage_cmd;
 mod view;
 
 #[cfg(test)]

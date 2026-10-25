@@ -184,7 +184,9 @@ impl UsageView {
             }),
             Order::Name => rows.sort_by(by_name),
             Order::Files => rows.sort_by(|a, b| b.files.cmp(&a.files).then_with(|| by_name(a, b))),
-            Order::Date => rows.sort_by(|a, b| b.modified.cmp(&a.modified).then_with(|| by_name(a, b))),
+            Order::Date => {
+                rows.sort_by(|a, b| b.modified.cmp(&a.modified).then_with(|| by_name(a, b)))
+            }
         }
         rows
     }
@@ -363,7 +365,9 @@ mod tests {
         let one = rows.iter().find(|r| r.name == "one").unwrap();
         let two = rows.iter().find(|r| r.name == "two").unwrap();
         assert_eq!((one.apparent, two.apparent), (20_000, 0));
-        let Item::Dir(two_id) = two.item else { panic!() };
+        let Item::Dir(two_id) = two.item else {
+            panic!()
+        };
         view.enter(two_id);
         assert_eq!(view.rows(&tree)[0].mark, 'H');
     }
@@ -403,7 +407,9 @@ mod tests {
         }
         let mut view = UsageView::new(crate::model::tree::ROOT);
         assert_eq!(view.rows(&tree)[0].mark, '.');
-        let Item::Dir(a) = view.rows(&tree)[0].item else { panic!() };
+        let Item::Dir(a) = view.rows(&tree)[0].item else {
+            panic!()
+        };
         view.enter(a);
         assert_eq!(view.rows(&tree)[0].mark, '!');
     }

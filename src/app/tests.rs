@@ -1886,7 +1886,11 @@ fn alt_w_opens_the_usage_view() {
     assert_eq!(view.rows(tree)[0].name, "a.rs");
     // Into "sub", and from there to the tree.
     view.order = crate::usage::Order::Name;
-    let at = view.rows(tree).iter().position(|r| r.name == "sub").unwrap();
+    let at = view
+        .rows(tree)
+        .iter()
+        .position(|r| r.name == "sub")
+        .unwrap();
     view.list.select(Some(at));
     press(&mut app, KeyCode::Enter);
     let pane = &mut app.panes[app.active];
