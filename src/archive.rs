@@ -1,4 +1,5 @@
-//! Reading of archives (ZIP and TAR), read-only.
+//! Reading of archives (ZIP, 7z and TAR, plain or compressed with gzip, xz,
+//! bzip2 or zstd), read-only; creating ZIP and TAR.
 //!
 //! The entries become a virtual tree whose root is the archive itself:
 //! `/x/package.zip/src/a.rs` is the entry `src/a.rs` of `/x/package.zip`.
@@ -19,16 +20,29 @@ use chrono::{Local, NaiveDate, TimeZone};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     Zip,
+    SevenZ,
     Tar,
     TarGz,
+    TarXz,
+    TarBz2,
+    TarZst,
 }
 
 impl Kind {
     /// Recognizes it by the file name.
     pub fn detect(path: &Path) -> Option<Kind> {
         let name = path.file_name()?.to_string_lossy().to_lowercase();
-        if name.ends_with(".tar.gz") || name.ends_with(".tgz") {
+        let ends = |exts: &[&str]| exts.iter().any(|ext| name.ends_with(ext));
+        if ends(&[".tar.gz", ".tgz"]) {
             Some(Kind::TarGz)
+        } else if ends(&[".tar.xz", ".txz"]) {
+            Some(Kind::TarXz)
+        } else if ends(&[".tar.bz2", ".tbz2", ".tbz"]) {
+            Some(Kind::TarBz2)
+        } else if ends(&[".tar.zst", ".tzst"]) {
+            Some(Kind::TarZst)
+        } else if name.ends_with(".7z") {
+            Some(Kind::SevenZ)
         } else if name.ends_with(".tar") {
             Some(Kind::Tar)
         } else if [".zip", ".jar", ".war", ".apk"]
@@ -67,6 +81,9 @@ pub struct Reader {
     zip: Option<zip::ZipArchive<BufReader<File>>>,
     /// Path → index in the ZIP.
     zip_index: HashMap<PathBuf, usize>,
+    sevenz: Option<sevenz_rust2::ArchiveReader<File>>,
+    /// Path → name of the entry in the 7z, and its kind.
+    sevenz_index: HashMap<PathBuf, (String, EntryKind)>,
 }
 
 impl Reader {
@@ -79,10 +96,22 @@ impl Reader {
             kind,
             zip: None,
             zip_index: HashMap::new(),
+            sevenz: None,
+            sevenz_index: HashMap::new(),
         };
-        if kind == Kind::Zip {
-            let file = BufReader::new(File::open(path)?);
-            reader.zip = Some(zip::ZipArchive::new(file).map_err(io::Error::other)?);
+        match kind {
+            Kind::Zip => {
+                let file = BufReader::new(File::open(path)?);
+                reader.zip = Some(zip::ZipArchive::new(file).map_err(io::Error::other)?);
+            }
+            Kind::SevenZ => {
+                let file = File::open(path)?;
+                let password = sevenz_rust2::Password::empty();
+                let sevenz =
+                    sevenz_rust2::ArchiveReader::new(file, password).map_err(sevenz_error)?;
+                reader.sevenz = Some(sevenz);
+            }
+            _ => {}
         }
         Ok(reader)
     }
@@ -91,7 +120,8 @@ impl Reader {
     pub fn list(&mut self) -> io::Result<Vec<Entry>> {
         match self.kind {
             Kind::Zip => self.list_zip(),
-            Kind::Tar | Kind::TarGz => {
+            Kind::SevenZ => Ok(self.list_7z()),
+            _ => {
                 let mut entries = Vec::new();
                 self.each_tar_entry(|entry, _| {
                     entries.push(entry);
@@ -118,7 +148,32 @@ impl Reader {
                 }
                 io::copy(&mut (&mut file).take(limit), out)
             }
-            Kind::Tar | Kind::TarGz => {
+            Kind::SevenZ => {
+                if self.sevenz_index.is_empty() {
+                    self.list_7z();
+                }
+                let (name, kind) = self.sevenz_index.get(entry).ok_or_else(not_found)?.clone();
+                if kind == EntryKind::Symlink {
+                    return Err(symlink_error());
+                }
+                let sevenz = self.sevenz.as_mut().expect("7z archive is open");
+                let mut written = None;
+                // Solid archives only decode in order: walks up to the entry,
+                // reading through the ones before it (in a solid block they
+                // share one stream, so an unread entry would shift the next).
+                sevenz
+                    .for_each_entries(|info, data| {
+                        if info.name() != name {
+                            io::copy(data, &mut io::sink())?;
+                            return Ok(true);
+                        }
+                        written = Some(io::copy(&mut data.take(limit), out)?);
+                        Ok(false)
+                    })
+                    .map_err(sevenz_error)?;
+                written.ok_or_else(not_found)
+            }
+            _ => {
                 let mut written = None;
                 self.each_tar_entry(|info, data| {
                     if info.path != entry {
@@ -174,6 +229,48 @@ impl Reader {
         Ok(entries)
     }
 
+    fn list_7z(&mut self) -> Vec<Entry> {
+        let sevenz = self.sevenz.as_ref().expect("7z archive is open");
+        let mut entries = Vec::new();
+        self.sevenz_index.clear();
+        for file in &sevenz.archive().files {
+            if file.is_anti_item() {
+                continue;
+            }
+            // Archives made on Windows may use `\`.
+            let path: PathBuf = Path::new(&file.name().replace('\\', "/"))
+                .components()
+                .filter(|c| *c != Component::CurDir)
+                .collect();
+            if path.as_os_str().is_empty() || !is_safe(&path) {
+                continue;
+            }
+            // Unix permissions, when the archive keeps them, are in the high
+            // 16 bits of the attributes (7-Zip's convention, flag 0x8000).
+            let unix = (file.has_windows_attributes && file.windows_attributes & 0x8000 != 0)
+                .then_some(file.windows_attributes >> 16);
+            let kind = if file.is_directory() {
+                EntryKind::Dir
+            } else if unix.is_some_and(|m| m & 0o170000 == 0o120000) {
+                EntryKind::Symlink
+            } else {
+                EntryKind::File
+            };
+            self.sevenz_index
+                .insert(path.clone(), (file.name().to_string(), kind));
+            entries.push(Entry {
+                path,
+                size: file.size(),
+                modified: file
+                    .has_last_modified_date
+                    .then(|| file.last_modified_date().into()),
+                mode: unix.map_or(0o644, |m| m & 0o7777),
+                kind,
+            });
+        }
+        entries
+    }
+
     /// Walks the TAR from the start, calling `f` with each valid entry and its
     /// contents; `f` returns `false` to stop.
     fn each_tar_entry(
@@ -183,6 +280,11 @@ impl Reader {
         let file = BufReader::new(File::open(&self.path)?);
         let reader: Box<dyn Read> = match self.kind {
             Kind::TarGz => Box::new(flate2::read::GzDecoder::new(file)),
+            Kind::TarXz => Box::new(lzma_rust2::XzReader::new(file, true)),
+            Kind::TarBz2 => Box::new(bzip2::read::MultiBzDecoder::new(file)),
+            Kind::TarZst => {
+                Box::new(ruzstd::decoding::StreamingDecoder::new(file).map_err(io::Error::other)?)
+            }
             _ => Box::new(file),
         };
         let mut archive = tar::Archive::new(reader);
@@ -260,7 +362,9 @@ pub struct ArchiveJob {
 
 impl ArchiveJob {
     pub fn new(dest: &Path, items: Vec<ArchiveItem>) -> io::Result<Self> {
-        let kind = Kind::detect(dest).ok_or_else(|| {
+        // Reads more formats than it creates.
+        let creatable = |k: &Kind| matches!(k, Kind::Zip | Kind::Tar | Kind::TarGz);
+        let kind = Kind::detect(dest).filter(creatable).ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "use a name ending in .zip, .tar, .tar.gz or .tgz",
@@ -275,6 +379,7 @@ impl ArchiveJob {
             Kind::TarGz => Writer::TarGz(Box::new(no_follow(tar::Builder::new(
                 flate2::write::GzEncoder::new(file, flate2::Compression::default()),
             )))),
+            _ => unreachable!("filtered by `creatable`"),
         };
         Ok(ArchiveJob {
             writer: Some(writer),
@@ -389,6 +494,17 @@ fn is_safe(path: &Path) -> bool {
     path.components().all(|c| matches!(c, Component::Normal(_)))
 }
 
+/// A 7z error as an I/O error, with a clear message for encrypted archives.
+fn sevenz_error(e: sevenz_rust2::Error) -> io::Error {
+    match e {
+        sevenz_rust2::Error::PasswordRequired | sevenz_rust2::Error::MaybeBadPassword(_) => {
+            io::Error::other("encrypted 7z archives are not supported")
+        }
+        sevenz_rust2::Error::Io(e, _) => e,
+        e => io::Error::other(e.to_string()),
+    }
+}
+
 fn not_found() -> io::Error {
     io::Error::new(io::ErrorKind::NotFound, "entry not found in archive")
 }
@@ -422,6 +538,13 @@ pub mod tests {
 
     /// TAR(.gz) with docs/guide.txt, a link to /etc and "../evil".
     pub fn make_tar(path: &Path, gz: bool) {
+        let kind = if gz { Kind::TarGz } else { Kind::Tar };
+        make_tar_as(path, kind);
+    }
+
+    /// The test TAR (a file, a symlink and an entry with ".."),
+    /// compressed as `kind` says.
+    pub fn make_tar_as(path: &Path, kind: Kind) {
         let mut data = Vec::new();
         {
             let mut tar = tar::Builder::new(&mut data);
@@ -446,16 +569,59 @@ pub mod tests {
             tar.append(&evil, Cursor::new(b"x")).unwrap();
             tar.finish().unwrap();
         }
-        if gz {
-            let mut enc = flate2::write::GzEncoder::new(
-                File::create(path).unwrap(),
-                flate2::Compression::default(),
-            );
-            enc.write_all(&data).unwrap();
-            enc.finish().unwrap();
-        } else {
-            std::fs::write(path, data).unwrap();
+        let mut file = File::create(path).unwrap();
+        match kind {
+            Kind::Tar => file.write_all(&data).unwrap(),
+            Kind::TarGz => {
+                let mut enc = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+                enc.write_all(&data).unwrap();
+                enc.finish().unwrap();
+            }
+            Kind::TarXz => {
+                let options = lzma_rust2::XzOptions::default();
+                let mut enc = lzma_rust2::XzWriter::new(file, options).unwrap();
+                enc.write_all(&data).unwrap();
+                enc.finish().unwrap();
+            }
+            Kind::TarBz2 => {
+                let mut enc = bzip2::write::BzEncoder::new(file, bzip2::Compression::default());
+                enc.write_all(&data).unwrap();
+                enc.finish().unwrap();
+            }
+            Kind::TarZst => ruzstd::encoding::compress(
+                &data[..],
+                file,
+                ruzstd::encoding::CompressionLevel::Fastest,
+            ),
+            _ => panic!("not a TAR kind: {kind:?}"),
         }
+    }
+
+    /// A 7z with the same contents as the test TAR: `docs/guide.txt` (mode
+    /// 640), a symlink `etc-link` and an entry with "..", all in one solid
+    /// block, with the file last (reading it goes through the others).
+    pub fn make_7z(path: &Path) {
+        use sevenz_rust2::{ArchiveEntry, ArchiveWriter, SourceReader};
+        // Unix mode in the high bits of the attributes, with 7-Zip's flag.
+        let unix = |mode: u32| (mode << 16) | 0x8000;
+        let mut writer = ArchiveWriter::create(path).unwrap();
+        let mut guide = ArchiveEntry::new_file("docs/guide.txt");
+        guide.has_windows_attributes = true;
+        guide.windows_attributes = unix(0o100640);
+        guide.has_last_modified_date = true;
+        guide.last_modified_date = (SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000))
+            .try_into()
+            .unwrap();
+        let mut link = ArchiveEntry::new_file("etc-link");
+        link.has_windows_attributes = true;
+        link.windows_attributes = unix(0o120777);
+        let evil = ArchiveEntry::new_file("../evil");
+        let data: [&[u8]; 3] = [b"/etc", b"x", b"guide"];
+        let readers = data.into_iter().map(SourceReader::from).collect();
+        writer
+            .push_archive_entries(vec![link, evil, guide], readers)
+            .unwrap();
+        writer.finish().unwrap();
     }
 
     fn paths(entries: &[Entry]) -> Vec<String> {
@@ -470,7 +636,15 @@ pub mod tests {
         assert_eq!(Kind::detect(Path::new("a.tar.gz")), Some(Kind::TarGz));
         assert_eq!(Kind::detect(Path::new("a.tgz")), Some(Kind::TarGz));
         assert_eq!(Kind::detect(Path::new("a.tar")), Some(Kind::Tar));
+        assert_eq!(Kind::detect(Path::new("a.tar.xz")), Some(Kind::TarXz));
+        assert_eq!(Kind::detect(Path::new("a.txz")), Some(Kind::TarXz));
+        assert_eq!(Kind::detect(Path::new("a.tar.bz2")), Some(Kind::TarBz2));
+        assert_eq!(Kind::detect(Path::new("a.tbz2")), Some(Kind::TarBz2));
+        assert_eq!(Kind::detect(Path::new("a.tar.zst")), Some(Kind::TarZst));
+        assert_eq!(Kind::detect(Path::new("A.7Z")), Some(Kind::SevenZ));
         assert_eq!(Kind::detect(Path::new("a.txt")), None);
+        // A lone .xz/.bz2 (not a TAR) is not an archive.
+        assert_eq!(Kind::detect(Path::new("a.log.xz")), None);
     }
 
     #[test]
@@ -509,19 +683,32 @@ pub mod tests {
     }
 
     #[test]
-    fn lists_and_extracts_tar_and_tgz() {
+    fn lists_and_extracts_tar_compressed_or_not_and_7z() {
         let tmp = crate::testing::tempdir();
-        for gz in [false, true] {
-            let path = tmp.path().join(if gz { "t.tgz" } else { "t.tar" });
-            make_tar(&path, gz);
+        let names = [
+            "t.tar",
+            "t.tgz",
+            "t.tar.xz",
+            "t.tar.bz2",
+            "t.tar.zst",
+            "t.7z",
+        ];
+        for name in names {
+            let path = tmp.path().join(name);
+            match Kind::detect(&path).unwrap() {
+                Kind::SevenZ => make_7z(&path),
+                kind => make_tar_as(&path, kind),
+            }
             let mut r = Reader::open(&path).unwrap();
             let entries = r.list().unwrap();
-            assert_eq!(paths(&entries), ["docs/guide.txt", "etc-link"], "gz={gz}");
+            assert_eq!(paths(&entries), ["docs/guide.txt", "etc-link"], "{name}");
             let guide = &entries
                 .iter()
                 .find(|e| e.path.ends_with("guide.txt"))
                 .unwrap();
-            assert_eq!((guide.size, guide.mode), (5, 0o640));
+            assert_eq!((guide.size, guide.mode), (5, 0o640), "{name}");
+            let mtime = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+            assert_eq!(guide.modified, Some(mtime), "{name}");
 
             let mut out = Vec::new();
             r.extract(Path::new("docs/guide.txt"), &mut out, u64::MAX)

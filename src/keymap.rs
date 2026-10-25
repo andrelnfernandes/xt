@@ -202,7 +202,7 @@ const COMMANDS: &[(&str, Command, &str)] = &[
     (
         "open_archive",
         Command::OpenArchive,
-        "open a zip/tar archive as a directory",
+        "open an archive (zip, 7z, tar...) as a directory",
     ),
     (
         "compare_branch",
