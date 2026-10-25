@@ -10,7 +10,7 @@ impl App {
         let dirs: Vec<PathBuf> = self
             .panes
             .iter()
-            .filter(|p| p.archive.is_none())
+            .filter(|p| p.archive.is_none() && p.remote.is_none())
             .map(|p| p.current_path())
             .collect();
         self.git_status.refresh(dirs);
@@ -22,7 +22,10 @@ impl App {
         if !self.options.git {
             return;
         }
-        if self.archive.is_some() || git::repo_root(&self.current_path()).is_none() {
+        if self.archive.is_some()
+            || self.remote.is_some()
+            || git::repo_root(&self.current_path()).is_none()
+        {
             self.message = Some("Not a Git repository".into());
             return;
         }

@@ -15,27 +15,48 @@ const HEAD: usize = 512;
 /// Describes `path`. With `on_disk` false (inside an archive), only the
 /// name is used.
 pub fn describe(path: &Path, kind: FileKind, size: u64, on_disk: bool) -> String {
+    if kind == FileKind::Other {
+        return special(path, on_disk);
+    }
+    if !on_disk {
+        return describe_with(path, kind, size, || None, || None);
+    }
+    let link = || fs::read_link(path).ok().map(|t| t.display().to_string());
+    describe_with(path, kind, size, || read_head(path), link)
+}
+
+/// The same, with the first bytes and a link's target from elsewhere (a
+/// remote machine); `head` and `link` are only called when needed.
+pub fn describe_with(
+    path: &Path,
+    kind: FileKind,
+    size: u64,
+    head: impl FnOnce() -> Option<Vec<u8>>,
+    link: impl FnOnce() -> Option<String>,
+) -> String {
     match kind {
         FileKind::Symlink => {
-            return match on_disk.then(|| fs::read_link(path)) {
-                Some(Ok(target)) => format!("symbolic link to {}", target.display()),
-                _ => "symbolic link".into(),
+            return match link() {
+                Some(target) => format!("symbolic link to {target}"),
+                None => "symbolic link".into(),
             };
         }
-        FileKind::Other => return special(path, on_disk),
+        FileKind::Other => return "special file".into(),
         FileKind::File => {}
     }
     if size == 0 {
         return "empty".into();
     }
-    let head = on_disk.then(|| read_head(path)).flatten();
-    match head {
+    match head() {
         Some(head) => from_content(path, &head),
         None => {
             highlight::language(path, "").map_or_else(|| "file".into(), |l| format!("{l} file"))
         }
     }
 }
+
+/// How much `describe_with`'s `head` should read.
+pub const HEAD_BYTES: u64 = HEAD as u64;
 
 fn read_head(path: &Path) -> Option<Vec<u8>> {
     let mut head = Vec::with_capacity(HEAD);

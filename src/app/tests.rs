@@ -2436,3 +2436,88 @@ fn rename_tagged_f2_cycles_case() {
     answer_prompt(&mut app, "*.*");
     assert!(tmp.path().join("A.RS").exists());
 }
+
+/// The sample tree seen as a remote machine (OpenSSH's sftp-server spoken to
+/// directly), in the only window. `None` without sftp-server.
+#[cfg(unix)]
+fn remote_sample() -> Option<(tempfile::TempDir, App)> {
+    let (tmp, mut app) = sample();
+    let remote = crate::remote::for_tests(tmp.path())?;
+    app.panes[0] = Pane::from_remote(remote);
+    Some((tmp, app))
+}
+
+#[cfg(unix)]
+#[test]
+fn remote_window_lists_views_and_copies_here() {
+    let Some((tmp, mut app)) = remote_sample() else {
+        return;
+    };
+    assert!(app.current_path().starts_with("test@testhost:"));
+    assert_eq!(names(&app), ["a.rs", "b.txt"]);
+    assert_eq!(app.help_topic(), "remote");
+
+    press(&mut app, KeyCode::Enter);
+    press(&mut app, KeyCode::Char('v'));
+    let viewer = app.viewer.as_ref().expect("viewer open");
+    assert_eq!(viewer.visible_lines(1), ["fn main() {}"]);
+    press(&mut app, KeyCode::Esc);
+
+    // Copy brings the file here, with its date.
+    let local = tempfile::tempdir_in(tmp.path()).unwrap();
+    press(&mut app, KeyCode::Char('c'));
+    answer_prompt(&mut app, local.path().to_str().unwrap());
+    let copied = local.path().join("a.rs");
+    assert_eq!(std::fs::read_to_string(&copied).unwrap(), "fn main() {}\n");
+    // SFTP v3 dates are whole seconds.
+    let seconds = |p: &std::path::Path| {
+        let t = std::fs::metadata(p).unwrap().modified().unwrap();
+        t.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
+    };
+    assert_eq!(seconds(&copied), seconds(&tmp.path().join("a.rs")));
+
+    // Writing on the remote machine is not there yet.
+    press(&mut app, KeyCode::Char('d'));
+    assert!(app.confirm.is_none());
+    assert!(
+        app.message
+            .as_deref()
+            .unwrap()
+            .starts_with("Read-only on a remote machine")
+    );
+    press(&mut app, KeyCode::Char('c'));
+    answer_prompt(&mut app, "test@testhost:/tmp");
+    assert!(
+        app.message
+            .as_deref()
+            .unwrap()
+            .contains("remote machine comes in a later version")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn remote_window_logs_and_searches() {
+    let Some((_tmp, mut app)) = remote_sample() else {
+        return;
+    };
+    // Branch logs the remote branch.
+    press(&mut app, KeyCode::Char('b'));
+    while app.busy() {
+        app.tick(Duration::from_millis(50));
+    }
+    let mut all = names(&app);
+    all.sort();
+    assert_eq!(all, ["a.rs", "a.rs", "b.txt", "c.rs"]);
+    // Ctrl+S reads the remote files.
+    ctrl(&mut app, 't');
+    ctrl(&mut app, 's');
+    answer_prompt(&mut app, "deep");
+    let tagged: Vec<String> = app
+        .files
+        .iter()
+        .filter(|&&f| app.file(f).tagged)
+        .map(|&f| app.file(f).name.to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(tagged, ["a.rs"], "only sub/deep/a.rs has the word");
+}

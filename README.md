@@ -133,7 +133,8 @@ mkdir -p ~/.local/share/man/man1 && xy --man > ~/.local/share/man/man1/xy.1
 - **Looking inside:** a text and hex viewer with search and syntax colors,
   Autoview next to the list, ZIP, 7z and TAR archives opened as directories,
   and display modes that show owners or what each file is.
-- **Beyond XTree:** a built-in terminal whose tree follows the shell, an
+- **Beyond XTree:** a built-in terminal whose tree follows the shell, remote
+  machines over SSH (browse and copy from them, with their own terminal), an
   optional Git menu, the clipboard, a configuration screen and themes.
 
 ## Usage

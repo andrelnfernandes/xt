@@ -92,7 +92,9 @@ impl App {
             return;
         };
         let path = self.file_path(f);
-        if self.archive.is_some() {
+        if self.remote.is_some() {
+            self.message = Some("Archives on a remote machine: copy them here first".into());
+        } else if self.archive.is_some() {
             self.message = Some("Archives inside archives are not supported".into());
         } else if archive::Kind::detect(&path).is_none() {
             self.message =
@@ -193,6 +195,13 @@ impl App {
     /// is logged in it and in its branch).
     pub(crate) fn info_text(&self) -> String {
         let in_files = self.focus == Focus::Files;
+        if let Some(remote) = &self.remote {
+            let path = match self.selected_file().filter(|_| in_files) {
+                Some(f) => self.file_path(f),
+                None => self.current_path(),
+            };
+            return remote_info(remote, &path);
+        }
         match self.selected_file().filter(|_| in_files) {
             Some(f) if self.archive.is_none() => info::path_info(&self.file_path(f)),
             Some(f) => {
@@ -360,15 +369,22 @@ impl App {
         let mut errors = Vec::new();
         let mut opened = 0;
         for source in sources {
-            let path = match &self.archive {
-                Some(root) => match extract_for_opening(root, &source.path) {
+            let path = match (&self.remote, &self.archive) {
+                (Some(remote), _) => match download_for_opening(remote, &source.path) {
                     Ok(p) => p,
                     Err(e) => {
                         errors.push(format!("{}: {e}", source.path.display()));
                         continue;
                     }
                 },
-                None => source.path,
+                (None, Some(root)) => match extract_for_opening(root, &source.path) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        errors.push(format!("{}: {e}", source.path.display()));
+                        continue;
+                    }
+                },
+                (None, None) => source.path,
             };
             match shell::open_detached(&path, &self.options.opener) {
                 Ok(()) => opened += 1,
@@ -395,6 +411,9 @@ impl App {
     /// Log: opens `path` in the active window. If it is inside the current tree,
     /// just moves the cursor there; otherwise, the window gets `path` as its root.
     pub(crate) fn log(&mut self, text: &str) -> Result<(), String> {
+        if let Some(address) = crate::remote::Address::parse(text) {
+            return self.connect(address);
+        }
         let path = ops::resolve_path(text, &self.current_path());
         let path = dunce::canonicalize(&path).map_err(|e| format!("Cannot log {text}: {e}"))?;
         if !path.is_dir() {
@@ -754,6 +773,91 @@ pub(crate) fn extract_for_opening(archive: &Path, entry: &Path) -> std::io::Resu
     let mut file = fs::File::create(&out)?;
     archive::Reader::open(archive)?.extract(rel, &mut file, u64::MAX)?;
     Ok(out)
+}
+
+/// Downloads a remote file to the temporary folder, so a local program can
+/// open it.
+pub(crate) fn download_for_opening(
+    remote: &std::sync::Arc<crate::remote::Remote>,
+    path: &Path,
+) -> std::io::Result<PathBuf> {
+    let out = platform::run_dir()?.join(path.file_name().unwrap_or_default());
+    let mut file = fs::File::create(&out)?;
+    std::io::copy(&mut remote.open(path)?, &mut file)?;
+    Ok(out)
+}
+
+/// Alt+I on a remote machine: what SFTP tells about `path`.
+fn remote_info(remote: &crate::remote::Remote, path: &Path) -> String {
+    use crate::model::tree::FileKind;
+    let mut text = format!(
+        "INFO  {}
+
+",
+        path.display()
+    );
+    match remote.lstat(path) {
+        Ok(e) => {
+            let kind = match e.kind {
+                FileKind::Symlink => "symbolic link",
+                FileKind::File => "file",
+                FileKind::Other => "directory or special file",
+            };
+            text.push_str(&format!(
+                "  {:<14}{kind}
+",
+                "Type"
+            ));
+            if e.kind == FileKind::Symlink
+                && let Ok(target) = remote.read_link(path)
+            {
+                text.push_str(&format!(
+                    "  {:<14}{target}
+",
+                    "Points to"
+                ));
+            }
+            text.push_str(&format!(
+                "  {:<14}{} bytes
+",
+                "Size",
+                info::group(e.size)
+            ));
+            text.push_str(&format!(
+                "  {:<14}{:04o}
+",
+                "Permissions",
+                e.mode & 0o7777
+            ));
+            if let Some(owner) = remote.owner(path) {
+                text.push_str(&format!(
+                    "  {:<14}{owner} (user:group ids)
+",
+                    "Owner"
+                ));
+            }
+            if let Some(t) = e.modified {
+                let t: chrono::DateTime<chrono::Local> = t.into();
+                text.push_str(&format!(
+                    "  {:<14}{}
+",
+                    "Modified",
+                    t.format("%Y-%m-%d %H:%M:%S %z")
+                ));
+            }
+        }
+        Err(e) => text.push_str(&format!(
+            "  {e}
+"
+        )),
+    }
+    text.push_str(&format!(
+        "
+  On {} (SFTP)
+",
+        remote.address.destination()
+    ));
+    text
 }
 
 /// Last component of a path, for short messages.

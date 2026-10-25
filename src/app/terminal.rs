@@ -8,23 +8,47 @@ impl App {
     pub(crate) fn show_terminal(&mut self, full: Option<bool>) {
         let dir = self.current_path();
         let tagged: Vec<PathBuf> = self.sources(true).into_iter().map(|s| s.path).collect();
+        let remote = self.remote.clone();
+        self.switch_terminal(remote.as_ref().map(|r| r.address.destination()));
         if self.terminal.is_none() {
-            let history = self
-                .options
-                .terminal_history
-                .then(platform::state_dir)
-                .flatten();
-            match Terminal::spawn(&dir, history.as_deref()) {
+            let spawned = match &remote {
+                // ssh -t to the window's machine, starting in its directory;
+                // ssh itself runs here, in the home directory.
+                Some(r) => {
+                    let (program, args) = r.terminal_command(&dir);
+                    let home = platform::home_dir().unwrap_or_else(std::env::temp_dir);
+                    Terminal::spawn_remote(&program, &args, &home)
+                }
+                None => {
+                    let history = self
+                        .options
+                        .terminal_history
+                        .then(platform::state_dir)
+                        .flatten();
+                    Terminal::spawn(&dir, history.as_deref())
+                }
+            };
+            match spawned {
                 Ok(t) => {
                     self.terminal = Some(t);
                     self.terminal_cwd = Some(dir.clone());
                     self.terminal_tagged.clear();
+                    self.terminal_remote = remote.clone();
                 }
                 Err(e) => {
                     self.message = Some(format!("Cannot start the shell: {e}"));
                     return;
                 }
             }
+        }
+        if remote.is_some() {
+            // Nothing is typed into a remote shell: Xylem cannot tell whether
+            // a program is running there.
+            self.terminal_focus = true;
+            if let Some(full) = full {
+                self.terminal_full = full;
+            }
+            return;
         }
         let shell_dir = self.terminal.as_ref().and_then(Terminal::cwd);
         let shell_dir = shell_dir.or_else(|| self.terminal_cwd.clone());
@@ -68,9 +92,34 @@ impl App {
         }
     }
 
+    /// Puts on screen the terminal of `host` (`None`: this machine),
+    /// parking the one that was there; it keeps running.
+    fn switch_terminal(&mut self, host: Option<String>) {
+        if host == self.terminal_host {
+            return;
+        }
+        if let Some(t) = self.terminal.take() {
+            let parked = (self.terminal_host.take(), t, self.terminal_remote.take());
+            self.parked_terminals.push(parked);
+        }
+        self.terminal_remote = None;
+        if let Some(i) = self.parked_terminals.iter().position(|(h, ..)| *h == host) {
+            let (_, t, remote) = self.parked_terminals.swap_remove(i);
+            self.terminal = Some(t);
+            self.terminal_remote = remote;
+        }
+        self.terminal_host = host;
+        self.terminal_cwd = None;
+        self.terminal_tagged.clear();
+    }
+
     /// Types the tagged files at the cursor, quoted and relative to the
     /// shell's directory when inside it.
     pub(crate) fn type_tagged(&mut self) {
+        if self.terminal.as_ref().is_some_and(Terminal::is_remote) {
+            self.message = Some("Alt+O types local files; not in a remote terminal yet".into());
+            return;
+        }
         let tagged = self.sources(true);
         let Some(t) = &mut self.terminal else {
             return;
@@ -105,6 +154,7 @@ impl App {
         };
         if t.exited() {
             self.terminal = None;
+            self.terminal_remote = None;
             self.terminal_cwd = None;
             self.terminal_tagged.clear();
             if self.terminal_focus {
@@ -116,6 +166,30 @@ impl App {
         let dirty = t.take_dirty();
         if dirty {
             t.on_output();
+        }
+        // A remote shell: the directory it reports (OSC 7), inside the window.
+        if dirty
+            && t.is_remote()
+            && let Some(reported) = t.reported_dir()
+            && let Some(remote) = self.terminal_remote.clone()
+        {
+            let reported = PathBuf::from(reported);
+            if self.terminal_cwd.as_ref() != Some(&reported) {
+                self.terminal_cwd = Some(reported.clone());
+                self.message = None;
+                let inside = remote.virtual_path(&reported.to_string_lossy());
+                match inside {
+                    Some(path) if self.current_path() == path || self.goto(&path) => {}
+                    _ => {
+                        self.message = Some(format!(
+                            "The shell is in {} on {}, outside the tree",
+                            reported.display(),
+                            remote.address.destination()
+                        ));
+                    }
+                }
+            }
+            return dirty;
         }
         if dirty
             && let Some(cwd) = t.cwd()
@@ -174,6 +248,19 @@ impl App {
     /// A program running in the built-in terminal (not just the shell at its
     /// prompt), which quitting would end, maybe with unsaved work.
     pub(crate) fn terminal_program(&mut self) -> Option<String> {
-        self.terminal.as_mut()?.foreground_program()
+        let describe = |host: &Option<String>, t: &mut Terminal| match (t.is_remote(), host) {
+            (true, Some(host)) if !t.exited() => Some(format!("a session on {host}")),
+            (true, _) => None,
+            (false, _) => t.foreground_program(),
+        };
+        let host = self.terminal_host.clone();
+        if let Some(t) = &mut self.terminal
+            && let Some(program) = describe(&host, t)
+        {
+            return Some(program);
+        }
+        self.parked_terminals
+            .iter_mut()
+            .find_map(|(host, t, _)| describe(host, t))
     }
 }

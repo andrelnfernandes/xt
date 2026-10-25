@@ -18,6 +18,7 @@ mod ops;
 mod pane;
 mod picker;
 mod platform;
+mod remote;
 mod search;
 mod settings;
 mod shell;
@@ -47,7 +48,7 @@ use app::App;
 const USAGE: &str = "\
 Xylem - text-mode file manager inspired by XTree/ZTreeWin
 
-Usage: xy [--cwd-file FILE] [DIRECTORY]
+Usage: xy [--cwd-file FILE] [DIRECTORY | user@host:[PATH] | ssh://[user@]host[:port][/PATH]]
 
 Options:
   --cwd-file FILE    on Alt+Q (quit and change directory), write the current
@@ -58,7 +59,14 @@ Options:
   -V, --version      show the version";
 
 fn main() -> anyhow::Result<()> {
+    // Run by ssh as SSH_ASKPASS for a connection Xylem started: the question
+    // is the only argument, and the answer goes to stdout.
+    if std::env::var_os(remote::askpass::DIR_VAR).is_some() {
+        let question = std::env::args().nth(1).unwrap_or_default();
+        std::process::exit(remote::askpass::run(&question));
+    }
     let mut root = None;
+    let mut remote_address = None;
     let mut cwd_file: Option<PathBuf> = None;
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
@@ -92,7 +100,12 @@ fn main() -> anyhow::Result<()> {
                 return Ok(());
             }
             Some(s) if s.starts_with('-') => bail!("unknown option {s}\n\n{USAGE}"),
-            _ if root.is_some() => bail!("only one directory can be given\n\n{USAGE}"),
+            _ if root.is_some() || remote_address.is_some() => {
+                bail!("only one directory can be given\n\n{USAGE}")
+            }
+            Some(text) if remote::Address::parse(text).is_some() => {
+                remote_address = remote::Address::parse(text);
+            }
             _ => root = Some(PathBuf::from(arg)),
         }
     }
@@ -123,6 +136,11 @@ fn main() -> anyhow::Result<()> {
             to.display()
         ))
     });
+    if let Some(address) = remote_address
+        && let Err(e) = app.connect(address)
+    {
+        app.message = Some(e);
+    }
     app.history_file = state::history_path();
     if let Some(path) = &app.history_file {
         let state = state::load_state(path);
@@ -279,6 +297,8 @@ fn run(
             w.watch_only(dirs);
         }
         app.refresh_git();
+        // A connection being made: ssh's questions and the result.
+        app.poll_connection();
         redraw |= app.terminal_tick();
         if redraw {
             terminal.draw(|frame| ui::draw(frame, app))?;
@@ -295,7 +315,13 @@ fn run(
         // done by another program doesn't trigger a reread per file).
         // With the terminal on screen, wake up often to show what the
         // shell writes, but redraw only when it writes something.
-        let wait = if app.terminal_focus { 15 } else { 500 };
+        let wait = if app.terminal_focus {
+            15
+        } else if app.connecting.is_some() {
+            100
+        } else {
+            500
+        };
         if !event::poll(Duration::from_millis(wait))? {
             redraw = !app.terminal_focus;
             if last_fs_check.elapsed() >= Duration::from_millis(500) {
