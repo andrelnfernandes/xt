@@ -1861,6 +1861,9 @@ fn alt_k_chooses_what_to_show() {
         }
     );
     alt(&mut app, 'k');
+    press(&mut app, KeyCode::Char('p'));
+    assert_eq!(app.kbyte.show, KbyteShow::Percent);
+    alt(&mut app, 'k');
     press(&mut app, KeyCode::Char('n'));
     assert_eq!(app.kbyte.show, KbyteShow::None);
 }

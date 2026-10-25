@@ -52,7 +52,7 @@ In Branch and Showall, `\` goes to the directory of the selected file.
 | `C` / Alt+C | [Compare](compare.md) with the other window / the whole branch |
 | `A` | Avail: mounted file systems ([information](info.md)) |
 | Alt+I | Info: details of the directory |
-| Alt+K | sizes or file counts next to each directory |
+| Alt+K | sizes, file counts or percentages next to each directory |
 | `Y` | copy the directory's path to the clipboard |
 | `X` | [eXecute](execute.md) a shell command |
 | Alt+X | the [built-in terminal](terminal.md) |
