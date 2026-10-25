@@ -50,4 +50,6 @@ To enter the terminal and the directory, Xylem writes a small script in a
 folder of its own (in `~/.cache/xylem/`, readable only by you) and types
 ` . script` at the prompt; the leading space keeps the line out of the history
 in bash (`ignorespace`) and zsh (`HIST_IGNORE_SPACE`). Inside the terminal,
-`XY_TERMINAL=1`, for prompts and scripts that want to know.
+`XY_TERMINAL=1`, for prompts and scripts that want to know; the terminal on a
+[remote machine](remote.md) sets it too (useful, for instance, to keep a
+`~/.bashrc` from starting tmux there).
