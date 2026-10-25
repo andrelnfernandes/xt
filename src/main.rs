@@ -6,6 +6,7 @@ mod app;
 mod archive;
 mod clipboard;
 mod config;
+mod editors;
 mod filetype;
 mod git;
 mod help;

@@ -36,6 +36,8 @@ mkdir -p ~/.config/xylem && xy --default-config > ~/.config/xylem/config.toml
   in just one (which takes precedence). E.g. `"f3" = "view"`,
   `"ctrl+r" = "relog"`; `"none"` disables a key. The help's key list (**K**)
   shows the keys in effect, with your changes.
+- `[editors]`: the editor for each kind of file (`"*.png *.jpg" = "gimp %f"`,
+  `binary = "hexedit"`); see [Edit](execute.md).
 
 An error in the file does not stop Xylem from starting: it uses the defaults
 and shows the error in the footer, and the configuration screen will not save
