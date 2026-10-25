@@ -64,7 +64,37 @@ with the OSC 7 sequence. Many systems do it already; for bash, add this to
 PROMPT_COMMAND='printf "\033]7;file://%s%s\007" "$HOSTNAME" "$PWD"'
 ```
 
-Inside tmux or screen on the remote side, the sequence does not reach Xylem,
-so the tree does not follow. Xylem never types into a remote shell (it cannot
-see whether a program is running there), and Alt+O and `$XY_TAGGED` are
-for local terminals only. Quitting with a remote terminal open asks first.
+Xylem never types into a remote shell (it cannot see whether a program is
+running there), and Alt+O and `$XY_TAGGED` are for local terminals only.
+Quitting with a remote terminal open asks first.
+
+## tmux or screen started on login
+
+Some people start tmux (or screen) automatically when they log in over SSH,
+from `~/.bashrc` on the remote machine, so that a dropped connection (a
+flaky Wi-Fi, a VPN that reconnects) does not kill what was running: logging
+in again resumes the same session. For example:
+
+```bash
+if [ -n "$SSH_CONNECTION" ] && [ -z "$TMUX" ]; then
+    tmux attach-session -t remote 2>/dev/null || tmux new-session -s remote
+fi
+```
+
+Then Xylem's remote terminal also opens inside tmux. Everything works, except
+that **the tree does not follow the shell's `cd`**: tmux sits between the
+shell and Xylem, keeps the OSC 7 sequence for itself and does not pass it on.
+
+Xylem's remote shell starts with `XY_TERMINAL=1` set, as the local one does,
+so the login can tell the two apart. Adding that test to the condition keeps
+tmux for your usual `ssh` and leaves it out when Xylem connects:
+
+```bash
+if [ -n "$SSH_CONNECTION" ] && [ -z "$TMUX" ] && [ -z "$XY_TERMINAL" ]; then
+    tmux attach-session -t remote 2>/dev/null || tmux new-session -s remote
+fi
+```
+
+Inside Xylem the shell does not need tmux to survive: it keeps running while
+Xylem is open, and if the connection drops, the remote window goes with it
+anyway.

@@ -431,11 +431,13 @@ impl Remote {
         }
         args.push("-t".into());
         args.push(self.address.destination());
-        // A Unix shell starts in the directory; a Windows one, as it is.
+        // A Unix shell starts in the directory, with XY_TERMINAL=1 as in the
+        // local terminal (so a ~/.bashrc can, say, skip starting tmux); a
+        // Windows one, as it is.
         if !self.is_windows() {
             let dir = String::from_utf8_lossy(&self.remote_path(dir)).replace('\'', "'\\''");
             args.push(format!(
-                "cd '{dir}' 2>/dev/null; exec \"${{SHELL:-/bin/sh}}\" -l"
+                "cd '{dir}' 2>/dev/null; XY_TERMINAL=1 exec \"${{SHELL:-/bin/sh}}\" -l"
             ));
         }
         (ssh_program(), args)
@@ -538,6 +540,16 @@ mod tests {
         // A sibling whose name starts the same is not inside.
         assert_eq!(remote.virtual_path(&format!("{}x", real.display())), None);
         assert!(!remote.is_windows());
+
+        // The terminal: ssh -t, starting in the directory, with XY_TERMINAL.
+        let (_, args) = remote.terminal_command(&remote.root.join("sub"));
+        let command = args.last().unwrap();
+        assert!(args.contains(&"-t".to_string()), "{args:?}");
+        assert!(
+            command.starts_with(&format!("cd '{}/sub'", real.display())),
+            "{command}"
+        );
+        assert!(command.contains("XY_TERMINAL=1 exec"), "{command}");
     }
 
     #[test]
