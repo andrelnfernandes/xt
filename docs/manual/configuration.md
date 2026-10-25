@@ -29,8 +29,9 @@ mkdir -p ~/.config/xylem && xy --default-config > ~/.config/xylem/config.toml
 
 - `theme`: `classic` (XTree blue), `dark`, `light`, `mono` (the terminal's own
   colors), `norton`, `solarized`, `gruvbox`, `nord`, `slate` (in the style of
-  Windows Terminal), `graphite` (macOS in dark mode) or `daylight` (macOS in
-  light mode). F4 shows them all, with a preview.
+  Windows Terminal), `graphite` (macOS in dark mode), `daylight` (macOS in
+  light mode) or `vivid` (strong colors, for presentations and screenshots).
+  F4 shows them all, with a preview.
 - `[options]`: the options of the configuration screen.
 - `[colors]`: individual colors on top of the theme, as names (`"yellow"`),
   `"#rrggbb"` or indexes from 0 to 255.

@@ -22,7 +22,9 @@ Directories not yet logged show `?`. Each window has its own setting.
 
 **Percent** shows how much of the directory above each branch takes, and a
 bar: the largest directory among its siblings fills it, and the others are
-drawn in proportion, so the one taking the space stands out. It always adds
+drawn in proportion, so the one taking the space stands out. Its color says
+how much of the directory above it is: up to 10% (green, in most themes), up
+to 40% (amber) or more (red). It always adds
 up whole branches. The files of the directory above count in its total, so
 the shares of its subdirectories may add up to less than 100%. To find what
 fills a disk, log the branch with `*` first: a directory not yet logged

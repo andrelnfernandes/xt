@@ -70,7 +70,8 @@ space they take (here in the nord theme):
 **Themes**: besides the classic blue, `dark`, `light`, `mono`, `norton`,
 `solarized`, `gruvbox` (below), `nord`, and three that look at home on today's
 desktops: `slate` (in the style of Windows Terminal), `graphite` and `daylight`
-(macOS in dark and light mode):
+(macOS in dark and light mode), and `vivid`, with strong colors for
+presentations:
 
 ![The gruvbox theme](docs/screenshots/theme-gruvbox.png)
 
@@ -82,8 +83,8 @@ x86_64 or ARM64 (static, runs on any distribution) or Windows x86_64.
 Extract it and put `xy` (`xy.exe`) somewhere on your `PATH`, e.g.:
 
 ```bash
-tar xzf xy-v0.3.0-x86_64-unknown-linux-musl.tar.gz
-install -m 755 xy-v0.3.0-x86_64-unknown-linux-musl/xy ~/.local/bin/
+tar xzf xy-v0.4.0-x86_64-unknown-linux-musl.tar.gz
+install -m 755 xy-v0.4.0-x86_64-unknown-linux-musl/xy ~/.local/bin/
 ```
 
 Each archive has a `.sha256` next to it, to check with `sha256sum -c`.
