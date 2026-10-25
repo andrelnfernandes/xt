@@ -60,6 +60,7 @@ windows-sys = { version = "0.61.2", features = [
 winresource = "0.1.34"
 
 [dev-dependencies]
+proptest = "1.12"
 tempfile = "3.27.0"
 
 # Binário de release menor e um pouco mais rápido.

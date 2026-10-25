@@ -102,6 +102,8 @@ impl RenameMask {
 
         // 4. Split filename into stem and extension
         let (stem, ext) = split_stem_ext(original_name);
+        let had_dot = ext.is_some();
+        let ext = ext.unwrap_or("");
 
         // 5. Check if pattern specifies an extension (contains dot)
         let result = if let Some(dot_idx) = pat_with_counter.rfind('.') {
@@ -109,7 +111,9 @@ impl RenameMask {
             let ext_pat = &pat_with_counter[dot_idx + 1..];
             let new_stem = apply_sub_pattern(stem, stem_pat);
             let new_ext = apply_sub_pattern(ext, ext_pat);
-            if new_ext.is_empty() {
+            // "a." stays "a." with `*.*`; an empty extension in the mask
+            // (`*.`) is what removes it.
+            if new_ext.is_empty() && !(had_dot && !ext_pat.is_empty()) {
                 new_stem
             } else {
                 format!("{new_stem}.{new_ext}")
@@ -123,13 +127,15 @@ impl RenameMask {
     }
 }
 
-fn split_stem_ext(name: &str) -> (&str, &str) {
+/// "a.tar.gz" → ("a.tar", Some("gz")); "a." → ("a", Some("")); "Makefile"
+/// and ".bashrc" have no extension.
+fn split_stem_ext(name: &str) -> (&str, Option<&str>) {
     if name.starts_with('.') && name[1..].find('.').is_none() {
-        return (name, "");
+        return (name, None);
     }
     match name.rfind('.') {
-        Some(idx) => (&name[..idx], &name[idx + 1..]),
-        None => (name, ""),
+        Some(idx) => (&name[..idx], Some(&name[idx + 1..])),
+        None => (name, None),
     }
 }
 
@@ -162,19 +168,37 @@ fn try_search_replace(pattern: &str, source: &str) -> Option<String> {
 
 fn replace_case_insensitive(source: &str, from: &str, to: &str) -> String {
     let mut result = String::new();
-    let mut remaining = source;
-    let from_len = from.len();
-    while let Some(idx) = remaining.char_indices().map(|(i, _)| i).find(|&i| {
-        remaining[i..]
-            .to_lowercase()
-            .starts_with(&from.to_lowercase())
-    }) {
-        result.push_str(&remaining[..idx]);
-        result.push_str(to);
-        remaining = &remaining[idx + from_len..];
+    let mut rest = source;
+    while let Some(c) = rest.chars().next() {
+        match match_ignoring_case(rest, from) {
+            Some(len) => {
+                result.push_str(to);
+                rest = &rest[len..];
+            }
+            None => {
+                result.push(c);
+                rest = &rest[c.len_utf8()..];
+            }
+        }
     }
-    result.push_str(remaining);
     result
+}
+
+/// Length in bytes of `from` at the start of `s`, comparing character by
+/// character in lowercase. The length is measured in `s`: a character may
+/// take more or fewer bytes than its match in `from` (the Kelvin sign is a
+/// `k` in three bytes).
+fn match_ignoring_case(s: &str, from: &str) -> Option<usize> {
+    let mut chars = s.chars();
+    let mut len = 0;
+    for f in from.chars() {
+        let c = chars.next()?;
+        if !c.to_lowercase().eq(f.to_lowercase()) {
+            return None;
+        }
+        len += c.len_utf8();
+    }
+    Some(len)
 }
 
 fn substitute_counter(pattern: &str, index: usize) -> String {
@@ -270,6 +294,104 @@ fn map_question_marks(pattern: &str, source: &str, start_idx: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+
+    /// Masks made of the pieces the engine understands, so random cases
+    /// reach every branch (and not just plain text).
+    fn mask() -> impl Strategy<Value = String> {
+        let piece = prop::sample::select(vec![
+            "*", "?", ".", "*.*", "<#>", "<01>", "<001>", "%d", "%03d", "<lower>", "<upper>",
+            "<title>", "s/", "/", "i", "a", "B", "k", "_", "-", " ", "ç", "K", "\u{212a}", "İ",
+            "ß",
+        ]);
+        prop::collection::vec(piece, 0..8).prop_map(|p| p.concat())
+    }
+
+    #[test]
+    fn found_by_the_properties() {
+        // The Kelvin sign lowercases to an ASCII `k`, in fewer bytes.
+        let mask = RenameMask::new("s/k/x/i", CaseMode::None);
+        assert_eq!(mask.apply("\u{212a}elvin.txt", 1), "xelvin.txt");
+        // A trailing dot is kept by `*.*` and removed by `*.`.
+        assert_eq!(RenameMask::new("*.*", CaseMode::None).apply("A.", 1), "A.");
+        assert_eq!(RenameMask::new("*.", CaseMode::None).apply("a.txt", 1), "a");
+    }
+
+    proptest! {
+        /// No mask, name or number makes it panic.
+        #[test]
+        fn never_panics(
+            pattern in prop_oneof![mask(), any::<String>()],
+            name in prop_oneof![mask(), "\\PC{0,24}"],
+            index in 0usize..100_000,
+            case in prop::sample::select(vec![
+                CaseMode::None, CaseMode::Lower, CaseMode::Upper, CaseMode::Title,
+            ]),
+        ) {
+            let _ = RenameMask::new(&pattern, case).apply(&name, index);
+        }
+
+        /// `*` and `*.*` keep the name as it is.
+        #[test]
+        fn star_keeps_the_name(name in "[^/\\x00]{1,24}") {
+            prop_assert_eq!(RenameMask::new("*", CaseMode::None).apply(&name, 1), name.clone());
+            prop_assert_eq!(RenameMask::new("*.*", CaseMode::None).apply(&name, 1), name);
+        }
+
+        /// The case modes are the standard conversions of the whole name.
+        #[test]
+        fn case_modes_convert_the_whole_name(name in "\\PC{1,24}") {
+            let apply = |case| RenameMask::new("*", case).apply(&name, 1);
+            prop_assert_eq!(apply(CaseMode::Lower), name.to_lowercase());
+            prop_assert_eq!(apply(CaseMode::Upper), name.to_uppercase());
+        }
+
+        /// `s/from/to/` replaces every occurrence, like `str::replace`.
+        #[test]
+        fn search_and_replace_is_str_replace(
+            name in "[a-c.]{0,16}",
+            from in "[a-c]{1,3}",
+            to in "[a-cx]{0,3}",
+        ) {
+            let mask = RenameMask::new(&format!("s/{from}/{to}/"), CaseMode::None);
+            prop_assert_eq!(mask.apply(&name, 1), name.replace(&from, &to));
+        }
+
+        /// Ignoring case, with characters whose lowercase takes a different
+        /// number of bytes (the Kelvin sign is a `k`, `ſ` an `s`).
+        #[test]
+        fn ignoring_case_never_panics(
+            name in mask(),
+            from in "[kKsSiI\u{212a}\u{17f}İß]{1,3}",
+            to in "[x]{0,2}",
+        ) {
+            let _ = RenameMask::new(&format!("s/{from}/{to}/i"), CaseMode::None).apply(&name, 1);
+        }
+
+        /// With `i`, the same ignoring case (for ASCII, against a simple
+        /// reference: replace in the lowercase copy, at the same positions).
+        #[test]
+        fn search_and_replace_ignoring_case(
+            name in "[a-cA-C.]{0,16}",
+            from in "[a-cA-C]{1,3}",
+            to in "[x]{0,2}",
+        ) {
+            let mask = RenameMask::new(&format!("s/{from}/{to}/i"), CaseMode::None);
+            let (lower, from_lower) = (name.to_lowercase(), from.to_lowercase());
+            let mut expected = String::new();
+            let mut i = 0;
+            while i < name.len() {
+                if lower[i..].starts_with(&from_lower) {
+                    expected.push_str(&to);
+                    i += from.len();
+                } else {
+                    expected.push_str(&name[i..i + 1]);
+                    i += 1;
+                }
+            }
+            prop_assert_eq!(mask.apply(&name, 1), expected);
+        }
+    }
 
     #[test]
     fn test_wildcard_extension_change() {
