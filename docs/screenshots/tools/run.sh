@@ -46,7 +46,7 @@ run() { name=$1; cfg=$2; shift 2
   "$PY" -I "$T/shot.py" "$X/$file" "$X/target/release/xy" /home/user/projects "$@"
   echo "$file"; }
 run tree classic "*" sleep:1 "$(down 12)"
-for theme in dark light mono norton solarized gruvbox nord; do
+for theme in dark light mono norton solarized gruvbox nord slate graphite daylight; do
   run theme-$theme $theme "*" sleep:1 "$(down 12)"
 done
 run branch-tagged classic "*" sleep:1 "$(down 3)" b "$D" t "$D$D" t t "$D$D"

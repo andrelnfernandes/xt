@@ -22,7 +22,8 @@ pub const DEFAULT_CONFIG: &str = r##"# Xylem configuration: ~/.config/xylem/conf
 # configuration screen (F12 inside Xylem) changes these values and keeps the comments.
 
 # Theme: "classic" (XTree blue), "dark", "light", "mono" (the terminal's
-# own colors), "norton", "solarized", "gruvbox" or "nord".
+# own colors), "norton", "solarized", "gruvbox", "nord", "slate" (Windows
+# Terminal style), "graphite" (macOS dark) or "daylight" (macOS light).
 theme = "classic"
 
 [options]
@@ -603,6 +604,9 @@ pub const THEMES: &[NamedTheme] = &[
     ("solarized", Theme::solarized),
     ("gruvbox", Theme::gruvbox),
     ("nord", Theme::nord),
+    ("slate", Theme::slate),
+    ("graphite", Theme::graphite),
+    ("daylight", Theme::daylight),
 ];
 
 const fn rgb(hex: u32) -> Color {
@@ -756,6 +760,71 @@ impl Theme {
         }
     }
 
+    /// In the style of Windows Terminal: the "Campbell" colors on a Windows
+    /// 11 dark surface, with the accent blue for the selection.
+    pub fn slate() -> Self {
+        Theme {
+            background: rgb(0x202020),
+            text: rgb(0xcccccc),
+            border: rgb(0x484848),
+            active_border: rgb(0x60cdff),
+            key: rgb(0x60cdff),
+            dim: rgb(0x767676),
+            highlight: rgb(0x0078d4),
+            highlight_text: rgb(0xffffff),
+            inactive_highlight: rgb(0x3a3a3a),
+            error: rgb(0xe74856),
+            message: rgb(0xf9f1a5),
+            tagged: rgb(0xf9f1a5),
+            executable: rgb(0x16c60c),
+            symlink: rgb(0x61d6d6),
+            special: rgb(0xb4009e),
+        }
+    }
+
+    /// In the style of macOS in dark mode: graphite gray and the system
+    /// colors, with the accent blue for the selection.
+    pub fn graphite() -> Self {
+        Theme {
+            background: rgb(0x1e1e1e),
+            text: rgb(0xdddddd),
+            border: rgb(0x48484a),
+            active_border: rgb(0x0a84ff),
+            key: rgb(0x409cff),
+            dim: rgb(0x8e8e93),
+            highlight: rgb(0x0058d0),
+            highlight_text: rgb(0xffffff),
+            inactive_highlight: rgb(0x464646),
+            error: rgb(0xff453a),
+            message: rgb(0xff9f0a),
+            tagged: rgb(0xffd60a),
+            executable: rgb(0x30d158),
+            symlink: rgb(0x64d2ff),
+            special: rgb(0xbf5af2),
+        }
+    }
+
+    /// In the style of macOS in light mode.
+    pub fn daylight() -> Self {
+        Theme {
+            background: rgb(0xffffff),
+            text: rgb(0x1d1d1f),
+            border: rgb(0xaeaeb2),
+            active_border: rgb(0x007aff),
+            key: rgb(0x0062cc),
+            dim: rgb(0x8e8e93),
+            highlight: rgb(0x0063e1),
+            highlight_text: rgb(0xffffff),
+            inactive_highlight: rgb(0x6e6e73),
+            error: rgb(0xd70015),
+            message: rgb(0xc93400),
+            tagged: rgb(0xc93400),
+            executable: rgb(0x248a3d),
+            symlink: rgb(0x0071a4),
+            special: rgb(0x8944ab),
+        }
+    }
+
     pub fn by_name(name: &str) -> Option<Self> {
         THEMES.iter().find(|(n, _)| *n == name).map(|(_, f)| f())
     }
@@ -854,6 +923,11 @@ mod tests {
             assert!(Theme::by_name(name).is_some());
         }
         assert_eq!(Theme::nord().background, Color::Rgb(0x2e, 0x34, 0x40));
+        assert_eq!(
+            Theme::by_name("graphite"),
+            Some(Theme::graphite()),
+            "new themes are in THEMES"
+        );
     }
 
     #[test]

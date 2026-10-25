@@ -63,7 +63,9 @@ Alt+O types the tagged files at the prompt:
 ![File list with Git status letters and the GIT menu in the footer](docs/screenshots/git-menu.png)
 
 **Themes**: besides the classic blue, `dark`, `light`, `mono`, `norton`,
-`solarized`, `gruvbox` (below) and `nord`:
+`solarized`, `gruvbox` (below), `nord`, and three that look at home on today's
+desktops: `slate` (in the style of Windows Terminal), `graphite` and `daylight`
+(macOS in dark and light mode):
 
 ![The gruvbox theme](docs/screenshots/theme-gruvbox.png)
 
