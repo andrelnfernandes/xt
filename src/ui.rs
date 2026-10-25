@@ -121,9 +121,123 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     } else {
         let [left, stats] =
             Layout::horizontal([Constraint::Min(20), Constraint::Length(STATS_WIDTH)]).areas(main);
-        draw_stats(frame, app, stats);
+        // The pane first: the Usage view leaves its selected row for the panel.
         draw_pane(frame, &mut app.panes[0], true, false, left, git);
+        draw_stats(frame, app, stats);
     }
+}
+
+/// Width of the bars of the Usage view (less on a narrow screen).
+const USAGE_BAR: usize = 16;
+
+/// Alt+W: the folders and files of a directory by the space they take, and
+/// a line with the totals at the bottom.
+fn draw_usage(frame: &mut Frame, pane: &mut Pane, active: bool, area: Rect) {
+    use crate::usage::{self, Item};
+    let Some(view) = pane.usage.as_mut() else {
+        return;
+    };
+    let tree = &pane.tree;
+    let path = tree.path(view.dir);
+    let width = area.width.saturating_sub(2) as usize;
+    let rows = view.rows(tree);
+    let counter = position(view.list.selected(), rows.len());
+    // Room for " Usage: ", the counter and a bit of border between them.
+    let room = width.saturating_sub(12 + counter.width());
+    let title = format!(" Usage: {} ", fit_tail(&path.to_string_lossy(), room));
+    let block = panel(title, active).title_top(counter);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let [list_area, footer] =
+        Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
+    view.page = list_area.height as usize;
+
+    let total = view.total(tree);
+    let whole = if view.apparent { total.apparent } else { total.disk };
+    let largest = rows
+        .iter()
+        .filter(|r| r.mark != '>')
+        .map(|r| r.size)
+        .max()
+        .unwrap_or(0);
+    let bar_width = USAGE_BAR.min(width.saturating_sub(40) / 2).max(4);
+    let dim = Style::new().fg(theme().dim);
+    let items: Vec<ListItem> = rows
+        .iter()
+        .map(|r| {
+            let (size, bar, pct) = if r.mark == '>' {
+                // Another file system: what it uses, not part of this one.
+                let other = match r.item {
+                    Item::Dir(id) => crate::platform::disk_space(&tree.path(id))
+                        .map(|d| usage::size(d.total.saturating_sub(d.free)))
+                        .unwrap_or_default(),
+                    Item::File(_) => String::new(),
+                };
+                (other, " ".repeat(bar_width), "-".to_string())
+            } else {
+                (
+                    usage::size(r.size),
+                    usage::bar(r.size, largest, bar_width),
+                    usage::percent(r.size, whole),
+                )
+            };
+            let name = match r.item {
+                Item::Dir(_) => format!("/{}", r.name),
+                Item::File(_) => format!(" {}", r.name),
+            };
+            let mut spans = vec![
+                Span::styled(format!("{} ", r.mark), Style::new().fg(theme().key)),
+                Span::raw(format!("{size:>10} ")),
+                Span::styled(bar, Style::new().fg(theme().key)),
+                Span::styled(format!(" {pct:>6}"), dim),
+            ];
+            if view.counts {
+                spans.push(Span::styled(format!(" {:>10}", fmt_num(r.files)), dim));
+            }
+            let style = if r.mark == '>' { dim } else { Style::new() };
+            spans.push(Span::styled(format!("  {name}"), style));
+            ListItem::new(Line::from(spans))
+        })
+        .collect();
+    if view.list.selected().is_none_or(|i| i >= rows.len()) {
+        view.list.select(Some(rows.len().saturating_sub(1)));
+    }
+    view.shown = view.list.selected().and_then(|i| rows.get(i).cloned());
+    let list = List::new(items).highlight_style(highlight(active));
+    frame.render_stateful_widget(list, list_area, &mut view.list);
+
+    // The totals, and how much of the disk they are.
+    let mut parts = vec![
+        format!("{} on disk", usage::size(total.disk)),
+        format!("{} apparent", usage::size(total.apparent)),
+        format!("{} files", fmt_num(total.files)),
+    ];
+    if let Some(d) = crate::platform::disk_space(&path) {
+        let used = d.total.saturating_sub(d.free);
+        let at_top = crate::info::mount_of(&path).is_some_and(|m| m.point == path);
+        let of_used = usage::percent(total.disk, used);
+        parts.push(if at_top {
+            format!("{of_used} of the disk's used space found")
+        } else {
+            format!("{of_used} of used")
+        });
+        parts.push(format!("{} of disk", usage::percent(total.disk, d.total)));
+    }
+    let unreadable = tree
+        .subtree(view.dir)
+        .into_iter()
+        .filter(|&id| tree.node(id).error.is_some())
+        .count();
+    if unreadable > 0 {
+        parts.push(format!("{} folders could not be read", fmt_num(unreadable as u64)));
+    }
+    if view.order != usage::Order::Size {
+        parts.push(format!("sorted by {}", view.order.label()));
+    }
+    frame.render_widget(
+        Line::from(Span::styled(fit(&parts.join(" · "), width), dim)),
+        footer,
+    );
 }
 
 /// One window: tree on top and files below, or just the files.
@@ -136,6 +250,10 @@ fn draw_pane(
     area: Rect,
     git: Option<&StatusCache>,
 ) {
+    if pane.usage.is_some() {
+        draw_usage(frame, pane, active, area);
+        return;
+    }
     if pane.focus == Focus::Files {
         draw_files(frame, pane, active, area, git);
         return;
@@ -791,6 +909,46 @@ fn draw_stats(frame: &mut Frame, app: &App, area: Rect) {
         statistics.push(Line::from(vec![Span::raw(format!("{k}{pad}")), bold(mode)]));
     }
 
+    // Alt+W: what the row under the cursor takes, in place of the statistics.
+    if let Some(row) = app.usage.as_ref().and_then(|u| u.shown.clone()) {
+        use crate::usage;
+        let text = |k: &str, v: String| {
+            let pad = width.saturating_sub(k.chars().count() + v.chars().count());
+            Line::from(vec![Span::raw(format!("{k}{}", " ".repeat(pad))), bold(v)])
+        };
+        let mut lines = vec![
+            Line::from(label("USAGE".into())),
+            Line::from(bold(fit(&row.name, width))),
+            text("On disk", usage::size(row.disk)),
+            text("Apparent", usage::size(row.apparent)),
+            text("Files", fmt_num(row.files)),
+        ];
+        if let Some(m) = row.modified {
+            lines.push(text("Modified", fmt_time(m)));
+        }
+        if let Some(d) = crate::platform::disk_space(&path) {
+            let used = d.total.saturating_sub(d.free);
+            lines.push(text("Of used", usage::percent(row.disk, used)));
+            lines.push(text("Of disk", usage::percent(row.disk, d.total)));
+        }
+        let note = match row.mark {
+            '>' => "Another disk: Enter analyzes it",
+            '!' => "Could not be read",
+            '.' => "Something inside could not be read: it may take more",
+            'H' => "Another hard link of a file already counted",
+            '@' => "A link or special file, not followed",
+            'e' => "Empty",
+            _ => "",
+        };
+        if !note.is_empty() {
+            lines.push(Line::from(""));
+            for chunk in wrap(note, width) {
+                lines.push(Line::from(Span::styled(chunk, Style::new().fg(theme().dim))));
+            }
+        }
+        statistics = lines;
+    }
+
     // Short screens: without the "DISK Statistics" title, then without the
     // total size of the disk, so that the current directory still fits.
     let needed =
@@ -860,6 +1018,32 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
             menu_line("TERMINAL", &keys),
             match &app.message {
                 // E.g. the shell went outside the tree.
+                Some(msg) => Line::from(Span::styled(
+                    format!("{:9}{msg}", ""),
+                    Style::new()
+                        .fg(theme().message)
+                        .add_modifier(Modifier::BOLD),
+                )),
+                None => menu_line("", &[("", about)]),
+            },
+        ]
+    } else if app.usage.is_some() && app.job.is_none() {
+        let about = "> another disk  ! unreadable  . incomplete  H hard link  @ link  e empty";
+        vec![
+            menu_line(
+                "USAGE",
+                &[
+                    ("Enter", "open"),
+                    ("←", "back"),
+                    ("\\", "to the tree"),
+                    ("A", "disk/apparent"),
+                    ("C", "files"),
+                    ("S", "sort"),
+                    ("F3", "reread"),
+                    ("Esc", "close"),
+                ],
+            ),
+            match &app.message {
                 Some(msg) => Line::from(Span::styled(
                     format!("{:9}{msg}", ""),
                     Style::new()
@@ -1891,6 +2075,21 @@ fn menu_line(title: &str, entries: &[(&str, &str)]) -> Line<'static> {
         spans.push(Span::raw(format!(" {desc}   ")));
     }
     Line::from(spans)
+}
+
+/// Splits `text` into lines of at most `width` columns, at spaces.
+fn wrap(text: &str, width: usize) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    for word in text.split_whitespace() {
+        match lines.last_mut() {
+            Some(line) if line.chars().count() + 1 + word.chars().count() <= width => {
+                line.push(' ');
+                line.push_str(word);
+            }
+            _ => lines.push(word.to_string()),
+        }
+    }
+    lines
 }
 
 /// Cuts or pads with spaces to fit `width` columns.

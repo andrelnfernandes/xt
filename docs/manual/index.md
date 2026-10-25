@@ -19,6 +19,7 @@ tree or the file window, the help for that window. In the help, **Tab** and
 - [The viewer](viewer.md): text and hex, search, syntax colors
 - [Searching tagged files](search.md): Ctrl+S and Ctrl+V
 - [Information](info.md): Info, Avail, statistics and directory sizes
+- [Disk usage](usage.md): where the space goes (Alt+W)
 
 ## Working with files
 
