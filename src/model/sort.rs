@@ -110,6 +110,8 @@ mod tests {
         FileEntry {
             name: name.into(),
             size,
+            disk: size,
+            link: None,
             modified: Some(SystemTime::UNIX_EPOCH + Duration::from_secs(secs)),
             mode: 0o644,
             kind: FileKind::File,
