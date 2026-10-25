@@ -5,7 +5,7 @@
 //! temporary file, which replaces the destination only at the end:
 //! a cancellation or error never leaves a half-written destination.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read, Write};
 use std::path::{Component, Path, PathBuf};
@@ -149,6 +149,9 @@ pub struct Operation {
     archive: Option<ArchiveSource>,
     /// ...or on this remote machine.
     remote: Option<std::sync::Arc<crate::remote::Remote>>,
+    /// Symlinks this operation created. Nothing is written through them: a
+    /// remote server could list `sub` as a link to `/etc` and also `sub/x`.
+    links: HashSet<PathBuf>,
     /// Tests only: pretends source and destination are on different disks.
     #[cfg(test)]
     force_cross_device: bool,
@@ -267,6 +270,7 @@ impl Operation {
             force_cross_device: false,
             archive: None,
             remote: None,
+            links: HashSet::new(),
         }
     }
 
@@ -461,6 +465,9 @@ impl Operation {
             }
         }
 
+        if item.dst.ancestors().skip(1).any(|d| self.links.contains(d)) {
+            return self.fail(&item.dst, "would write through a link this copy created");
+        }
         if let Some(parent) = item.dst.parent()
             && !parent.is_dir()
             && let Err(e) = fs::create_dir_all(parent)
@@ -497,6 +504,7 @@ impl Operation {
             });
             match result {
                 Ok(()) => {
+                    self.links.insert(item.dst);
                     self.done_bytes += item.size;
                     self.complete_copy(&item.src);
                 }
@@ -552,6 +560,7 @@ impl Operation {
             });
             return match result {
                 Ok(()) => {
+                    self.links.insert(item.dst.clone());
                     self.done_bytes += item.size;
                     self.complete_copy(&item.src);
                 }
@@ -1001,6 +1010,25 @@ mod tests {
             Operation::transfer(OpKind::Copy, vec![src(&a.join("link"))], &b, None).unwrap();
         run(&mut op);
         assert_eq!(fs::read_link(b.join("link")).unwrap(), Path::new("one.txt"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn never_writes_through_a_link_it_created() {
+        let (tmp, a, b) = setup();
+        let outside = tmp.path().join("outside");
+        fs::create_dir_all(a.join("real")).unwrap();
+        fs::write(a.join("real/x"), "x").unwrap();
+        fs::create_dir(&outside).unwrap();
+        symlink(&outside, a.join("sub")).unwrap();
+        // As a hostile server would list them: `sub` a link, then `sub/x`.
+        let sources = vec![src(&a.join("sub")), src(&a.join("real/x"))];
+        let mut op = Operation::transfer(OpKind::Copy, sources, &b, Some(&a)).unwrap();
+        op.items[1].dst = b.join("sub/x");
+        run(&mut op);
+        assert_eq!(fs::read_link(b.join("sub")).unwrap(), outside);
+        assert!(!outside.join("x").exists());
+        assert_eq!((op.done_files, op.errors.len()), (1, 1), "{:?}", op.errors);
     }
 
     #[test]

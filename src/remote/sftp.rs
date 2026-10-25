@@ -81,6 +81,14 @@ pub struct DirEntry {
     pub attrs: Attrs,
 }
 
+/// Whether a name from the server is a single name in its directory. A
+/// hostile server could send `../x` or `/etc/x`, which joined to a local
+/// path would point outside the copy's destination.
+fn is_plain_name(name: &[u8]) -> bool {
+    let separator = |b: &u8| *b == b'/' || *b == 0 || (cfg!(windows) && matches!(b, b'\\' | b':'));
+    !name.is_empty() && name != b"." && name != b".." && !name.iter().any(separator)
+}
+
 /// An open file or directory on the server.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Handle(Vec<u8>);
@@ -346,7 +354,7 @@ impl<R: Read, W: Write> Sftp<R, W> {
                         let name = p.string()?;
                         let _long = p.string()?;
                         let attrs = p.attrs()?;
-                        if name != b"." && name != b".." {
+                        if is_plain_name(&name) {
                             entries.push(DirEntry { name, attrs });
                         }
                     }
@@ -485,5 +493,15 @@ pub mod tests {
             ),
             "{err:?}"
         );
+    }
+
+    #[test]
+    fn names_that_leave_their_directory_are_dropped() {
+        for ok in [&b"a.txt"[..], b".bashrc", b"..x", b"a b"] {
+            assert!(is_plain_name(ok), "{ok:?}");
+        }
+        for bad in [&b""[..], b".", b"..", b"../x", b"/etc/x", b"a/b", b"a\0b"] {
+            assert!(!is_plain_name(bad), "{bad:?}");
+        }
     }
 }
