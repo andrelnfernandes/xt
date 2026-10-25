@@ -33,7 +33,9 @@ impl App {
             KeyCode::Home => view.move_by(-(len as isize), len),
             KeyCode::End => view.move_by(len as isize, len),
             KeyCode::Enter | KeyCode::Right => {
-                let Some(row) = view.selected(tree) else { return };
+                let Some(row) = view.selected(tree) else {
+                    return;
+                };
                 let Item::Dir(id) = row.item else { return };
                 if row.mark == '>' {
                     // Another disk: an analysis of its own.

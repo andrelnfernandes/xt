@@ -153,7 +153,11 @@ fn draw_usage(frame: &mut Frame, pane: &mut Pane, active: bool, area: Rect) {
     view.page = list_area.height as usize;
 
     let total = view.total(tree);
-    let whole = if view.apparent { total.apparent } else { total.disk };
+    let whole = if view.apparent {
+        total.apparent
+    } else {
+        total.disk
+    };
     let largest = rows
         .iter()
         .filter(|r| r.mark != '>')
@@ -229,7 +233,10 @@ fn draw_usage(frame: &mut Frame, pane: &mut Pane, active: bool, area: Rect) {
         .filter(|&id| tree.node(id).error.is_some())
         .count();
     if unreadable > 0 {
-        parts.push(format!("{} folders could not be read", fmt_num(unreadable as u64)));
+        parts.push(format!(
+            "{} folders could not be read",
+            fmt_num(unreadable as u64)
+        ));
     }
     if view.order != usage::Order::Size {
         parts.push(format!("sorted by {}", view.order.label()));
@@ -943,7 +950,10 @@ fn draw_stats(frame: &mut Frame, app: &App, area: Rect) {
         if !note.is_empty() {
             lines.push(Line::from(""));
             for chunk in wrap(note, width) {
-                lines.push(Line::from(Span::styled(chunk, Style::new().fg(theme().dim))));
+                lines.push(Line::from(Span::styled(
+                    chunk,
+                    Style::new().fg(theme().dim),
+                )));
             }
         }
         statistics = lines;
