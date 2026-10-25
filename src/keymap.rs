@@ -313,7 +313,7 @@ const COMMANDS: &[(&str, Command, &str)] = &[
     (
         "file_display",
         Command::FileDisplay,
-        "file window: names in columns, with size, details, long names",
+        "file window: names in columns, with size, details, owner, type, long names",
     ),
     (
         "tag_branch",
