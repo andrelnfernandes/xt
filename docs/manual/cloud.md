@@ -7,6 +7,17 @@ Xylem works on that folder like on any other. Everything works there:
 logging, Branch, tags, the viewer, Copy and Move in both directions, Rename,
 Makedir, Delete.
 
+## Why rclone
+
+We chose to work with rclone rather than talk to Google Drive and Amazon S3
+directly. Code of our own for each service would be one more place for
+mistakes, and Google Drive would also bring Google's policies along: an app
+that reads all of someone's files needs Google's verification and a yearly
+security assessment, or else shows an "unverified app" warning and is limited
+to a few users. For S3, the official library is very large and would add a
+lot of complexity, which Xylem, by design, avoids whenever it can. rclone
+already does all this well, for many services at once.
+
 ## Setting up (once)
 
 Install rclone (`apt install rclone`, `dnf install rclone`, `brew install
