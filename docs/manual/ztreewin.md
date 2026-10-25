@@ -20,7 +20,7 @@ screen (Alt+F10).
 | Feature | In ZTreeWin | In Xylem |
 |---|---|---|
 | Filespec | name with its own name and extension rules, date, size, attribute, inverted filespec (Ctrl+I), labels | glob for names, date and size as in ZTreeWin (with K/M/G); no attributes, inversion or labels |
-| Viewer | Alpha, Dump, Hex, Junk and Wrap modes; character sets; hex editing; bookmarks; auto-scroll | text (UTF-8) or hex, with ZTreeWin's search (F, B, /, \\, Space, + and -), syntax colors (which ZTreeWin does not have), no line wrapping; up to 16 MiB |
+| Viewer | Alpha, Dump, Hex, Junk and Wrap modes; character sets; hex editing; bookmarks; auto-scroll | text (UTF-8) or hex, with ZTreeWin's search (F, B, /, \\, Space, + and -), syntax colors (which ZTreeWin does not have), no line wrapping; up to 16 MiB; no hex editing, by choice (an editor of your own for binary files in [`[editors]`](execute.md)) |
 | Ctrl+S | text, hex or Unicode; searches only the ZIP index | text or hex |
 | Attributes | Windows attributes (R, A, S, H) | Unix permissions in octal (`644`); no owner/group. On Windows, R, H, S and A, as in ZTreeWin |
 | Sort | Name, Ext, Date, Time, Length, Alpha, nuMber, Size, Value, Unsorted; Charset; same/diff in split screen | Name, Ext, Date, Size, ascending/descending, Path first; each window has its own order |

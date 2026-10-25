@@ -214,7 +214,19 @@ impl App {
                     return;
                 }
                 let cwd = v.path.parent().map_or(current, Path::to_path_buf);
-                self.external = Some(shell::editor(&v.path, &cwd, &self.options.editor));
+                let path = v.path.clone();
+                match self.editor_for(&path, &cwd) {
+                    Ok(external) => self.external = Some(external),
+                    Err(e) => {
+                        if let Some(v) = &mut self.viewer {
+                            let v = match &mut v.behind {
+                                Some(file) => file,
+                                None => v,
+                            };
+                            v.note = Some(e);
+                        }
+                    }
+                }
             }
             ViewerAction::Next | ViewerAction::Prev | ViewerAction::First | ViewerAction::Last => {
                 let Some((i, n)) = position else {

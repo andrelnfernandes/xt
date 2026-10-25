@@ -179,6 +179,7 @@ and the man page (`xy --man`). Some topics:
 - `src/archive.rs` — ZIP, 7z and TAR reading; ZIP and TAR creation
 - `src/watch.rs` — notifications of changes on disk (inotify)
 - `src/shell.rs` — editor and shell commands (with safe quoting)
+- `src/editors.rs` — which editor E uses for each file (`[editors]`)
 - `src/term.rs` — built-in terminal (pseudo-terminal, key codes, colors)
 - `src/git.rs` — Git menu (Ctrl+G) and status markers, through the `git` program
 - `src/config.rs` — configuration file, themes and formats

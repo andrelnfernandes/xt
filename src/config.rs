@@ -110,6 +110,14 @@ terminal_history = true
 
 [keys.files]
 # "enter" = "view"
+
+# Editor for the E key by file name, the first match winning: name patterns
+# (as in Filespec) and a command, with %f for the file (or at the end). An
+# empty command is the usual editor. "binary" is for the other binary files,
+# which E does not open in a text editor.
+[editors]
+# "*.png *.jpg *.jpeg" = "gimp %f"
+# binary = "hexedit"
 "##;
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -119,6 +127,7 @@ pub struct Config {
     pub options: Options,
     pub colors: HashMap<String, String>,
     pub keys: Keys,
+    pub editors: crate::editors::Table,
 }
 
 /// Key remaps: `[keys.any]` applies in both windows, `[keys.tree]` and
@@ -138,6 +147,7 @@ impl Default for Config {
             options: Options::default(),
             colors: HashMap::new(),
             keys: Keys::default(),
+            editors: Default::default(),
         }
     }
 }
@@ -480,6 +490,7 @@ impl Config {
         let config: Config = toml::from_str(text).map_err(|e| e.message().to_string())?;
         Theme::from_config(&config)?;
         Keymap::from_config(&config.keys, &config.options)?;
+        crate::editors::Editors::from_config(&config.editors)?;
         Ok(config)
     }
 

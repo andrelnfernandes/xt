@@ -185,6 +185,7 @@ tópicos: [a janela da árvore](docs/manual/tree.md),
 - `src/archive.rs` — leitura de ZIP, 7z e TAR; criação de ZIP e TAR
 - `src/watch.rs` — avisos de mudanças no disco (inotify)
 - `src/shell.rs` — editor e comandos do shell (com aspas seguras)
+- `src/editors.rs` — qual editor o E usa para cada arquivo (`[editors]`)
 - `src/term.rs` — terminal embutido (pseudoterminal, códigos de teclas, cores)
 - `src/git.rs` — menu Git (Ctrl+G) e marcadores de estado, pelo programa `git`
 - `src/config.rs` — arquivo de configuração, temas e formatos
