@@ -648,6 +648,7 @@ Na árvore, `+` no conector (`├─+`) indica um diretório recolhido que tem s
 - `src/model/filespec.rs` — filtro de arquivos
 - `src/ops/` — copiar, mover e apagar, em passos (progresso, conflitos, cancelamento)
 - `docs/screenshots/tools/` — refaz as capturas de tela do README (`run.sh`, Linux)
+- `tests/e2e.rs` — testes de ponta a ponta: o `xy` de verdade num pseudo-terminal, dirigido por teclas (Linux); o `cargo test` também roda testes de propriedades (proptest) do Filespec e das máscaras de renomeação
 - `docs/icons/` — o ícone, em SVG, PNG (16 a 512) e ICO
 - `build.rs` — embute o ícone no `xy.exe` (Windows)
 - `packaging/linux/` — atalho para o menu (`xylem.desktop`)
