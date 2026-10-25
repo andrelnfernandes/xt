@@ -43,7 +43,7 @@ run() { name=$1; cfg=$2; shift 2
   case $name in demo) file=docs/demo.gif;; demo-*) file=docs/screenshots/$name.gif;; *) file=docs/screenshots/$name.png;; esac
   HOME=/home/user SHELL=/bin/bash XDG_CONFIG_HOME=$W/root/config/$cfg \
   XDG_STATE_HOME=/mnt/tmp/state XDG_CACHE_HOME=/mnt/tmp/cache \
-  "$PY" -I "$T/shot.py" "$X/$file" "$X/target/release/xy" /home/user/projects "$@"
+  "$PY" -I "$T/shot.py" "$X/$file" "$X/target/release/xy" "${root:-/home/user/projects}" "$@"
   echo "$file"; }
 run tree classic "*" sleep:1 "$(down 12)"
 for theme in dark light mono norton solarized gruvbox nord slate graphite daylight; do
@@ -67,6 +67,10 @@ run split-gruvbox gruvbox "*" sleep:1 "$(down 12)" "\033[19~" "$(up 8)"
 run viewer-nord nord "*" sleep:1 "$(down 12)" "\r" "$(down 10)" v sleep:1
 run git-menu-dark git-dark "*" sleep:1 "$(down 12)" "\r" "$(down 7)" "\007"
 run terminal-tagged-nord nord "*" sleep:1 "$(down 3)" b "$D" t "$D$D" t t "\033x" sleep:1.5 "\014" "wc -c " "\033o" "\r" sleep:1
+# The Usage view (Alt+W) of the whole home directory.
+root=/home/user
+run usage-nord nord sleep:1 "\033w" sleep:2
+root=
 run demo-nord nord hold:1.5 "*" hold:1 "\033x" hold:1 "type:cd xylem/src" hold:.4 "\r" hold:2.5 \
   "\033x" hold:1 "$(up 9)" hold:.8 b hold:1.2 "$D" hold:.4 t hold:.5 "$D" hold:.3 "$D" hold:.4 \
   t hold:.5 t hold:1.5 "send:\033x" "\014" hold:.6 "type:wc -c " hold:.4 "\033o" hold:1 \

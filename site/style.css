@@ -282,6 +282,8 @@ dialog.lightbox img { border-radius: var(--radius); cursor: zoom-out; }
 
 .theme-view { max-width: 980px; }
 
+.section-lead.after { margin: 24px 0 0; }
+
 /* Why */
 
 .why { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
