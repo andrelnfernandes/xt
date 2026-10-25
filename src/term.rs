@@ -652,12 +652,18 @@ mod tests {
         wait_for(&term, "READY");
         assert_eq!(term.foreground_program(), None);
         term.write(b"sleep 30\r");
+        // Bash forks, gives the terminal to the child and only then does the
+        // child exec `sleep`: for a moment the foreground program is still
+        // called "bash". Wait for the name, not just for a program.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-        while term.foreground_program().is_none() {
-            assert!(std::time::Instant::now() < deadline, "sleep did not start");
+        while term.foreground_program().as_deref() != Some("sleep") {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "sleep did not start: {:?}",
+                term.foreground_program()
+            );
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
-        assert_eq!(term.foreground_program().as_deref(), Some("sleep"));
     }
 
     #[test]
