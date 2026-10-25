@@ -641,6 +641,7 @@ In the tree, a `+` on the connector (`├─+`) marks a collapsed directory that
 - `src/model/filespec.rs` — file filter
 - `src/ops/` — copy, move and delete, in steps (progress, conflicts, cancellation)
 - `docs/screenshots/tools/` — regenerates the README screenshots (`run.sh`, Linux)
+- `tests/e2e.rs` — end-to-end tests: the real `xy` in a pseudo-terminal, driven by keys (Linux); `cargo test` also runs property tests (proptest) on the Filespec and the rename masks
 - `docs/icons/` — the icon, in SVG, PNG (16 to 512) and ICO
 - `build.rs` — embeds the icon in `xy.exe` (Windows)
 - `packaging/linux/` — menu entry (`xylem.desktop`)
