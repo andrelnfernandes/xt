@@ -119,9 +119,12 @@ struct ArchiveSource {
 
 /// A copy of a file in progress.
 struct Transfer {
-    reader: File,
+    reader: Box<dyn Read>,
     writer: File,
     tmp: PathBuf,
+    /// Permissions and date to give the copy.
+    mode: u32,
+    modified: Option<SystemTime>,
 }
 
 pub struct Operation {
@@ -142,8 +145,10 @@ pub struct Operation {
     pub done_bytes: u64,
     pub total_bytes: u64,
     pub errors: Vec<String>,
-    /// The source files are inside this archive.
+    /// The source files are inside this archive...
     archive: Option<ArchiveSource>,
+    /// ...or on this remote machine.
+    remote: Option<std::sync::Arc<crate::remote::Remote>>,
     /// Tests only: pretends source and destination are on different disks.
     #[cfg(test)]
     force_cross_device: bool,
@@ -261,6 +266,7 @@ impl Operation {
             #[cfg(test)]
             force_cross_device: false,
             archive: None,
+            remote: None,
         }
     }
 
@@ -283,6 +289,18 @@ impl Operation {
             root: archive.to_path_buf(),
             entries,
         });
+        Ok(self)
+    }
+
+    /// The files come from a remote machine (Copy only, for now).
+    pub fn reading_remote(
+        mut self,
+        remote: std::sync::Arc<crate::remote::Remote>,
+    ) -> Result<Self, String> {
+        if self.kind != OpKind::Copy {
+            return Err("Read-only on a remote machine for now: Copy brings files here".into());
+        }
+        self.remote = Some(remote);
         Ok(self)
     }
 
@@ -403,10 +421,11 @@ impl Operation {
             return;
         }
 
-        // Inside an archive there is no metadata on disk.
-        let src_meta = match self.archive {
-            Some(_) => None,
-            None => match fs::symlink_metadata(&item.src) {
+        // Inside an archive or on a remote machine there is no metadata on
+        // this disk.
+        let src_meta = match (&self.archive, &self.remote) {
+            (Some(_), _) | (_, Some(_)) => None,
+            (None, None) => match fs::symlink_metadata(&item.src) {
                 Ok(m) => Some(m),
                 Err(e) => return self.fail(&item.src, e),
             },
@@ -426,6 +445,7 @@ impl Operation {
                     Overwrite::Ask => {
                         let new = match &src_meta {
                             Some(meta) => Facts::of(meta),
+                            None if self.remote.is_some() => self.remote_facts(&item),
                             None => self.archive_facts(&item),
                         };
                         self.conflict = Some(Conflict {
@@ -449,7 +469,10 @@ impl Operation {
         }
 
         let Some(src_meta) = src_meta else {
-            return self.extract_item(&item);
+            return match self.remote {
+                Some(_) => self.download_item(&item),
+                None => self.extract_item(&item),
+            };
         };
 
         if self.kind == OpKind::Move || self.kind == OpKind::Rename {
@@ -484,9 +507,11 @@ impl Operation {
             let opened = File::open(&item.src).and_then(|reader| {
                 let writer = File::create(&tmp)?;
                 Ok(Transfer {
-                    reader,
+                    reader: Box::new(reader),
                     writer,
                     tmp,
+                    mode: platform::unix_mode(&src_meta) & 0o7777,
+                    modified: src_meta.modified().ok(),
                 })
             });
             match opened {
@@ -500,6 +525,60 @@ impl Operation {
 
     /// Extracts an entry from the archive to the destination, via a
     /// temporary file, with the permissions and date stored in the archive.
+    /// Size and date of a remote file.
+    fn remote_facts(&self, item: &Item) -> Facts {
+        let attrs = self.remote.as_ref().and_then(|r| r.attrs(&item.src).ok());
+        Facts {
+            size: attrs.and_then(|a| a.size).unwrap_or(item.size),
+            modified: attrs
+                .and_then(|a| a.mtime)
+                .map(|s| SystemTime::UNIX_EPOCH + Duration::from_secs(s.into())),
+        }
+    }
+
+    /// Starts downloading a remote file (or copies a remote symlink as a
+    /// link), keeping its permissions and date.
+    fn download_item(&mut self, item: &Item) {
+        let remote = self.remote.clone().expect("remote source");
+        let attrs = match remote.attrs(&item.src) {
+            Ok(a) => a,
+            Err(e) => return self.fail(&item.src, e),
+        };
+        if attrs.is_symlink() {
+            let result = remote.read_link(&item.src).and_then(|target| {
+                let tmp = tmp_path(&item.dst);
+                platform::symlink(Path::new(&target), &tmp, false)?;
+                fs::rename(&tmp, &item.dst)
+            });
+            return match result {
+                Ok(()) => {
+                    self.done_bytes += item.size;
+                    self.complete_copy(&item.src);
+                }
+                Err(e) => self.fail(&item.src, e),
+            };
+        }
+        if !attrs.is_file() {
+            return self.fail(&item.src, "special files are not supported");
+        }
+        let tmp = tmp_path(&item.dst);
+        let opened = remote.open(&item.src).and_then(|reader| {
+            Ok(Transfer {
+                reader: Box::new(reader),
+                writer: File::create(&tmp)?,
+                tmp,
+                mode: attrs.permissions.unwrap_or(0o644) & 0o7777,
+                modified: attrs
+                    .mtime
+                    .map(|s| SystemTime::UNIX_EPOCH + Duration::from_secs(s.into())),
+            })
+        });
+        match opened {
+            Ok(t) => self.transfer = Some(t),
+            Err(e) => self.fail(&item.src, e),
+        }
+    }
+
     /// Size and date of an archive entry, from the archive's index.
     fn archive_facts(&self, item: &Item) -> Facts {
         let entry = self.archive.as_ref().and_then(|source| {
@@ -574,9 +653,8 @@ impl Operation {
         let t = self.transfer.take().unwrap();
         let item = self.items[self.next].clone();
         let result = (|| {
-            let meta = t.reader.metadata()?;
-            platform::set_file_mode(&t.writer, platform::unix_mode(&meta) & 0o7777)?;
-            if let Ok(mtime) = meta.modified() {
+            platform::set_file_mode(&t.writer, t.mode)?;
+            if let Some(mtime) = t.modified {
                 t.writer.set_modified(mtime)?;
             }
             drop(t.writer);

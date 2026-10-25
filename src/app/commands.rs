@@ -51,6 +51,11 @@ impl App {
             return;
         }
 
+        if self.connecting.is_some() && self.prompt.is_none() && key.code == KeyCode::Esc {
+            self.cancel_connection();
+            return;
+        }
+
         if let Some(confirm) = self.confirm.take() {
             if let KeyCode::Char(c) = key.code {
                 let c = c.to_ascii_lowercase();
@@ -242,7 +247,15 @@ impl App {
                     let prompt = self.prompt.take().unwrap();
                     self.submit(prompt.kind, prompt.input.text);
                 }
-                LineEvent::Cancel => self.prompt = None,
+                LineEvent::Cancel => {
+                    if let Some(Prompt {
+                        kind: PromptKind::Askpass { .. },
+                        ..
+                    }) = self.prompt.take()
+                    {
+                        self.answer_askpass(None);
+                    }
+                }
                 LineEvent::Editing => {}
             }
             return;
@@ -320,6 +333,29 @@ impl App {
         );
         if writes && self.archive.is_some() {
             self.message = Some("Archives are read-only (use Copy to extract)".into());
+            return;
+        }
+        // A remote machine: browsing, viewing, searching and copying here for
+        // now; Log and the terminal work too.
+        let remote_writes = matches!(
+            cmd,
+            Command::Move { .. }
+                | Command::Delete { .. }
+                | Command::Oops
+                | Command::Rename { .. }
+                | Command::Attributes { .. }
+                | Command::MakeDir
+                | Command::Edit
+                | Command::Execute
+                | Command::TerminalTagged
+                | Command::Prune
+                | Command::NewDate { .. }
+                | Command::CreateArchive { .. }
+                | Command::Batch
+        );
+        if remote_writes && self.remote.is_some() {
+            self.message =
+                Some("Read-only on a remote machine for now: Copy brings files here".into());
             return;
         }
         match cmd {

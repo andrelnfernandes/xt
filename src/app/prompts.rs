@@ -64,6 +64,11 @@ pub(crate) enum PromptKind {
     BookmarkJump,
     /// Set a directory bookmark for the current directory (Ctrl+F11).
     BookmarkSet,
+    /// A question from ssh while connecting: a password (`secret`, shown
+    /// masked) or a yes/no.
+    Askpass {
+        secret: bool,
+    },
 }
 
 impl PromptKind {
@@ -87,7 +92,8 @@ impl PromptKind {
             | PromptKind::RenameDir(_)
             | PromptKind::Prune { .. }
             | PromptKind::BookmarkJump
-            | PromptKind::BookmarkSet => {
+            | PromptKind::BookmarkSet
+            | PromptKind::Askpass { .. } => {
                 return None;
             }
         })
@@ -156,6 +162,11 @@ impl Prompt {
 
     pub fn is_bookmark_set(&self) -> bool {
         matches!(self.kind, PromptKind::BookmarkSet)
+    }
+
+    /// A password: shown masked.
+    pub fn is_secret(&self) -> bool {
+        matches!(self.kind, PromptKind::Askpass { secret: true })
     }
 
     pub fn is_rename_tagged(&self) -> bool {
@@ -506,6 +517,10 @@ impl App {
                 self.refresh_files();
             }),
             PromptKind::Log => self.log(&text),
+            PromptKind::Askpass { .. } => {
+                self.answer_askpass(Some(&text));
+                Ok(())
+            }
             PromptKind::NewDate(paths) => self.new_date(&paths, &text),
             PromptKind::BatchFile => {
                 let base = self.outer.as_deref().unwrap_or(self).current_path();
@@ -592,23 +607,27 @@ impl App {
                 bases,
                 ..
             } => {
-                let dest = ops::resolve_path(&text, &self.tree.path(self.current()));
-                // Saves the absolute path: a relative one would change meaning
-                // next time, from another directory.
-                self.last_dest = Some(dest.to_string_lossy().into_owned());
-                let paths_from = paths.then(|| bases.get(mode).to_path_buf());
-                if needs_new_dir(&dest, sources.len(), paths_from.is_some()) {
-                    let question = format!("Create the missing folder {}?", dest.display());
-                    let kind = ConfirmKind::CreateDest {
-                        kind,
-                        sources,
-                        dest,
-                        paths_from,
-                    };
-                    self.ask(kind, question);
-                    Ok(())
+                if crate::remote::Address::parse(&text).is_some() {
+                    Err("Copying to a remote machine comes in a later version".into())
                 } else {
-                    self.start_transfer(kind, sources, &dest, paths_from.as_deref())
+                    let dest = ops::resolve_path(&text, &self.tree.path(self.current()));
+                    // Saves the absolute path: a relative one would change meaning
+                    // next time, from another directory.
+                    self.last_dest = Some(dest.to_string_lossy().into_owned());
+                    let paths_from = paths.then(|| bases.get(mode).to_path_buf());
+                    if needs_new_dir(&dest, sources.len(), paths_from.is_some()) {
+                        let question = format!("Create the missing folder {}?", dest.display());
+                        let kind = ConfirmKind::CreateDest {
+                            kind,
+                            sources,
+                            dest,
+                            paths_from,
+                        };
+                        self.ask(kind, question);
+                        Ok(())
+                    } else {
+                        self.start_transfer(kind, sources, &dest, paths_from.as_deref())
+                    }
                 }
             }
             PromptKind::RenameFile(path) => self.rename_file(&path, &text),
@@ -664,11 +683,20 @@ impl App {
         dest: &Path,
         paths_from: Option<&Path>,
     ) -> Result<(), String> {
-        let archive = self.archive.clone();
+        let into_remote = self
+            .panes
+            .iter()
+            .filter_map(|p| p.remote.as_ref())
+            .any(|r| dest.starts_with(&r.root));
+        if into_remote {
+            return Err("Copying to a remote machine comes in a later version".into());
+        }
+        let (archive, remote) = (self.archive.clone(), self.remote.clone());
         Operation::transfer(kind, sources, dest, paths_from)
-            .and_then(|op| match &archive {
-                Some(path) => op.reading_archive(path),
-                None => Ok(op),
+            .and_then(|op| match (&archive, remote) {
+                (_, Some(remote)) => op.reading_remote(remote),
+                (Some(path), None) => op.reading_archive(path),
+                (None, None) => Ok(op),
             })
             .map(|op| self.start_op(op))
     }
@@ -839,7 +867,7 @@ impl App {
             bases: PathBases::new(
                 self.tree.path(self.view_root()),
                 self.tree.path(ROOT),
-                self.archive.is_some(),
+                self.archive.is_some() || self.remote.is_some(),
             ),
         };
         self.open_prompt(prompt, label, &default);

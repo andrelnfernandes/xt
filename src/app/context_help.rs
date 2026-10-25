@@ -64,6 +64,7 @@ impl App {
                 PromptKind::CreateArchive(_) => "archives",
                 PromptKind::BookmarkJump | PromptKind::BookmarkSet => "bookmarks",
                 PromptKind::MakeDir(_) => "tree",
+                PromptKind::Askpass { .. } => "remote",
             };
         }
         if self.viewer.is_some() {
@@ -75,6 +76,9 @@ impl App {
         }
         if self.sticky == MenuMode::Git {
             return "git";
+        }
+        if self.remote.is_some() || self.connecting.is_some() {
+            return "remote";
         }
         match self.focus {
             Focus::Tree => "tree",

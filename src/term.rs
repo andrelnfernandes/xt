@@ -44,6 +44,79 @@ pub struct Terminal {
     /// earlier, the line would show up twice (echoed, then at the prompt).
     pending: Option<(Option<PathBuf>, Vec<PathBuf>)>,
     prompt_seen: bool,
+    /// A shell on a remote machine (through ssh): Xylem cannot see its
+    /// processes, so it never types into it.
+    remote: bool,
+    /// The last directory the shell reported with OSC 7.
+    reported: Arc<Mutex<Option<String>>>,
+}
+
+/// Picks out the OSC 7 sequences (`ESC ] 7 ; file://host/path`, ended by BEL
+/// or ESC \) with which shells report their directory, across reads.
+#[derive(Default)]
+struct Osc7 {
+    pending: Vec<u8>,
+}
+
+impl Osc7 {
+    /// The path of the last complete sequence in `data`, if any.
+    fn feed(&mut self, data: &[u8]) -> Option<String> {
+        self.pending.extend_from_slice(data);
+        let mut found = None;
+        let mut rest = 0;
+        let start = b"\x1b]7;";
+        while let Some(i) = find(&self.pending[rest..], start) {
+            let body = rest + i + start.len();
+            let end = self.pending[body..]
+                .iter()
+                .enumerate()
+                .find(|(_, b)| **b == 0x07 || **b == 0x1b)
+                .map(|(j, b)| (body + j, *b));
+            let Some((end, terminator)) = end else {
+                // Incomplete: keep it for the next read (but not forever).
+                self.pending.drain(..rest + i);
+                if self.pending.len() > 4096 {
+                    self.pending.clear();
+                }
+                return found;
+            };
+            if terminator == 0x07 || self.pending.get(end + 1) == Some(&b'\\') {
+                found = file_url_path(&self.pending[body..end]).or(found);
+            }
+            rest = end + 1;
+        }
+        // Nothing open: keep only what could be the start of a sequence.
+        let keep = self.pending.len().saturating_sub(start.len());
+        self.pending.drain(..keep.max(rest).min(self.pending.len()));
+        found
+    }
+}
+
+fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack.windows(needle.len()).position(|w| w == needle)
+}
+
+/// `file://host/a%20b` → `/a b`.
+fn file_url_path(url: &[u8]) -> Option<String> {
+    let url = std::str::from_utf8(url).ok()?;
+    let rest = url.strip_prefix("file://")?;
+    let path = &rest[rest.find('/')?..];
+    let bytes = path.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%'
+            && let Some(hex) = path.get(i + 1..i + 3)
+            && let Ok(b) = u8::from_str_radix(hex, 16)
+        {
+            out.push(b);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
 }
 
 /// How to write the script for the user's shell.
@@ -83,6 +156,15 @@ impl Terminal {
         Self::spawn_shell(&default_shell(), &[], cwd, history)
     }
 
+    /// A terminal on a remote machine: `program` is ssh with `args` (see
+    /// `Remote::terminal_command`), started locally in `cwd`.
+    pub fn spawn_remote(program: &OsStr, args: &[String], cwd: &Path) -> anyhow::Result<Self> {
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        let mut t = Self::spawn_shell(&program.to_string_lossy(), &args, cwd, None)?;
+        t.remote = true;
+        Ok(t)
+    }
+
     fn spawn_shell(
         shell: &str,
         args: &[&str],
@@ -111,12 +193,17 @@ impl Terminal {
         let parser = Arc::new(Mutex::new(vt100::Parser::new(size.0, size.1, SCROLLBACK)));
         let dirty = Arc::new(AtomicBool::new(true));
         let mut reader = pair.master.try_clone_reader()?;
-        let (p, d) = (parser.clone(), dirty.clone());
+        let reported = Arc::new(Mutex::new(None));
+        let (p, d, r) = (parser.clone(), dirty.clone(), reported.clone());
         std::thread::spawn(move || {
             let mut buf = [0u8; 8192];
+            let mut osc7 = Osc7::default();
             while let Ok(n) = reader.read(&mut buf) {
                 if n == 0 {
                     break;
+                }
+                if let Some(dir) = osc7.feed(&buf[..n]) {
+                    *r.lock().unwrap_or_else(|e| e.into_inner()) = Some(dir);
                 }
                 p.lock()
                     .unwrap_or_else(|e| e.into_inner())
@@ -137,6 +224,8 @@ impl Terminal {
             script: None,
             pending: None,
             prompt_seen: false,
+            remote: false,
+            reported,
         })
     }
 
@@ -266,6 +355,9 @@ impl Terminal {
     /// The shell is in the foreground, i.e. no program started from it is
     /// running (so a typed `cd` goes to the shell, not to vim).
     pub fn at_prompt(&self) -> bool {
+        if self.remote {
+            return false;
+        }
         #[cfg(unix)]
         {
             let pid = self.child.process_id();
@@ -279,6 +371,9 @@ impl Terminal {
     /// `vim`), which quitting Xylem would end: `None` at the prompt. Its name
     /// comes from /proc; elsewhere it is just "a program".
     pub fn foreground_program(&mut self) -> Option<String> {
+        if self.remote {
+            return None;
+        }
         #[cfg(unix)]
         {
             if self.exited() || self.at_prompt() {
@@ -292,14 +387,32 @@ impl Terminal {
         None
     }
 
-    /// The shell's current directory, to make the tree follow it.
+    /// The shell's current directory, to make the tree follow it: from
+    /// /proc on Linux, else what the shell reported with OSC 7. `None` for a
+    /// remote shell (see `reported_dir`).
     pub fn cwd(&self) -> Option<PathBuf> {
+        if self.remote {
+            return None;
+        }
         let pid = self.child.process_id()?;
         if cfg!(target_os = "linux") {
             std::fs::read_link(format!("/proc/{pid}/cwd")).ok()
         } else {
-            None
+            self.reported_dir().map(PathBuf::from)
         }
+    }
+
+    /// The directory the shell last reported with OSC 7 (on a remote
+    /// machine, a path there).
+    pub fn reported_dir(&self) -> Option<String> {
+        self.reported
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    pub fn is_remote(&self) -> bool {
+        self.remote
     }
 }
 
@@ -664,6 +777,27 @@ mod tests {
             );
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
+    }
+
+    #[test]
+    fn picks_out_the_directory_shells_report() {
+        let mut osc7 = Osc7::default();
+        assert_eq!(osc7.feed(b"plain output\r\n"), None);
+        // BEL-terminated, with percent-encoding.
+        assert_eq!(
+            osc7.feed(b"x\x1b]7;file://host/home/a%20b\x07$ ")
+                .as_deref(),
+            Some("/home/a b")
+        );
+        // Split across two reads, ended by ESC \.
+        assert_eq!(osc7.feed(b"\x1b]7;file://h/tm"), None);
+        assert_eq!(osc7.feed(b"p/x\x1b\\").as_deref(), Some("/tmp/x"));
+        // The last of several wins; other OSC sequences are ignored.
+        assert_eq!(
+            osc7.feed(b"\x1b]0;title\x07\x1b]7;file://h/a\x07\x1b]7;file://h/b\x07")
+                .as_deref(),
+            Some("/b")
+        );
     }
 
     #[test]

@@ -72,6 +72,13 @@ pub struct Totals {
     pub bytes: u64,
 }
 
+/// Where a tree that is not on the local disk reads its directories (a
+/// remote machine), with the same result as [`read_dir_entries`]: the
+/// subdirectories (name, hidden) and the files.
+pub trait Lister: Send + Sync {
+    fn list(&self, path: &Path) -> std::io::Result<(Vec<DirName>, Vec<FileEntry>)>;
+}
+
 pub struct Tree {
     nodes: Vec<DirNode>,
     /// Tree of an archive: everything is already read and nothing is reread
@@ -80,6 +87,8 @@ pub struct Tree {
     /// Shows hidden directories (name starting with a dot). Only affects what
     /// is displayed; everything logged is still kept here.
     pub show_hidden: bool,
+    /// Reads directories from elsewhere than the local disk.
+    lister: Option<std::sync::Arc<dyn Lister>>,
 }
 
 /// Reading of a whole branch done in small steps, so the interface can
@@ -109,7 +118,22 @@ impl LogJob {
 impl Tree {
     /// Creates the tree with `root` already logged and expanded.
     pub fn new(root: PathBuf) -> Self {
-        let mut tree = Tree {
+        let mut tree = Tree::empty(root);
+        tree.expand(ROOT);
+        tree
+    }
+
+    /// A tree whose directories `lister` reads (a remote machine), with
+    /// `root` already logged and expanded.
+    pub fn with_lister(root: PathBuf, lister: std::sync::Arc<dyn Lister>) -> Self {
+        let mut tree = Tree::empty(root);
+        tree.lister = Some(lister);
+        tree.expand(ROOT);
+        tree
+    }
+
+    fn empty(root: PathBuf) -> Self {
+        Tree {
             nodes: vec![DirNode {
                 name: root.into_os_string(),
                 parent: None,
@@ -122,29 +146,31 @@ impl Tree {
             }],
             is_virtual: false,
             show_hidden: true,
-        };
-        tree.expand(ROOT);
-        tree
+            lister: None,
+        }
+    }
+
+    /// Reads `path` from the disk, or through the lister.
+    fn read(&self, path: &Path) -> std::io::Result<(Vec<DirName>, Vec<FileEntry>)> {
+        match &self.lister {
+            Some(lister) => {
+                let (mut dirs, mut files) = lister.list(path)?;
+                dirs.sort_by_key(|(name, _)| sort_key(name));
+                files.sort_by_key(|f| sort_key(&f.name));
+                Ok((dirs, files))
+            }
+            None => read_dir_entries(path),
+        }
     }
 
     /// Virtual tree from a listing: paths relative to `root`
     /// and, for each one, the file (`Some`) or a directory (`None`).
     /// Directories that only appear on a file's path are created.
     pub fn from_listing(root: PathBuf, listing: Vec<(PathBuf, Option<FileEntry>)>) -> Self {
-        let mut tree = Tree {
-            nodes: vec![DirNode {
-                name: root.into_os_string(),
-                parent: None,
-                children: Vec::new(),
-                files: Vec::new(),
-                expanded: true,
-                scanned: true,
-                error: None,
-                hidden: false,
-            }],
-            is_virtual: true,
-            show_hidden: true,
-        };
+        let mut tree = Tree::empty(root);
+        tree.is_virtual = true;
+        tree.nodes[ROOT].expanded = true;
+        tree.nodes[ROOT].scanned = true;
         for (path, file) in listing {
             let dirs = match file {
                 Some(_) => path.parent().unwrap_or(Path::new("")),
@@ -202,7 +228,7 @@ impl Tree {
         self.nodes[id].scanned = true;
 
         let path = self.path(id);
-        let (dirs, files) = match read_dir_entries(&path) {
+        let (dirs, files) = match self.read(&path) {
             Ok(r) => r,
             Err(e) => {
                 self.nodes[id].error = Some(e.to_string());
@@ -238,7 +264,7 @@ impl Tree {
             return;
         }
         let path = self.path(id);
-        let (dirs, mut files) = match read_dir_entries(&path) {
+        let (dirs, mut files) = match self.read(&path) {
             Ok(r) => r,
             Err(e) => {
                 let node = &mut self.nodes[id];
