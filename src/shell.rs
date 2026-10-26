@@ -15,6 +15,8 @@ pub struct External {
     pub cwd: PathBuf,
     /// Asks for Enter before returning to Xylem, to give time to read the output.
     pub wait: bool,
+    /// The file the line opens, given to it in [`FILE_VAR`] (see [`file_ref`]).
+    pub file: Option<PathBuf>,
 }
 
 impl External {
@@ -22,8 +24,28 @@ impl External {
     pub fn command(&self) -> Command {
         let mut cmd = shell(&self.line);
         cmd.current_dir(&self.cwd);
+        if let Some(file) = &self.file {
+            cmd.env(FILE_VAR, file);
+        }
         cmd
     }
+}
+
+/// Environment variable with the file of the editor and opener lines.
+const FILE_VAR: &str = "XY_FILE";
+
+/// How the editor and opener lines name the file. On Windows, `cmd`
+/// expands `%VAR%` even inside quotes, so a name with `%PATH%` in it would
+/// change; it takes the name from [`FILE_VAR`] instead, and does not
+/// expand what that brings.
+#[cfg(windows)]
+fn file_ref(_file: &Path) -> &Path {
+    Path::new("%XY_FILE%")
+}
+
+#[cfg(unix)]
+fn file_ref(file: &Path) -> &Path {
+    file
 }
 
 /// Opens `file` in the editor: the configured one, `$VISUAL`, `$EDITOR`, the
@@ -40,6 +62,7 @@ pub fn editor(file: &Path, cwd: &Path, configured: &str) -> External {
         line: with_file(&editor, file),
         cwd: cwd.to_path_buf(),
         wait: false,
+        file: Some(file.to_path_buf()),
     }
 }
 
@@ -47,7 +70,7 @@ pub fn editor(file: &Path, cwd: &Path, configured: &str) -> External {
 /// goes at the end.
 pub fn editor_command(command: &str, file: &Path, cwd: &Path) -> External {
     let line = if command.contains("%f") {
-        expand(command, Some(file), &[], cwd)
+        expand(command, Some(file_ref(file)), &[], cwd)
     } else {
         with_file(command, file)
     };
@@ -55,6 +78,7 @@ pub fn editor_command(command: &str, file: &Path, cwd: &Path) -> External {
         line,
         cwd: cwd.to_path_buf(),
         wait: false,
+        file: Some(file.to_path_buf()),
     }
 }
 
@@ -70,6 +94,7 @@ pub fn open_detached(file: &Path, opener: &str) -> std::io::Result<()> {
         other => other,
     };
     let mut child = shell(&with_file(opener, file))
+        .env(FILE_VAR, file)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -85,14 +110,15 @@ pub fn command(line: OsString, cwd: &Path) -> External {
         line,
         cwd: cwd.to_path_buf(),
         wait: true,
+        file: None,
     }
 }
 
-/// `program 'file'`.
+/// `program 'file'` (`program "%XY_FILE%"` on Windows).
 fn with_file(program: &str, file: &Path) -> OsString {
     let mut out = program.as_bytes().to_vec();
     out.push(b' ');
-    out.extend(quote(file.as_os_str().as_encoded_bytes()));
+    out.extend(quote(file_ref(file).as_os_str().as_encoded_bytes()));
     from_bytes(out)
 }
 
@@ -292,7 +318,8 @@ fn shell(line: &OsStr) -> Command {
 }
 
 /// Double quotes: Windows names cannot contain `"`. (`%VAR%` inside a name
-/// would still be expanded by `cmd`.)
+/// would still be expanded by `cmd`: the editor and the opener avoid it
+/// with `file_ref`.)
 #[cfg(windows)]
 fn quote(s: &[u8]) -> Vec<u8> {
     let mut out = vec![b'"'];
@@ -391,5 +418,33 @@ mod tests {
         assert!(!ext.wait);
         let ext = editor(Path::new("/x"), Path::new("/"), "nano -l");
         assert_eq!(ext.line, "nano -l '/x'");
+        let cmd = ext.command();
+        let envs: Vec<_> = cmd.get_envs().collect();
+        assert!(envs.contains(&(OsStr::new("XY_FILE"), Some(OsStr::new("/x")))));
+    }
+}
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+
+    /// `cmd` expands `%VAR%` inside quotes: a name with `%PATH%` would
+    /// become another one.
+    #[test]
+    fn names_with_percent_reach_the_program_unchanged() {
+        let tmp = crate::testing::tempdir();
+        let file = tmp.path().join("100%PATH%.txt");
+        std::fs::write(&file, "inside").unwrap();
+        for ext in [
+            editor(&file, tmp.path(), "type"),
+            editor_command("type %f", &file, tmp.path()),
+        ] {
+            let out = ext.command().output().unwrap();
+            assert_eq!(
+                String::from_utf8_lossy(&out.stdout).trim(),
+                "inside",
+                "{ext:?}"
+            );
+        }
     }
 }
