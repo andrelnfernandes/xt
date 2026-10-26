@@ -1434,6 +1434,9 @@ fn prompt_lines(frame: &mut Frame, prompt: &app::Prompt, area: Rect) -> Vec<Line
             help.push(("F4", "text/hex"));
             help.push(("↑↓", "history"));
         }
+        if prompt.is_goto() {
+            help.push(("↑↓", "history"));
+        }
         if prompt.label.starts_with("FILESPEC") {
             help.push(("e.g.", "*.rs -*.bak >TODAY-7 >s1M"));
         }
@@ -1991,7 +1994,9 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
     let lines = if let Some(prompt) = &app.prompt {
         prompt_lines(frame, prompt, menu)
     } else {
-        let mut words = vec!["Find", "Backward", "Hex", "Colors", "Edit"];
+        let mut words = vec![
+            "Find", "Backward", "Hex", "Colors", "Wrap", "#Num", "Goto", "Edit",
+        ];
         if diff {
             words.push("Diff");
         }
@@ -2024,7 +2029,12 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
                     .language()
                     .map(|l| format!("{l}  ·  "))
                     .unwrap_or_default();
-                Line::from(format!("{:9}{language}{position}  ({percent}%)", ""))
+                let wrap_badge = if v.wrap { "[Wrap] " } else { "" };
+                let num_badge = if v.line_numbers { "[#] " } else { "" };
+                Line::from(format!(
+                    "{:9}{wrap_badge}{num_badge}{language}{position}  ({percent}%)",
+                    ""
+                ))
             }
         };
         vec![first, second]
@@ -2064,20 +2074,39 @@ fn draw_viewer_body(frame: &mut Frame, v: &mut Viewer, title: String, area: Rect
     v.page = inner.height as usize;
     v.width = inner.width as usize;
     let mark = highlight(true).add_modifier(Modifier::BOLD);
+    let digits = v.line_count().to_string().len().max(1);
+    let show_numbers = v.line_numbers && v.mode == ViewMode::Text;
+    let t = theme();
     let lines: Vec<Line> = v
         .styled(inner.height as usize)
         .into_iter()
-        .map(|segments| {
-            Line::from(
-                segments
-                    .into_iter()
-                    .map(|(text, color, marked)| match (marked, color) {
-                        (true, _) => Span::styled(text, mark),
-                        (false, Some(c)) => Span::styled(text, Style::new().fg(c)),
-                        (false, None) => Span::raw(text),
-                    })
-                    .collect::<Vec<_>>(),
-            )
+        .map(|row| {
+            let mut spans = Vec::new();
+            if show_numbers {
+                match row.line_num {
+                    Some(num) => {
+                        spans.push(Span::styled(
+                            format!("{num:>digits$} "),
+                            Style::new().fg(t.dim),
+                        ));
+                    }
+                    None => {
+                        spans.push(Span::styled(
+                            format!("{:>digits$} ", ""),
+                            Style::new().fg(t.dim),
+                        ));
+                    }
+                }
+                spans.push(Span::styled("│ ", Style::new().fg(t.border)));
+            }
+            for (text, color, marked) in row.segments {
+                spans.push(match (marked, color) {
+                    (true, _) => Span::styled(text, mark),
+                    (false, Some(c)) => Span::styled(text, Style::new().fg(c)),
+                    (false, None) => Span::raw(text),
+                });
+            }
+            Line::from(spans)
         })
         .collect();
     frame.render_widget(Paragraph::new(lines).block(panel(title, true)), area);

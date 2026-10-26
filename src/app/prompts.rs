@@ -1,4 +1,5 @@
 use super::*;
+use crate::viewer::ViewMode;
 
 /// Text field open in the footer.
 pub struct Prompt {
@@ -64,6 +65,8 @@ pub(crate) enum PromptKind {
     BookmarkJump,
     /// Set a directory bookmark for the current directory (Ctrl+F11).
     BookmarkSet,
+    /// Goto line in the viewer (g / :).
+    ViewerGoto,
     /// A question from ssh while connecting: a password (`secret`, shown
     /// masked) or a yes/no.
     Askpass {
@@ -87,6 +90,7 @@ impl PromptKind {
             PromptKind::MakeDir(_) => "mkdir",
             PromptKind::RenameTagged { .. } => "rename_mask",
             PromptKind::SearchTagged { .. } | PromptKind::ViewerSearch { .. } => "search",
+            PromptKind::ViewerGoto => "goto",
             PromptKind::Chmod(_) => "chmod",
             PromptKind::RenameFile(_)
             | PromptKind::RenameDir(_)
@@ -171,6 +175,10 @@ impl Prompt {
 
     pub fn is_rename_tagged(&self) -> bool {
         matches!(self.kind, PromptKind::RenameTagged { .. })
+    }
+
+    pub fn is_goto(&self) -> bool {
+        matches!(self.kind, PromptKind::ViewerGoto)
     }
 }
 
@@ -570,6 +578,28 @@ impl App {
             } => {
                 spec.text = text;
                 self.viewer_search(spec, forward, Some(from));
+                Ok(())
+            }
+            PromptKind::ViewerGoto => {
+                let clean = text.trim().trim_start_matches(':').trim();
+                if let Some(v) = &mut self.viewer {
+                    if v.mode == ViewMode::Text {
+                        match clean.parse::<usize>() {
+                            Ok(line) if line > 0 => v.goto_line(line),
+                            _ => v.note = Some(format!("Invalid line number: {text}")),
+                        }
+                    } else {
+                        let offset = usize::from_str_radix(
+                            clean.trim_start_matches("0x").trim_start_matches("0X"),
+                            16,
+                        )
+                        .or_else(|_| clean.parse::<usize>());
+                        match offset {
+                            Ok(off) => v.goto_line(off),
+                            _ => v.note = Some(format!("Invalid offset: {text}")),
+                        }
+                    }
+                }
                 Ok(())
             }
             PromptKind::Prune {

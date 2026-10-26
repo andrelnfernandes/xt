@@ -1,4 +1,5 @@
 use super::*;
+use crate::viewer::ViewMode;
 
 /// View of the tagged files (Ctrl+V): the files and which one is open.
 pub struct TaggedView {
@@ -16,6 +17,18 @@ impl App {
         match key.code {
             KeyCode::F(7) | KeyCode::Esc | KeyCode::Enter => {
                 self.autoview = None;
+                true
+            }
+            KeyCode::Char('w' | 'W') => {
+                if let Some(v) = &mut self.autoview {
+                    v.toggle_wrap();
+                }
+                true
+            }
+            KeyCode::Char('#' | 'l' | 'L') => {
+                if let Some(v) = &mut self.autoview {
+                    v.toggle_line_numbers();
+                }
                 true
             }
             KeyCode::Up
@@ -48,6 +61,7 @@ impl App {
             return;
         }
         let (page, width) = (current.page, current.width);
+        let (wrap, line_numbers) = (current.wrap, current.line_numbers);
         let size = self.file(f).size;
         let mut v = self
             .load_viewer_limited(path.clone(), size, AUTOVIEW_BYTES)
@@ -55,6 +69,8 @@ impl App {
                 Viewer::from_bytes(path, 0, format!("Cannot view file: {e}").into_bytes())
             });
         (v.page, v.width) = (page, width);
+        v.wrap = wrap;
+        v.line_numbers = line_numbers;
         self.autoview = Some(v);
     }
 
@@ -80,19 +96,23 @@ impl App {
         size: u64,
         limit: u64,
     ) -> std::io::Result<Viewer> {
-        if let Some(remote) = &self.remote {
+        let mut v = if let Some(remote) = &self.remote {
             let data = remote.read(&path, limit)?;
-            return Ok(Viewer::from_bytes(path, size, data));
-        }
-        match &self.archive {
-            Some(root) => {
-                let entry = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
-                let mut data = Vec::new();
-                archive::Reader::open(root)?.extract(&entry, &mut data, limit)?;
-                Ok(Viewer::from_bytes(path, size, data))
+            Viewer::from_bytes(path, size, data)
+        } else {
+            match &self.archive {
+                Some(root) => {
+                    let entry = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
+                    let mut data = Vec::new();
+                    archive::Reader::open(root)?.extract(&entry, &mut data, limit)?;
+                    Viewer::from_bytes(path, size, data)
+                }
+                None => Viewer::open_limited(path, limit)?,
             }
-            None => Viewer::open_limited(path, limit),
-        }
+        };
+        v.wrap = self.options.viewer_wrap;
+        v.line_numbers = self.options.viewer_line_numbers;
+        Ok(v)
     }
 
     /// Reads a file's contents for the search: from disk, or from inside the
@@ -230,6 +250,11 @@ impl App {
             }
             ViewerAction::Next | ViewerAction::Prev | ViewerAction::First | ViewerAction::Last => {
                 let Some((i, n)) = position else {
+                    if action == ViewerAction::Next
+                        && let Some(v) = &mut self.viewer
+                    {
+                        v.toggle_line_numbers();
+                    }
                     return;
                 };
                 let target = match action {
@@ -244,6 +269,20 @@ impl App {
                     let edge = if target == 0 { "First" } else { "Last" };
                     v.note = Some(format!("{edge} tagged file"));
                 }
+            }
+            ViewerAction::GotoLine => {
+                let Some(v) = &self.viewer else { return };
+                let label = match v.mode {
+                    ViewMode::Text => {
+                        let total = v.line_count().max(1);
+                        format!("GOTO line (1-{total}): ")
+                    }
+                    ViewMode::Hex => {
+                        let max = v.size.saturating_sub(1);
+                        format!("GOTO offset (0-{max:X}): ")
+                    }
+                };
+                self.open_prompt(PromptKind::ViewerGoto, label, "");
             }
             ViewerAction::Untag => {
                 let Some(f) = self
