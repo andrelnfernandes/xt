@@ -245,6 +245,9 @@ tópicos: [a janela da árvore](docs/manual/tree.md),
   embutido, e o empacotamento. Uma interface gráfica completa (egui,
   GTK...) não é o plano: seria outro programa, sem o visual do XTree.
 
+A lista completa do que falta, com as notas de desenvolvimento, está em
+[BACKLOG.md](BACKLOG.md) (em inglês).
+
 ## Licença
 
 O Xylem é distribuído sob a [licença MIT](LICENSE).
