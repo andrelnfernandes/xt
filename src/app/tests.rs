@@ -1376,7 +1376,7 @@ fn d_in_viewer_shows_the_git_diff() {
     press(&mut app, KeyCode::Char('d'));
     press(&mut app, KeyCode::Char('e'));
     let ext = app.external.take().expect("editor");
-    assert!(ext.line.to_string_lossy().contains("a.rs"));
+    assert!(ext.file.is_some_and(|f| f.ends_with("a.rs")));
     write(root.join("a.rs"), "fn main() {}\nfn newer() {}\n").unwrap();
     std::thread::sleep(std::time::Duration::from_millis(600));
     app.after_external(Ok(std::process::ExitStatus::default()));
@@ -1446,7 +1446,7 @@ fn e_in_viewer_edits_and_reloads() {
     assert!(app.viewer.is_some());
     press(&mut app, KeyCode::Char('e'));
     let ext = app.external.take().expect("editor requested");
-    assert!(ext.line.to_string_lossy().contains("a.rs"));
+    assert!(ext.file.as_ref().is_some_and(|f| f.ends_with("a.rs")));
     assert_eq!(ext.cwd, tmp.path());
 
     // The "editor" changes the file; back in Xylem, the viewer shows it.
@@ -2622,8 +2622,9 @@ fn e_on_a_binary_file_needs_an_editor_from_the_config() {
     ];
     app.apply_config(&config).unwrap();
     press(&mut app, KeyCode::Char('e'));
-    let line = app.external.take().expect("editor").line;
-    let line = line.to_string_lossy();
+    let ext = app.external.take().expect("editor");
+    let line = ext.line.to_string_lossy();
     assert!(line.starts_with("gimp ") && line.ends_with(" &"), "{line}");
-    assert!(line.contains("photo.jpg"), "{line}");
+    // The name is in the line, or on Windows in XY_FILE.
+    assert!(ext.file.is_some_and(|f| f.ends_with("photo.jpg")), "{line}");
 }
