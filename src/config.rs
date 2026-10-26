@@ -44,6 +44,10 @@ show_hidden = true
 enter_views = false
 # Syntax colors for source code and scripts in the viewer (C toggles them).
 syntax_highlight = true
+# Soft wrap long lines in the viewer (W toggles it while viewing).
+viewer_wrap = false
+# Show line numbers in the text viewer (# or L toggles them while viewing).
+viewer_line_numbers = false
 # Initial mode of the files window (Alt+F changes it while running): "names"
 # (several columns), "names_size" (columns with size), "details" (one
 # column with size, date and permissions), "owner" (size, owner and group,
@@ -168,6 +172,10 @@ pub struct Options {
     pub enter_views: bool,
     /// Syntax colors in the viewer (C toggles them while viewing).
     pub syntax_highlight: bool,
+    /// Soft wrap in the viewer (W toggles while viewing).
+    pub viewer_wrap: bool,
+    /// Line numbers in the text viewer (# / L toggles while viewing).
+    pub viewer_line_numbers: bool,
     /// Initial mode of the files window (Alt+F changes it while running).
     pub file_display: FileDisplay,
     /// Initial file sort order.
@@ -202,6 +210,8 @@ impl Default for Options {
             show_hidden: true,
             enter_views: false,
             syntax_highlight: true,
+            viewer_wrap: false,
+            viewer_line_numbers: false,
             file_display: FileDisplay::Details,
             sort: SortKey::Name,
             sort_descending: false,
@@ -241,6 +251,8 @@ impl Options {
             ("show_hidden", Value::from(self.show_hidden)),
             ("enter_views", Value::from(self.enter_views)),
             ("syntax_highlight", Value::from(self.syntax_highlight)),
+            ("viewer_wrap", Value::from(self.viewer_wrap)),
+            ("viewer_line_numbers", Value::from(self.viewer_line_numbers)),
             ("file_display", s(self.file_display.as_str())),
             ("sort", s(self.sort.as_str())),
             ("sort_descending", Value::from(self.sort_descending)),
