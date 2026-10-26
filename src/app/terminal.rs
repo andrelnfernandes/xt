@@ -130,10 +130,7 @@ impl App {
         let cwd = t.cwd().unwrap_or_default();
         let paths: Vec<PathBuf> = tagged
             .into_iter()
-            .map(|s| match s.path.strip_prefix(&cwd) {
-                Ok(rel) if !cwd.as_os_str().is_empty() => rel.to_path_buf(),
-                _ => s.path,
-            })
+            .map(|s| typed_path(s.path, &cwd))
             .collect();
         let text = shell::expand("%t ", None, &paths, Path::new(""));
         t.write(text.as_encoded_bytes());
@@ -262,5 +259,40 @@ impl App {
         self.parked_terminals
             .iter_mut()
             .find_map(|(host, t, _)| describe(host, t))
+    }
+}
+
+/// How Alt+O types `path` in a shell at `cwd`: relative when it is inside.
+/// A name starting with `-` gets `./`, or the command would take it for an
+/// option (`rm -rf`).
+fn typed_path(path: PathBuf, cwd: &Path) -> PathBuf {
+    match path.strip_prefix(cwd) {
+        Ok(rel) if !cwd.as_os_str().is_empty() => {
+            if rel.as_os_str().as_encoded_bytes().first() == Some(&b'-') {
+                Path::new(".").join(rel)
+            } else {
+                rel.to_path_buf()
+            }
+        }
+        _ => path,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn names_like_options_are_typed_with_dot_slash() {
+        let cwd = Path::new("/w");
+        let typed = |p: &str| typed_path(PathBuf::from(p), cwd);
+        assert_eq!(typed("/w/a.txt"), Path::new("a.txt"));
+        assert_eq!(typed("/w/-rf"), Path::new("./-rf"));
+        assert_eq!(typed("/w/sub/-x"), Path::new("sub/-x"));
+        assert_eq!(typed("/elsewhere/-x"), Path::new("/elsewhere/-x"));
+        assert_eq!(
+            typed_path(PathBuf::from("-x"), Path::new("")),
+            Path::new("-x")
+        );
     }
 }

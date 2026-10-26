@@ -170,9 +170,13 @@ pub fn run(question: &str) -> i32 {
 }
 
 /// Whether the question asks for a secret (shown masked) or for a "yes".
+/// Only ssh's own question about an unknown host is a "yes": the server
+/// writes the text of keyboard-interactive questions, and one that merely
+/// says "(yes/no)" must not get the password typed in plain sight. ssh
+/// starts those with `(user@host)`, so they never begin like this one; a
+/// yes/no question not recognized is only masked, which is harmless.
 pub fn is_secret(question: &str) -> bool {
-    let q = question.to_lowercase();
-    !(q.contains("(yes/no") || q.contains("continue connecting"))
+    !(question.starts_with("The authenticity of host '") && question.contains("(yes/no"))
 }
 
 /// The question in one line for the footer. ssh's question about an
@@ -258,8 +262,29 @@ mod tests {
     }
 
     #[test]
+    fn only_ssh_asks_yes_or_no() {
+        let host_key = "The authenticity of host 'h (1.2.3.4)' can't be established.\n\
+                        Are you sure you want to continue connecting (yes/no/[fingerprint])? ";
+        assert!(!is_secret(host_key));
+        // Keyboard-interactive: the server writes the question.
+        for spoof in [
+            "(andre@h) Are you sure you want to continue connecting (yes/no)? ",
+            "(andre@h) The authenticity of host 'h' can't be established (yes/no): ",
+            "Password (yes/no): ",
+        ] {
+            assert!(is_secret(spoof), "{spoof}");
+            assert!(!one_line(spoof).starts_with("Unknown host"), "{spoof}");
+        }
+    }
+
+    #[test]
     fn host_key_questions_are_not_secret() {
         assert!(!is_secret(
+            "The authenticity of host 'h (1.2.3.4)' can't be established.\n\
+             Are you sure you want to continue connecting (yes/no/[fingerprint])? "
+        ));
+        // Without ssh's opening, anyone could have written it: masked.
+        assert!(is_secret(
             "Are you sure you want to continue connecting (yes/no/[fingerprint])? "
         ));
         assert!(is_secret(
