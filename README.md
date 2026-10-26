@@ -238,6 +238,9 @@ and the man page (`xy --man`). Some topics:
   packaging. A full graphical interface (egui, GTK...) is not the plan: it
   would be another program, without the XTree look.
 
+The full list of what is left, including the developers' notes, is in
+[BACKLOG.md](BACKLOG.md).
+
 ## License
 
 Xylem is released under the [MIT License](LICENSE).
