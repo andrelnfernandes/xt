@@ -44,4 +44,20 @@ eingefärbt, sodass auch riesige Dateien den Betrachter niemals ausbremsen.
 
 Manche unsichtbaren Zeichen ändern die Schreibrichtung des Textes und können Code anders aussehen lassen, als er wirklich lautet (Trojan Source, CVE-2021-42574). Der Viewer versteckt sie nie: Jedes erscheint als rotes `·`, und die Kopfzeile nennt ihre Anzahl.
 
+## Komprimierte Dateien
+
+Dateien mit der Endung `.gz`, `.xz`, `.zst` oder `.bz2` werden entpackt als Text geöffnet. Xylem prüft die ersten Bytes der Datei, nicht den Namen, und öffnet nur eine Ebene: Eine `.gz`-Datei in einer `.gz`-Datei bleibt komprimiert. Die Kopfzeile zeigt `gzip → N bytes` (das Format und die Größe nach dem Entpacken).
+
+Das Entpacken hat Grenzen. Der Betrachter liest bis zu 16 MiB, braucht höchstens 3 s und nutzt höchstens 64 MiB Speicher für das xz-Wörterbuch oder das zstd-Fenster. In Autoview gelten 1 MiB, 100 ms und 16 MiB. Wird eine Grenze erreicht, steht in der Kopfzeile `(showing first N bytes decompressed)`, und ein Hinweis nennt den Grund:
+
+- `compressed data truncated or corrupt` (komprimierte Daten abgeschnitten oder beschädigt)
+- `decompression stopped after 3 s` (100 ms in Autoview)
+- `needs more than 64 MiB of memory to decompress` (16 MiB in Autoview, mit ` (V to view)`)
+
+Autoview zeigt den Hinweis in seinem Titel. Im Hex-Modus (`H`) sehen Sie die entpackten Bytes. Die Farben richten sich nach dem Namen ohne die Kompressionsendung: `app.rs.gz` wird wie Rust gefärbt.
+
+Bei einer `.tar.gz` (oder `.tar.xz` ...) lautet der Hinweis `TAR archive: Alt+F5 opens it as a folder` (Alt+F5 öffnet sie als Ordner).
+
+Um die rohen komprimierten Bytes zu sehen, schalten Sie `viewer_decompress` aus (**J** auf Seite 2 der [Konfiguration](configuration.md)).
+
 Siehe auch: [markierte Dateien durchsuchen](search.md).
