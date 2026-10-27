@@ -157,9 +157,10 @@ bytes brutos (disco / archive / remoto, até o limite)
 - **Cabeçalho**, depois do tamanho:
   - `gzip → 9,876,543 bytes` quando o arquivo é comprimido;
   - o nome da codificação (`CP850`, `UTF-16LE`...) quando não é UTF-8;
-  - quando o arquivo foi cortado: `(showing first 64 MiB)` ou
-    `(showing first 64 MiB decompressed)`, com o limite real do contexto.
-    Hoje esse aviso imprime sempre `MAX_BYTES`.
+  - quando o arquivo foi cortado: `(showing first 64 MiB)` (arquivo comum,
+    com o limite real do contexto) ou `(showing first 1,048,576 bytes
+    decompressed)` (comprimido, com os bytes que o viewer tem, porque o corte
+    também pode vir do tempo). Hoje esse aviso imprime sempre `MAX_BYTES`.
 - **Tecla `O` ("cOdepage"), dentro do viewer** (na lista de arquivos, `O`
   continua sendo "abrir no programa do sistema"), troca em ciclo: UTF-8, CP850, 1252, CP437,
   UTF-16LE, UTF-16BE. O rodapé mostra o nome, por exemplo
