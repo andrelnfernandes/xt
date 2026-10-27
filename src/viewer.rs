@@ -80,6 +80,8 @@ pub struct Viewer {
     pub mode: ViewMode,
     data: Vec<u8>,
     lines: Vec<String>,
+    /// Where a bidi control was swapped for `·`: (line, character column).
+    bidi: Vec<(usize, usize)>,
     /// First visible line.
     pub top: usize,
     /// Horizontal offset (text mode).
@@ -275,7 +277,7 @@ impl Viewer {
         } else {
             ViewMode::Text
         };
-        let lines = text_lines(&data);
+        let (lines, bidi) = text_lines(&String::from_utf8_lossy(&data));
         let colors = (mode == ViewMode::Text)
             .then(|| Highlighter::for_file(&path, lines.first().map_or("", String::as_str)))
             .flatten();
@@ -286,6 +288,7 @@ impl Viewer {
             size,
             mode,
             lines,
+            bidi,
             data,
             top: 0,
             left: 0,
@@ -310,6 +313,11 @@ impl Viewer {
             self.colors_on = self.colors.is_some();
         }
         self
+    }
+
+    /// How many bidi controls were hidden behind a `·`.
+    pub fn bidi_count(&self) -> usize {
+        self.bidi.len()
     }
 
     pub fn truncated(&self) -> bool {
@@ -410,7 +418,8 @@ impl Viewer {
         match self.mode {
             ViewMode::Text if !self.wrap => {
                 let range = self.top..(self.top + height).min(self.lines.len());
-                let (left, colors, lines) = (self.left, &mut self.colors, &self.lines);
+                let (left, colors, lines, bidi) =
+                    (self.left, &mut self.colors, &self.lines, &self.bidi);
                 range
                     .map(|i| {
                         let line_str = &lines[i];
@@ -432,7 +441,11 @@ impl Viewer {
                             .unwrap_or_default();
                         let mut segments: Vec<Segment> = Vec::new();
                         for (j, ch) in line_chars.into_iter().enumerate() {
-                            let color = per_char.get(left + j).copied();
+                            let color = if bidi.binary_search(&(i, left + j)).is_ok() {
+                                Some(crate::config::theme().error)
+                            } else {
+                                per_char.get(left + j).copied()
+                            };
                             let marked = mark.is_some_and(|(s, e)| j >= s && j < e);
                             match segments.last_mut() {
                                 Some((text, c, m)) if *c == color && *m == marked => text.push(ch),
@@ -481,7 +494,11 @@ impl Viewer {
                         let slice = &line_chars[r.start..r.end];
                         for (j, &ch) in slice.iter().enumerate() {
                             let char_idx = r.start + j;
-                            let color = per_char.get(char_idx).copied();
+                            let color = if self.bidi.binary_search(&(line_idx, char_idx)).is_ok() {
+                                Some(crate::config::theme().error)
+                            } else {
+                                per_char.get(char_idx).copied()
+                            };
                             let marked = mark.is_some_and(|(s, e)| j >= s && j < e);
                             match segments.last_mut() {
                                 Some((text, c, m)) if *c == color && *m == marked => text.push(ch),
@@ -820,11 +837,14 @@ pub fn looks_binary(data: &[u8]) -> bool {
 }
 
 /// Splits into lines, expands tabs and replaces control characters with `·`.
-fn text_lines(data: &[u8]) -> Vec<String> {
-    let text = String::from_utf8_lossy(data);
+/// Also returns where each bidi control was replaced: (line, character
+/// column after expanding tabs), in order.
+fn text_lines(text: &str) -> (Vec<String>, Vec<(usize, usize)>) {
+    let mut bidi = Vec::new();
     let mut lines: Vec<String> = text
         .split('\n')
-        .map(|line| {
+        .enumerate()
+        .map(|(i, line)| {
             let line = line.strip_suffix('\r').unwrap_or(line);
             let mut out = String::with_capacity(line.len());
             let mut col = 0;
@@ -834,7 +854,14 @@ fn text_lines(data: &[u8]) -> Vec<String> {
                     out.extend(std::iter::repeat_n(' ', n));
                     col += n;
                 } else {
-                    out.push(if c.is_control() { '·' } else { c });
+                    if crate::bidi::is_bidi(c) {
+                        bidi.push((i, col));
+                    }
+                    out.push(if c.is_control() || crate::bidi::is_bidi(c) {
+                        '·'
+                    } else {
+                        c
+                    });
                     col += 1;
                 }
             }
@@ -845,7 +872,7 @@ fn text_lines(data: &[u8]) -> Vec<String> {
     if lines.len() > 1 && lines.last().is_some_and(String::is_empty) {
         lines.pop();
     }
-    lines
+    (lines, bidi)
 }
 
 /// `00000010  48 65 6C 6C 6F 0A 00 00  00 00 00 00 00 00 00 00  |Hello...........|`
@@ -894,11 +921,34 @@ mod tests {
     }
 
     #[test]
+    fn bidi_controls_show_as_marked_dots() {
+        let mut v = Viewer::from_bytes(
+            PathBuf::from("x.txt"),
+            0,
+            b"a\xE2\x80\xAEb\xE2\x80\xACc\n\t\xE2\x81\xA6x".to_vec(),
+        );
+        assert_eq!(v.visible_lines(2), ["a·b·c", "        ·x"]);
+        assert_eq!(v.bidi_count(), 3);
+        let error = crate::config::theme().error;
+        let marked = |row: &StyledRow| {
+            row.iter()
+                .filter(|s| s.1 == Some(error))
+                .map(|s| s.0.clone())
+                .collect::<Vec<_>>()
+        };
+        let rows = v.styled(2);
+        assert_eq!(marked(&rows[0]), ["·", "·"]);
+        assert_eq!(marked(&rows[1]), ["·"]);
+        v.toggle_wrap();
+        assert_eq!(marked(&v.styled(2)[0]), ["·", "·"]);
+    }
+
+    #[test]
     fn splits_text_lines() {
-        assert_eq!(text_lines(b"a\r\nb\n"), ["a", "b"]);
-        assert_eq!(text_lines(b"a\tb"), ["a       b"]);
-        assert_eq!(text_lines(b"x\x07y"), ["x·y"]);
-        assert_eq!(text_lines(b""), [""]);
+        assert_eq!(text_lines("a\r\nb\n").0, ["a", "b"]);
+        assert_eq!(text_lines("a\tb").0, ["a       b"]);
+        assert_eq!(text_lines("x\x07y").0, ["x·y"]);
+        assert_eq!(text_lines("").0, [""]);
     }
 
     #[test]

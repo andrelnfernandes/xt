@@ -2676,3 +2676,47 @@ fn autoview_supports_wrap_and_line_number_keys() {
     press(&mut app, KeyCode::Char('#'));
     assert!(app.autoview.as_ref().unwrap().line_numbers);
 }
+
+#[test]
+fn o_asks_before_opening_a_name_with_hidden_bidi() {
+    let tmp = crate::testing::tempdir();
+    std::fs::write(tmp.path().join("fatura\u{202E}fdp.sh"), "").unwrap();
+    let mut app = App::new(tmp.path().to_path_buf());
+    press(&mut app, KeyCode::Enter);
+    assert!(app.selected_name_has_bidi());
+    press(&mut app, KeyCode::Char('o'));
+    let c = app.confirm.as_ref().expect("asks first");
+    assert!(
+        c.question.contains("fatura\\u{202E}fdp.sh"),
+        "{}",
+        c.question
+    );
+    press(&mut app, KeyCode::Char('n'));
+    assert!(app.confirm.is_none());
+}
+
+#[test]
+fn o_on_a_hidden_bidi_name_opens_what_it_asked_about() {
+    let tmp = crate::testing::tempdir();
+    std::fs::write(tmp.path().join("fatura\u{202E}fdp.sh"), "").unwrap();
+    std::fs::write(tmp.path().join("plain.txt"), "").unwrap();
+    let mut app = App::new(tmp.path().to_path_buf());
+    press(&mut app, KeyCode::Enter);
+    let at = |app: &App, name: &str| names(app).iter().position(|n| n == name).unwrap();
+    let i = at(&app, "fatura\u{202E}fdp.sh");
+    app.file_state.select(Some(i));
+    press(&mut app, KeyCode::Char('o'));
+    assert!(app.confirm.is_some(), "asks first");
+    // The selection changes before the answer (a rescan, say): 'y' still
+    // opens the file the question named, not the one under the cursor now.
+    let j = at(&app, "plain.txt");
+    app.file_state.select(Some(j));
+    crate::shell::OPENED.take();
+    press(&mut app, KeyCode::Char('y'));
+    let opened: Vec<String> = crate::shell::OPENED
+        .take()
+        .iter()
+        .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(opened, ["fatura\u{202E}fdp.sh"]);
+}

@@ -367,6 +367,31 @@ impl App {
         let Some(sources) = self.sources_or_warn(tagged) else {
             return;
         };
+        // A name with hidden bidi controls may not be what it looks like.
+        let hidden = sources.iter().find_map(|s| {
+            let name = s.path.file_name()?.to_string_lossy().into_owned();
+            crate::bidi::has_bidi(&name).then_some(name)
+        });
+        if let Some(name) = hidden {
+            let q = format!(
+                "Hidden bidirectional characters in {}. Open anyway?",
+                crate::bidi::escape(&name)
+            );
+            // 'y' opens the files asked about, even if the selection
+            // changes before the answer.
+            self.ask(ConfirmKind::OpenHidden { sources }, q);
+        } else {
+            self.open_sources(sources);
+        }
+    }
+
+    /// The selected file's name has bidi controls (the footer warns).
+    pub(crate) fn selected_name_has_bidi(&self) -> bool {
+        self.selected_file()
+            .is_some_and(|f| crate::bidi::has_bidi(&self.file(f).name.to_string_lossy()))
+    }
+
+    pub(crate) fn open_sources(&mut self, sources: Vec<Source>) {
         if self.remote.is_none() && self.archive.is_none() {
             let paths = sources.into_iter().map(|s| s.path).collect();
             return self.open_paths(paths, &[]);

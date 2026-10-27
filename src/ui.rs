@@ -41,6 +41,13 @@ const SMALL_FILE_WINDOW: u16 = 8;
 const MIN_TREE_WITH_FILES: u16 = 2 * SMALL_FILE_WINDOW;
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
+    draw_screen(frame, app);
+    // Last step, after every early return: no bidi or control character
+    // may reach the terminal, whatever drew it.
+    crate::bidi::sanitize(frame.buffer_mut(), Style::new().fg(theme().error));
+}
+
+fn draw_screen(frame: &mut Frame, app: &mut App) {
     let base = Style::new().fg(theme().text).bg(theme().background);
     frame.render_widget(Block::new().style(base), frame.area());
 
@@ -1166,6 +1173,10 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
                     .fg(theme().message)
                     .add_modifier(Modifier::BOLD),
             )),
+            None if app.selected_name_has_bidi() => Line::from(Span::styled(
+                "Name has hidden bidirectional characters: it may not be what it looks like",
+                Style::new().fg(theme().error),
+            )),
             None => first,
         };
         vec![first, second]
@@ -1972,6 +1983,16 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
             Style::new().fg(theme().error),
         ));
     }
+    if v.bidi_count() > 0 {
+        title.push(Span::styled(
+            format!(
+                "  {} bidirectional control character{} (shown as ·)",
+                v.bidi_count(),
+                if v.bidi_count() == 1 { "" } else { "s" }
+            ),
+            Style::new().fg(theme().error),
+        ));
+    }
     if let Some((i, n)) = tagged {
         title.push(Span::styled(
             format!("  [tagged {i} of {n}]"),
@@ -2351,6 +2372,74 @@ mod tests {
         assert!(footer(&mut app).starts_with("ALT "));
         // Alt+W has no letter of its own in a word: it says so.
         assert!(footer(&mut app).contains("usage (W)"));
+    }
+
+    #[test]
+    fn viewer_header_counts_bidi_controls() {
+        use ratatui::{Terminal, backend::TestBackend};
+        let tmp = crate::testing::tempdir();
+        let mut app = App::new(tmp.path().to_path_buf());
+        app.viewer = Some(crate::viewer::Viewer::from_bytes(
+            "x.txt".into(),
+            6,
+            "a\u{202E}b\u{2066}c".as_bytes().to_vec(),
+        ));
+        let mut term = Terminal::new(TestBackend::new(100, 20)).unwrap();
+        term.draw(|f| draw(f, &mut app)).unwrap();
+        let buf = term.backend().buffer();
+        let row0: String = (0..100).map(|x| buf[(x, 0)].symbol()).collect();
+        assert!(
+            row0.contains("2 bidirectional control characters (shown as ·)"),
+            "{row0}"
+        );
+        app.viewer = Some(crate::viewer::Viewer::from_bytes(
+            "x.txt".into(),
+            3,
+            "a\u{202E}b".as_bytes().to_vec(),
+        ));
+        term.draw(|f| draw(f, &mut app)).unwrap();
+        let buf = term.backend().buffer();
+        let row0: String = (0..100).map(|x| buf[(x, 0)].symbol()).collect();
+        assert!(
+            row0.contains("1 bidirectional control character (shown as ·)"),
+            "{row0}"
+        );
+    }
+
+    #[test]
+    fn bidi_in_names_never_reaches_the_terminal() {
+        use ratatui::{Terminal, backend::TestBackend};
+        let tmp = crate::testing::tempdir();
+        std::fs::write(tmp.path().join("fatura\u{202E}fdp.sh"), "").unwrap();
+        let mut app = App::new(tmp.path().to_path_buf());
+        app.apply(crate::input::Command::SwitchWindow);
+        let mut term = Terminal::new(TestBackend::new(80, 20)).unwrap();
+        term.draw(|f| draw(f, &mut app)).unwrap();
+        let buf = term.backend().buffer();
+        assert!(
+            buf.content
+                .iter()
+                .all(|c| !crate::bidi::has_bidi(c.symbol()))
+        );
+        let screen: String = buf.content.iter().map(|c| c.symbol()).collect();
+        assert!(screen.contains("faturafdp.sh"), "{screen}");
+    }
+
+    #[test]
+    fn footer_warns_about_a_name_with_hidden_bidi() {
+        use ratatui::{Terminal, backend::TestBackend};
+        let tmp = crate::testing::tempdir();
+        std::fs::write(tmp.path().join("fatura\u{202E}fdp.sh"), "").unwrap();
+        let mut app = App::new(tmp.path().to_path_buf());
+        app.apply(crate::input::Command::SwitchWindow);
+        let mut term = Terminal::new(TestBackend::new(100, 20)).unwrap();
+        term.draw(|f| draw(f, &mut app)).unwrap();
+        let buf = term.backend().buffer();
+        let row: String = (0..100).map(|x| buf[(x, 18)].symbol()).collect();
+        assert!(
+            row.contains("Name has hidden bidirectional characters"),
+            "{row}"
+        );
     }
 
     #[test]

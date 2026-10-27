@@ -4,6 +4,7 @@
 
 mod app;
 mod archive;
+mod bidi;
 mod clipboard;
 mod config;
 mod editors;

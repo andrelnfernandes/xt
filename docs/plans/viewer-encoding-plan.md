@@ -37,6 +37,7 @@ de começar; este plano argumenta a partir dele.
   e U+061C. Nenhum deles chega ao terminal, nem um Cc (C0, DEL, C1).
 - **Textos que aparecem na tela** ficam em inglês, como o resto da interface.
   Use os textos exatos deste plano.
+- **Formatação:** `cargo fmt --check` tem que passar (o CI roda no Linux). Rode `cargo fmt` antes de cada commit.
 - **Cada tarefa** termina com `cargo clippy --all-targets -- -D warnings` e
   `cargo test` passando, porque o CI roda os dois em Linux e Windows. Quando
   o código tiver `cfg(windows)`, confira também com
@@ -91,7 +92,7 @@ provavelmente vão incomodar alguém. Cada um tem um teste na tarefa indicada.
     `\u{XXXX}`, em hexadecimal maiúsculo, sem zeros à esquerda;
   - `pub fn sanitize(buf: &mut ratatui::buffer::Buffer, mark: ratatui::style::Style)`.
 
-- [ ] **Passo 1: escrever os testes, que devem falhar**
+- [x] **Passo 1: escrever os testes, que devem falhar**
 
 ```rust
 #[cfg(test)]
@@ -147,17 +148,17 @@ mod tests {
 }
 ```
 
-- [ ] **Passo 2:** `cargo test bidi::` falha por não compilar (as funções
+- [x] **Passo 2:** `cargo test bidi::` falha por não compilar (as funções
   ainda não existem).
-- [ ] **Passo 3: implementar as quatro funções.**
+- [x] **Passo 3: implementar as quatro funções.**
   - Em `sanitize`, percorra `buf.content`. O caminho rápido é a célula cujo
     símbolo é um único byte ASCII entre `0x20` e `0x7E`: siga para a
     próxima sem olhar mais nada.
   - Nas outras células, se algum caractere for bidi ou `char::is_control`,
     remonte o símbolo sem eles. Se ele ficar vazio, use `·`. Aplique `mark`
     com `cell.set_style(mark)`.
-- [ ] **Passo 4:** `cargo test bidi::` passa.
-- [ ] **Passo 5:** commit
+- [x] **Passo 4:** `cargo test bidi::` passa.
+- [x] **Passo 5:** commit
   `Add bidi module: detect, escape and strip bidi controls from the screen`.
 
 ### Tarefa 2: o filtro no fim de `ui::draw`
@@ -173,7 +174,7 @@ mod tests {
   chama `draw_screen` e depois
   `crate::bidi::sanitize(frame.buffer_mut(), Style::new().fg(theme().error))`.
 
-- [ ] **Passo 1: escrever o teste em `ui.rs`, que deve falhar**
+- [x] **Passo 1: escrever o teste em `ui.rs`, que deve falhar**
 
 ```rust
 #[test]
@@ -192,11 +193,11 @@ fn bidi_in_names_never_reaches_the_terminal() {
 }
 ```
 
-- [ ] **Passo 2:** o teste falha, porque o U+202E está grudado no `a`.
-- [ ] **Passo 3:** fazer a separação `draw` / `draw_screen`.
-- [ ] **Passo 4:** `cargo test ui::` passa, e os testes de UI que já existiam
+- [x] **Passo 2:** o teste falha, porque o U+202E está grudado no `a`.
+- [x] **Passo 3:** fazer a separação `draw` / `draw_screen`.
+- [x] **Passo 4:** `cargo test ui::` passa, e os testes de UI que já existiam
   continuam passando.
-- [ ] **Passo 5:** commit
+- [x] **Passo 5:** commit
   `Strip bidi and control characters from every frame before drawing`.
 
 ### Tarefa 3: viewer, camada 2 (`·` marcado e aviso no cabeçalho)
@@ -218,7 +219,7 @@ fn bidi_in_names_never_reaches_the_terminal() {
   `&String::from_utf8_lossy(&data)`. O PR 4 troca isso pelo texto já
   decodificado.
 
-- [ ] **Passo 1: escrever os testes em `viewer.rs`, que devem falhar**
+- [x] **Passo 1: escrever os testes em `viewer.rs`, que devem falhar**
 
 ```rust
 #[test]
@@ -239,8 +240,8 @@ fn bidi_controls_show_as_marked_dots() {
   E em `ui.rs`: um teste que desenha o viewer de um arquivo com dois bidi e
   confere que a linha 0 contém
   `2 bidirectional control characters (shown as ·)`.
-- [ ] **Passo 2:** os testes falham.
-- [ ] **Passo 3: implementar.**
+- [x] **Passo 2:** os testes falham.
+- [x] **Passo 3: implementar.**
   - Em `text_lines`, a mesma substituição que já é feita para
     `is_control` vale para `bidi::is_bidi`, guardando `(i, col)`.
   - Em `styled()`, a cor de um caractere numa posição de bidi é
@@ -248,11 +249,11 @@ fn bidi_controls_show_as_marked_dots() {
   - No cabeçalho, se `bidi_count() > 0`, acrescente o span
     `format!("  {n} bidirectional control characters (shown as ·)")` na cor
     `theme().error`.
-- [ ] **Passo 4:** os testes passam.
-- [ ] **Passo 5:** documentação. Em `viewer.md` (e nas traduções), um
+- [x] **Passo 4:** os testes passam.
+- [x] **Passo 5:** documentação. Em `viewer.md` (e nas traduções), um
   parágrafo: caracteres de controle de direção do texto (Trojan Source,
   CVE-2021-42574) aparecem como `·` vermelho, e o cabeçalho diz quantos são.
-- [ ] **Passo 6:** commit
+- [x] **Passo 6:** commit
   `Viewer: show bidi controls as marked dots and count them in the header`.
 
 ### Tarefa 4: nomes, camada 3 (aviso no rodapé e confirmação no `O`)
@@ -281,7 +282,7 @@ fn bidi_controls_show_as_marked_dots() {
     `format!("Hidden bidirectional characters in {}. Open anyway?", bidi::escape(&name))`,
     em que `name` é o primeiro nome com bidi entre as fontes.
 
-- [ ] **Passo 1: escrever o teste em `app/tests.rs`, que deve falhar**
+- [x] **Passo 1: escrever o teste em `app/tests.rs`, que deve falhar**
 
 ```rust
 #[test]
@@ -302,21 +303,21 @@ fn o_asks_before_opening_a_name_with_hidden_bidi() {
   E em `ui.rs`: um teste que desenha a janela de arquivos com o cursor nesse
   nome e confere que a penúltima linha contém `Name has hidden bidirectional
   characters`.
-- [ ] **Passo 2:** os testes falham.
-- [ ] **Passo 3:** implementar. Em `confirmed`,
+- [x] **Passo 2:** os testes falham.
+- [x] **Passo 3:** implementar. Em `confirmed`,
   `OpenHidden { tagged }` com `'y'` chama `open_sources(tagged)`.
-- [ ] **Passo 4:** os testes passam. Rode também o teste completo:
+- [x] **Passo 4:** os testes passam. Rode também o teste completo:
   `cargo test`.
-- [ ] **Passo 5:** documentação. Em `files.md` (e nas traduções): nomes com
+- [x] **Passo 5:** documentação. Em `files.md` (e nas traduções): nomes com
   caracteres de direção escondidos aparecem marcados em vermelho, o rodapé
   avisa e o `O` pede confirmação.
-- [ ] **Passo 6: conferência manual.** Rode
+- [x] **Passo 6: conferência manual.** Rode
   `cargo build --release`. Depois rode
   `python3 -I ~/.cache/xt-dev/viewer-mem/scripts/capture.py $PWD/target/release/xy ~/.cache/xt-dev/viewer-mem/bidi ~/.cache/xt-dev/viewer-mem/home $'\r'`.
   O esperado é `RLO U+202E bytes sent to terminal: 0`. Repita com as
   teclas `$'\r|\x1b[B|v'` e o mesmo resultado. Se os scripts não
   existirem, a seção 2b do spec diz o que eles fazem.
-- [ ] **Passo 7:** commit
+- [x] **Passo 7:** commit
   `Warn about file names with hidden bidi characters and confirm O on them`.
   Atualize o status em `viewers.md` e no spec. Fim do PR 1.
 
