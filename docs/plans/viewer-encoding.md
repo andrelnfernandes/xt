@@ -161,7 +161,12 @@ bytes brutos (disco / archive / remoto, até o limite)
   - quando o arquivo foi cortado: `(showing first 64 MiB)` (arquivo comum,
     com o limite real do contexto) ou `(showing first 1,048,576 bytes
     decompressed)` (comprimido, com os bytes que o viewer tem, porque o corte
-    também pode vir do tempo). Hoje esse aviso imprime sempre `MAX_BYTES`.
+    também pode vir do tempo). Hoje esse aviso imprime sempre `MAX_BYTES`;
+  - quando a descompressão falha ou para em dados danificados, na cor de
+    erro: `(truncated or corrupt)`, `(incomplete: …)` (o limite de memória
+    parou no meio) ou `(not decompressed: …)` (nada saiu, e o hex mostra os
+    bytes brutos). O aviso do rodapé some na primeira tecla; isto fica
+    (revisão final, M1).
 - **Tecla `O` ("cOdepage"), dentro do viewer** (na lista de arquivos, `O`
   continua sendo "abrir no programa do sistema"), troca em ciclo: UTF-8, CP850, 1252, CP437,
   UTF-16LE, UTF-16BE. O rodapé mostra o nome, por exemplo
@@ -254,7 +259,10 @@ tamanho. No remoto, também controla as respostas do servidor.
   (`FrameDecoder::set_max_window_size`; o padrão, `DEFAULT_MAX_WINDOW_SIZE`,
   é 128 MiB). O máximo do formato, ~3,75 TB (`MAX_WINDOW_SIZE`), não é o
   teto do decoder. Arquivos `zstd --long` e `--ultra -22` (128 MiB) são
-  recusados no V, com aviso.
+  recusados no V, com aviso. No Autoview, o ` (V to view)` só aparece
+  quando a janela pedida (`WindowSizeTooBig { requested }`) cabe nos 64 MiB
+  do V. O xz não diz quanto pede, então nele o sufixo continua sempre
+  (revisão final, M6).
   - O `StreamingDecoder` lê um frame só. Para arquivos com vários frames
     (`pzstd`, `zstd -T`), cria-se um decoder novo para cada frame até a
     entrada acabar. O erro `ReadFrameHeaderError::SkipFrame` pula `length`
