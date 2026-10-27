@@ -165,6 +165,76 @@ impl Terminal {
         Ok(t)
     }
 
+    /// Runs an editor command line inside a PTY, to draw inside Xylem's frame.
+    pub fn spawn_external(ext: &shell::External, vim_theme: Option<&Path>) -> anyhow::Result<Self> {
+        let size = (24, 80);
+        let pair = native_pty_system().openpty(pty_size(size))?;
+        let line = match vim_theme {
+            Some(_) => shell::line_with_vim_theme(&ext.line),
+            None => ext.line.clone(),
+        };
+        #[cfg(unix)]
+        let mut cmd = {
+            let mut c = CommandBuilder::new("sh");
+            c.arg("-c");
+            c.arg(line);
+            c
+        };
+        #[cfg(windows)]
+        let mut cmd = {
+            let mut c = CommandBuilder::new("cmd");
+            c.arg("/C");
+            c.arg(line);
+            c
+        };
+        cmd.cwd(&ext.cwd);
+        cmd.env("XY_TERMINAL", "1");
+        cmd.env("TERM", "xterm-256color");
+        cmd.env("COLORTERM", "truecolor");
+        if let Some(file) = &ext.file {
+            cmd.env(shell::FILE_VAR, file);
+        }
+        if let Some(theme) = vim_theme {
+            cmd.env(shell::VIM_THEME_VAR, theme);
+        }
+        let child = pair.slave.spawn_command(cmd)?;
+        drop(pair.slave);
+
+        let parser = Arc::new(Mutex::new(vt100::Parser::new(size.0, size.1, 0)));
+        let dirty = Arc::new(AtomicBool::new(true));
+        let mut reader = pair.master.try_clone_reader()?;
+        let reported = Arc::new(Mutex::new(None));
+        let (p, d) = (parser.clone(), dirty.clone());
+        std::thread::spawn(move || {
+            let mut buf = [0u8; 8192];
+            while let Ok(n) = reader.read(&mut buf) {
+                if n == 0 {
+                    break;
+                }
+                p.lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .process(&buf[..n]);
+                d.store(true, Ordering::Relaxed);
+            }
+            d.store(true, Ordering::Relaxed);
+        });
+        let writer = pair.master.take_writer()?;
+        Ok(Terminal {
+            parser,
+            dirty,
+            master: pair.master,
+            writer,
+            child,
+            size,
+            kind: ShellKind::Posix,
+            script: None,
+            pending: None,
+            prompt_seen: false,
+            remote: false,
+            reported,
+        })
+    }
+
     fn spawn_shell(
         shell: &str,
         args: &[&str],
@@ -432,7 +502,7 @@ impl Drop for Terminal {
 /// A new folder for the script, inside Xylem's folder for this run
 /// (`~/.cache/xylem/run-<pid>`, readable only by the user). One per terminal, so
 /// that two terminals (in the tests) never share a script.
-fn private_dir() -> std::io::Result<PathBuf> {
+pub fn private_dir() -> std::io::Result<PathBuf> {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.subsec_nanos());

@@ -6,6 +6,13 @@ Opens the file in the editor: the one set on page 1 of the
 [configuration](configuration.md), or else `$VISUAL`, `$EDITOR`, Debian and
 Ubuntu's `editor`, or `vi`.
 
+By default, the editor opens **inside Xylem's frame** (`editor_in_frame = true`
+on page 1 of **F12**) and uses **Xylem's color theme** (`editor_theme = true`),
+including syntax and UI colors matching the active theme when the editor is
+`vi`, `vim` or `nvim`. Set `editor_in_frame = false` to hand the whole terminal
+over to the editor instead, or `editor_theme = false` to keep the editor's own
+color scheme.
+
 ### Editors by file type
 
 A text editor only mangles an image or a program, so E does not open
@@ -26,9 +33,10 @@ Each key is a list of name patterns, as in [Filespec](filespec.md) (case does
 not matter); each value a command line, with `%f` for the file (or else the
 file goes at the end). The first key that matches wins, in the file's order.
 `binary` is for the binary files that no pattern took; the other files open
-in the usual editor. Commands run the same way as the editor: the terminal is
-handed over and Xylem comes back when they end (add `&` for a graphical
-program you want to leave running).
+in the usual editor. Commands run the same way as the editor: inside Xylem's
+frame by default, or with the terminal handed over when `editor_in_frame = false`
+(for a graphical program you want to leave running, add `&` and set
+`editor_in_frame = false`, or use `O`).
 
 Xylem has no hex editor of its own, and that is a decision, not something
 missing: it would be a lot of work for little use, and editing bytes by hand
