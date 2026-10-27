@@ -2628,3 +2628,51 @@ fn e_on_a_binary_file_needs_an_editor_from_the_config() {
     // The name is in the line, or on Windows in XY_FILE.
     assert!(ext.file.is_some_and(|f| f.ends_with("photo.jpg")), "{line}");
 }
+
+#[test]
+fn viewer_goto_line_and_toggles() {
+    let (tmp, mut app) = sample();
+    let many_lines = (1..=50).map(|i| format!("line {i}\n")).collect::<String>();
+    write(tmp.path().join("a.rs"), many_lines).unwrap();
+    app.apply(Command::Relog);
+
+    // Enter files window and view
+    press(&mut app, KeyCode::Enter);
+    press(&mut app, KeyCode::Char('v'));
+    assert!(app.viewer.is_some());
+
+    // Toggle wrap with 'w'
+    press(&mut app, KeyCode::Char('w'));
+    assert!(app.viewer.as_ref().unwrap().wrap);
+
+    // Toggle line numbers with '#'
+    press(&mut app, KeyCode::Char('#'));
+    assert!(app.viewer.as_ref().unwrap().line_numbers);
+
+    // Goto line 35 with 'g'
+    press(&mut app, KeyCode::Char('g'));
+    assert!(app.prompt.as_ref().unwrap().is_goto());
+    answer_prompt(&mut app, "35");
+    assert_eq!(app.viewer.as_ref().unwrap().top, 34);
+
+    // Goto with ':' and ':10'
+    press(&mut app, KeyCode::Char(':'));
+    assert!(app.prompt.as_ref().unwrap().is_goto());
+    answer_prompt(&mut app, ":10");
+    assert_eq!(app.viewer.as_ref().unwrap().top, 9);
+}
+
+#[test]
+fn autoview_supports_wrap_and_line_number_keys() {
+    let (_tmp, mut app) = sample();
+    app.apply(Command::Autoview);
+    assert!(app.autoview.is_some());
+
+    // In autoview, 'w' toggles wrap
+    press(&mut app, KeyCode::Char('w'));
+    assert!(app.autoview.as_ref().unwrap().wrap);
+
+    // In autoview, '#' toggles line numbers
+    press(&mut app, KeyCode::Char('#'));
+    assert!(app.autoview.as_ref().unwrap().line_numbers);
+}

@@ -9,6 +9,9 @@ Binary files open in hex. Files over 16 MiB show only the beginning.
 | ← → | scroll sideways |
 | `H` | text or hex |
 | `C` | syntax colors on or off |
+| `W` | soft wrap on or off |
+| `#` or `L` | line numbers on or off (in text mode) |
+| `g` or `:` | jump to a line (or byte offset in hex) |
 | `E` | edit the file; back in Xylem, the viewer shows the new contents at the same place (binary files only with an editor in [`[editors]`](execute.md)) |
 | `D` | with Git on: what changed since the last commit, and back ([Git](git.md)) |
 | `T` / `U` | tag / untag the file |
