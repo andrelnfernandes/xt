@@ -16,7 +16,8 @@ use crate::decompress::{
 use crate::highlight::Highlighter;
 use crate::search::Pattern;
 
-/// Larger files are displayed only up to this limit.
+/// The default viewer limit, the floor of `auto` and the cap for remote
+/// files (16 MiB).
 pub const MAX_BYTES: u64 = 16 * 1024 * 1024;
 pub const HEX_WIDTH: usize = 16;
 const TAB_WIDTH: usize = 8;
@@ -1060,9 +1061,6 @@ pub fn looks_binary(data: &[u8]) -> bool {
     data.iter().take(BINARY_PROBE).any(|&b| b == 0)
 }
 
-/// Splits into lines, expands tabs and replaces control characters with `·`.
-/// Also returns where each bidi control was replaced: (line, character
-/// column after expanding tabs), in order.
 /// The syntax colors of a text: by the name they follow, else by `path`.
 fn text_colors(path: &Path, name: Option<&Path>, lines: &[String]) -> Option<Highlighter> {
     match name {
@@ -1071,6 +1069,9 @@ fn text_colors(path: &Path, name: Option<&Path>, lines: &[String]) -> Option<Hig
     }
 }
 
+/// Splits into lines, expands tabs and replaces control characters with `·`.
+/// Also returns where each bidi control was replaced: (line, character
+/// column after expanding tabs), in order.
 fn text_lines(text: &str) -> (Vec<String>, Vec<(usize, usize)>) {
     let mut bidi = Vec::new();
     let mut lines: Vec<String> = text
