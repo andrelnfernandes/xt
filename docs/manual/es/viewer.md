@@ -40,4 +40,8 @@ predeterminado es `syntax_highlight` (página 2 de la
 fondo del tema actual, y solo se colorean las primeras 20.000 líneas, para que
 los archivos enormes nunca ralenticen el visor.
 
+## Caracteres de control de dirección
+
+Algunos caracteres invisibles cambian la dirección del texto y pueden hacer que un código parezca distinto de lo que realmente dice (Trojan Source, CVE-2021-42574). El visor nunca los oculta: cada uno aparece como un `·` rojo, y el encabezado indica cuántos hay.
+
 Véase también: [buscar en los archivos marcados](search.md).

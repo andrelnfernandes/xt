@@ -1979,6 +1979,15 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
             Style::new().fg(theme().error),
         ));
     }
+    if v.bidi_count() > 0 {
+        title.push(Span::styled(
+            format!(
+                "  {} bidirectional control characters (shown as ·)",
+                v.bidi_count()
+            ),
+            Style::new().fg(theme().error),
+        ));
+    }
     if let Some((i, n)) = tagged {
         title.push(Span::styled(
             format!("  [tagged {i} of {n}]"),
@@ -2361,6 +2370,26 @@ mod tests {
     }
 
     #[test]
+    fn viewer_header_counts_bidi_controls() {
+        use ratatui::{Terminal, backend::TestBackend};
+        let tmp = crate::testing::tempdir();
+        let mut app = App::new(tmp.path().to_path_buf());
+        app.viewer = Some(crate::viewer::Viewer::from_bytes(
+            "x.txt".into(),
+            6,
+            "a\u{202E}b\u{2066}c".as_bytes().to_vec(),
+        ));
+        let mut term = Terminal::new(TestBackend::new(100, 20)).unwrap();
+        term.draw(|f| draw(f, &mut app)).unwrap();
+        let buf = term.backend().buffer();
+        let row0: String = (0..100).map(|x| buf[(x, 0)].symbol()).collect();
+        assert!(
+            row0.contains("2 bidirectional control characters (shown as ·)"),
+            "{row0}"
+        );
+    }
+
+    #[test]
     fn bidi_in_names_never_reaches_the_terminal() {
         use ratatui::{Terminal, backend::TestBackend};
         let tmp = crate::testing::tempdir();
@@ -2370,7 +2399,11 @@ mod tests {
         let mut term = Terminal::new(TestBackend::new(80, 20)).unwrap();
         term.draw(|f| draw(f, &mut app)).unwrap();
         let buf = term.backend().buffer();
-        assert!(buf.content.iter().all(|c| !crate::bidi::has_bidi(c.symbol())));
+        assert!(
+            buf.content
+                .iter()
+                .all(|c| !crate::bidi::has_bidi(c.symbol()))
+        );
         let screen: String = buf.content.iter().map(|c| c.symbol()).collect();
         assert!(screen.contains("faturafdp.sh"), "{screen}");
     }

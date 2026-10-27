@@ -41,4 +41,8 @@ réglage par défaut est `syntax_highlight` (page 2 de la
 du thème actif, et seules les 20 000 premières lignes sont colorées, afin que
 les très gros fichiers ne ralentissent jamais la visionneuse.
 
+## Caractères de contrôle de direction
+
+Certains caractères invisibles changent le sens d'écriture du texte et peuvent faire paraître un code différent de ce qu'il dit vraiment (Trojan Source, CVE-2021-42574). Le visualiseur ne les cache jamais : chacun apparaît sous la forme d'un `·` rouge, et l'en-tête indique combien il y en a.
+
 Voir aussi : [rechercher dans les fichiers marqués](search.md).

@@ -37,4 +37,8 @@ shell, C, JavaScript, SQL, YAML, Markdown...), recognized by extension, by name
 stay readable on the current theme's background, and only the first 20,000
 lines are colored, so huge files never slow the viewer down.
 
+## Text direction controls
+
+Some invisible characters change the direction of the text and can make code look different from what it really says (Trojan Source, CVE-2021-42574). The viewer never hides them: each one appears as a red `·`, and the header says how many there are.
+
 See also: [searching the tagged files](search.md).
