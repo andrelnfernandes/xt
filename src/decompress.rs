@@ -5,7 +5,8 @@
 // (Task 8); the allow goes away then.
 #![cfg_attr(not(test), allow(dead_code))]
 
-use std::io::{self, Read};
+use std::cell::Cell;
+use std::io::{self, BufReader, Read};
 use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -109,18 +110,81 @@ fn frame_error(e: ruzstd::decoding::errors::FrameDecoderError) -> io::Error {
     }
 }
 
+/// How much compressed input a decoder gets per read. The clock is checked
+/// before each piece, and some inputs cost a lot per byte: an empty bzip2
+/// stream is 14 bytes, yet it allocates and clears about 3.6 MB.
+const PIECE: usize = 1024;
+
+/// The time limit, shared by `Deadline`, `ZstdFrames` and `read_all`.
+struct Clock {
+    start: Instant,
+    limit: Duration,
+    /// A read was refused because the time was up.
+    fired: Cell<bool>,
+}
+
+impl Clock {
+    fn new(limit: Duration) -> Self {
+        Clock {
+            start: Instant::now(),
+            limit,
+            fired: Cell::new(false),
+        }
+    }
+
+    fn expired(&self) -> bool {
+        self.start.elapsed() >= self.limit
+    }
+
+    /// `TimedOut` once the time is up.
+    fn check(&self) -> io::Result<()> {
+        if self.expired() {
+            self.fired.set(true);
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "decompression time limit",
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// The compressed input, handed out a piece at a time, with the clock
+/// checked before each piece. Decoders go through empty members, streams,
+/// blocks or frames inside a single `read` without any output, so the time
+/// limit has to be on the input side: a check between output reads alone
+/// never runs while they do.
+struct Deadline<'a> {
+    input: &'a [u8],
+    clock: &'a Clock,
+}
+
+impl Read for Deadline<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.clock.check()?;
+        let n = buf.len().min(PIECE).min(self.input.len());
+        let (piece, rest) = self.input.split_at(n);
+        buf[..n].copy_from_slice(piece);
+        self.input = rest;
+        Ok(n)
+    }
+}
+
 /// Reads every zstd frame of a slice as one stream, skipping skippable frames.
 struct ZstdFrames<'a> {
     rest: &'a [u8],
     window: u32,
-    current: Option<ruzstd::decoding::StreamingDecoder<&'a [u8], ruzstd::decoding::FrameDecoder>>,
+    clock: &'a Clock,
+    current:
+        Option<ruzstd::decoding::StreamingDecoder<Deadline<'a>, ruzstd::decoding::FrameDecoder>>,
 }
 
 impl<'a> ZstdFrames<'a> {
-    fn new(input: &'a [u8], window: u32) -> Self {
+    fn new(input: &'a [u8], window: u32, clock: &'a Clock) -> Self {
         ZstdFrames {
             rest: input,
             window,
+            clock,
             current: None,
         }
     }
@@ -133,15 +197,21 @@ impl Read for ZstdFrames<'_> {
             return Ok(0);
         }
         loop {
+            // Empty frames give no output: the time is checked per frame too.
+            self.clock.check()?;
             if let Some(frame) = &mut self.current {
                 match frame.read(buf)? {
-                    0 => self.rest = self.current.take().map_or(&[], |f| f.into_inner()),
+                    0 => self.rest = self.current.take().map_or(&[], |f| f.into_inner().input),
                     n => return Ok(n),
                 }
             } else if self.rest.is_empty() {
                 return Ok(0);
             } else {
-                match zstd_reader(self.rest, self.window) {
+                let input = Deadline {
+                    input: self.rest,
+                    clock: self.clock,
+                };
+                match zstd_reader(input, self.window) {
                     Ok(frame) => self.current = Some(frame),
                     Err(e) => {
                         // A skippable frame is 4 bytes of magic, 4 of length, then the payload.
@@ -185,13 +255,36 @@ pub fn memory_note(limit: u32) -> String {
     )
 }
 
+fn time_note(limits: Limits) -> String {
+    format!("decompression stopped after {}", duration_text(limits.time))
+}
+
 /// Decompresses one level of `input`, stopping at the output and time limits.
 pub fn decompress(input: &[u8], kind: Compression, limits: Limits) -> Decompressed {
-    guarded(|| match kind {
-        Compression::Gzip => read_all(flate2::read::MultiGzDecoder::new(input), limits),
-        Compression::Bzip2 => read_all(bzip2::read::MultiBzDecoder::new(input), limits),
-        Compression::Xz => read_all(xz_reader(input, limits.dict), limits),
-        Compression::Zstd => read_all(ZstdFrames::new(input, limits.dict), limits),
+    guarded(|| {
+        let clock = Clock::new(limits.time);
+        let pieces = Deadline {
+            input,
+            clock: &clock,
+        };
+        // The `bufread` decoders see only what the small buffer holds, so
+        // they come back to `Deadline`, and to the clock, every `PIECE` bytes.
+        match kind {
+            Compression::Gzip => read_all(
+                flate2::bufread::MultiGzDecoder::new(BufReader::with_capacity(PIECE, pieces)),
+                limits,
+                &clock,
+            ),
+            Compression::Bzip2 => read_all(
+                bzip2::bufread::MultiBzDecoder::new(BufReader::with_capacity(PIECE, pieces)),
+                limits,
+                &clock,
+            ),
+            Compression::Xz => read_all(xz_reader(pieces, limits.dict), limits, &clock),
+            Compression::Zstd => {
+                read_all(ZstdFrames::new(input, limits.dict, &clock), limits, &clock)
+            }
+        }
     })
 }
 
@@ -200,12 +293,21 @@ fn guarded(f: impl FnOnce() -> Decompressed) -> Decompressed {
     crate::panic_guard::catch(f).unwrap_or_else(truncated)
 }
 
-fn read_all(mut decoder: impl Read, limits: Limits) -> Decompressed {
-    let start = Instant::now();
+fn read_all(mut decoder: impl Read, limits: Limits, clock: &Clock) -> Decompressed {
     let mut data: Vec<u8> = Vec::new();
     let mut buf = vec![0u8; CHUNK];
     let mut cut = false;
     let mut note = None;
+    // The time running out comes back as an error from inside the decoder,
+    // whatever it wraps it in: a cut, keeping what was decoded so far.
+    let stopped = |e: &io::Error, cut: &mut bool| {
+        if clock.fired.get() || e.kind() == io::ErrorKind::TimedOut {
+            *cut = true;
+            time_note(limits)
+        } else {
+            error_note(e, limits)
+        }
+    };
     loop {
         let room = limits.output - data.len();
         if room == 0 {
@@ -214,8 +316,8 @@ fn read_all(mut decoder: impl Read, limits: Limits) -> Decompressed {
             match decoder.read(&mut buf[..1]) {
                 Ok(0) => {}
                 Ok(_) => cut = true,
-                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-                Err(e) => note = Some(error_note(&e, limits)),
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                Err(e) => note = Some(stopped(&e, &mut cut)),
             }
             break;
         }
@@ -223,18 +325,15 @@ fn read_all(mut decoder: impl Read, limits: Limits) -> Decompressed {
         match decoder.read(&mut buf[..want]) {
             Ok(0) => break,
             Ok(n) => data.extend_from_slice(&buf[..n]),
-            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
             Err(e) => {
-                note = Some(error_note(&e, limits));
+                note = Some(stopped(&e, &mut cut));
                 break;
             }
         }
-        if start.elapsed() >= limits.time {
+        if clock.expired() {
             cut = true;
-            note = Some(format!(
-                "decompression stopped after {}",
-                duration_text(limits.time)
-            ));
+            note = Some(time_note(limits));
             break;
         }
     }
@@ -273,6 +372,20 @@ pub(crate) mod test_util {
         let block = [0x02, 0x00, 0x21, 0x01, props, 0x00, 0x00, 0x00];
         v.extend(block);
         v.extend(crc32(&block));
+        v
+    }
+
+    /// About `bytes` of empty xz blocks after one stream header; each block
+    /// declares a 16 MiB dictionary and ends at once (20 bytes per block).
+    pub(crate) fn xz_empty_blocks(bytes: usize) -> Vec<u8> {
+        let mut block = vec![0x02, 0x00, 0x21, 0x01, 24, 0x00, 0x00, 0x00];
+        block.extend(crc32(&block.clone()));
+        block.extend([0x00, 0, 0, 0]); // LZMA2 end marker + padding
+        block.extend([0, 0, 0, 0]); // CRC32 of no data
+        let mut v = b"\xFD7zXZ\0".to_vec();
+        v.extend([0x00, 0x01]);
+        v.extend(crc32(&[0x00, 0x01]));
+        v.extend(block.repeat(bytes / block.len()));
         v
     }
 }
@@ -475,7 +588,7 @@ mod tests {
                 panic!("boom")
             }
         }
-        let d = guarded(|| read_all(Boom, limits(MIB)));
+        let d = guarded(|| read_all(Boom, limits(MIB), &Clock::new(VIEW_TIME)));
         assert!(d.data.is_empty() && !d.cut);
         assert_eq!(d.note.as_deref(), Some(TRUNCATED));
         assert!(!crate::panic_guard::active());
@@ -485,6 +598,61 @@ mod tests {
     fn guard_catches_a_panic() {
         assert_eq!(crate::panic_guard::catch(|| -> u8 { panic!("boom") }), None);
         assert!(!crate::panic_guard::active());
+    }
+
+    /// An empty bzip2 stream: "BZh9", the end-of-stream magic and CRC 0.
+    const EMPTY_BZIP2: [u8; 14] = [
+        b'B', b'Z', b'h', b'9', 0x17, 0x72, 0x45, 0x38, 0x50, 0x90, 0, 0, 0, 0,
+    ];
+    /// An empty gzip member: header, a final empty block, CRC 0 and size 0.
+    const EMPTY_GZIP: [u8; 20] = [
+        0x1F, 0x8B, 8, 0, 0, 0, 0, 0, 0, 0xFF, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    /// An empty zstd frame: single segment, content size 0, an empty last block.
+    const EMPTY_ZSTD: [u8; 9] = [0x28, 0xB5, 0x2F, 0xFD, 0x20, 0x00, 0x01, 0x00, 0x00];
+
+    /// Decoders go through empty members, blocks or frames inside a single
+    /// `read`, with no output at all: the clock must stop them anyway. The
+    /// bound is loose on purpose (Autoview's limit is 100 ms).
+    fn assert_stops_on_time(input: &[u8], kind: Compression) {
+        let autoview = Limits {
+            output: MIB,
+            dict: AUTOVIEW_DICT,
+            time: AUTOVIEW_TIME,
+        };
+        let start = Instant::now();
+        let d = decompress(input, kind, autoview);
+        let took = start.elapsed();
+        assert!(took < Duration::from_secs(2), "{kind:?} took {took:?}");
+        assert!(d.cut, "{kind:?} took {took:?}, note {:?}", d.note);
+        assert_eq!(
+            d.note.as_deref(),
+            Some("decompression stopped after 100 ms"),
+            "{kind:?}"
+        );
+    }
+
+    #[test]
+    fn empty_bzip2_streams_stop_on_time() {
+        assert_stops_on_time(&EMPTY_BZIP2.repeat(MIB / 14), Compression::Bzip2);
+    }
+
+    #[test]
+    fn empty_gzip_members_stop_on_time() {
+        assert_stops_on_time(&EMPTY_GZIP.repeat(8 * MIB / 20), Compression::Gzip);
+    }
+
+    #[test]
+    fn empty_xz_blocks_stop_on_time() {
+        assert_stops_on_time(
+            &super::test_util::xz_empty_blocks(16 * MIB),
+            Compression::Xz,
+        );
+    }
+
+    #[test]
+    fn empty_zstd_frames_stop_on_time() {
+        assert_stops_on_time(&EMPTY_ZSTD.repeat(16 * MIB / 9), Compression::Zstd);
     }
 
     #[test]

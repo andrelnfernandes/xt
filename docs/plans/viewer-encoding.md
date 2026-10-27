@@ -260,9 +260,28 @@ tamanho. No remoto, também controla as respostas do servidor.
 - **gzip e bzip2:** memória fixa (janela de 32 KiB; blocos de no máximo
   900 KB). Usam `MultiGzDecoder` e `MultiBzDecoder`, por causa de logs
   concatenados.
-- **Tempo:** a descompressão lê de 64 KiB em 64 KiB e confere o relógio
-  entre uma leitura e outra. Uma leitura sozinha é limitada pela entrada.
-  Ao bater no tempo ou na saída, o viewer mostra o que já tem e avisa.
+- **Tempo:** o relógio fica do lado da **entrada**.
+  - A premissa da primeira versão ("uma leitura sozinha é limitada pela
+    entrada") era falsa, e a revisão final mediu isso. Os decodificadores
+    percorrem membros, streams, blocos ou frames vazios dentro de uma única
+    leitura, sem produzir saída, e conferir o relógio só entre as leituras
+    de saída não pega esse caso. Com os limites do Autoview, 1 MiB de
+    streams bzip2 vazios (14 bytes cada) levava 10,8 s, porque o
+    libbz2-rs-sys aloca e zera ~3,6 MB a cada cabeçalho `BZh9`. No V, 32 MiB
+    de membros gzip vazios levavam 6 s.
+  - Agora um leitor privado, `Deadline`, entrega a entrada comprimida em
+    pedaços de no máximo 1 KiB e confere o relógio antes de cada pedaço.
+    Passado o limite, devolve `TimedOut`.
+  - O gzip e o bzip2 usam os decodificadores `bufread` sobre um `BufReader`
+    de 1 KiB, para não puxarem um bloco grande entre duas conferências. O
+    xz e o zstd leem do `Deadline`, e o laço de frames do zstd também
+    confere o relógio.
+  - O `TimedOut` vira o aviso de tempo (`decompression stopped after …`) e
+    um corte, nunca `compressed data truncated or corrupt`. O que já foi
+    descomprimido fica.
+  - Medido (release): o mesmo 1 MiB de bzip2 para em ~107 ms. Em arquivos
+    normais, o custo mudou entre −2% e +9%.
+  - Ao bater no tempo ou na saída, o viewer mostra o que já tem e avisa.
 - **Memória total:** o buffer comprimido é liberado logo depois de
   descomprimir, porque o hex mostra os bytes descomprimidos e o E abre o
   original no disco. O pico fica perto de 2,5× o limite, mais o dicionário.
