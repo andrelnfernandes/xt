@@ -2686,7 +2686,11 @@ fn o_asks_before_opening_a_name_with_hidden_bidi() {
     assert!(app.selected_name_has_bidi());
     press(&mut app, KeyCode::Char('o'));
     let c = app.confirm.as_ref().expect("asks first");
-    assert!(c.question.contains("fatura\\u{202E}fdp.sh"), "{}", c.question);
+    assert!(
+        c.question.contains("fatura\\u{202E}fdp.sh"),
+        "{}",
+        c.question
+    );
     press(&mut app, KeyCode::Char('n'));
     assert!(app.confirm.is_none());
 }
