@@ -893,13 +893,13 @@ proptest! {
 **Arquivos:**
 - Modificar: `.github/workflows/ci.yml`.
 
-- [ ] **Passo 1:** acrescentar um job `audit` em `ubuntu-latest`, com
+- [x] **Passo 1:** acrescentar um job `audit` em `ubuntu-latest`, com
   checkout e o toolchain que o job `test` já usa, e o passo
   `cargo install cargo-audit --locked && cargo audit`. Nada de action de
   terceiros para a auditoria, porque seria mais um fornecedor no CI.
-- [ ] **Passo 2:** rodar localmente
+- [x] **Passo 2:** rodar localmente
   `cargo install cargo-audit --locked && cargo audit`. O esperado é sair
   com código 0. Se ele apontar alertas, informe o autor antes de silenciar
   qualquer um.
-- [ ] **Passo 3:** commit `CI: audit dependencies with cargo audit`.
+- [x] **Passo 3:** commit `CI: audit dependencies with cargo audit`.
   Atualize o status em `viewers.md`: subprojeto 1 concluído.
