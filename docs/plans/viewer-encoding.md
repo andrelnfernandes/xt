@@ -7,9 +7,10 @@ branch `bidi-guard`; PR 2 (módulo `decompress` e correção do Alt+F5,
 Tarefas 5 a 7) implementado no branch `decompress`; PR 3 (Tarefas 8 e 9)
 implementado no branch `viewer-decompress`; PR 4 (Tarefas 10 e 11,
 `charset` e a tecla `O`) implementado no branch `viewer-charset`; PR 5
-(Tarefa 12, `viewer_max_size`) implementado no branch `viewer-max-size`; o
-próximo é o PR 6 (Tarefa 13). Spec aprovado pelo
-autor. O plano de implementação
+(Tarefa 12, `viewer_max_size`) implementado no branch `viewer-max-size`;
+PR 6 (Tarefa 13, `cargo audit` no CI) implementado no branch `ci-audit`.
+Subprojeto 1 implementado, nada enviado; falta a revisão do branch inteiro.
+Spec aprovado pelo autor. O plano de implementação
 está em [viewer-encoding-plan.md](viewer-encoding-plan.md). Ao escrevê-lo,
 quatro pontos foram corrigidos aqui: a janela do zstd, a conta do xz, o
 panic hook e as letras do F12.

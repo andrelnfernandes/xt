@@ -35,3 +35,14 @@ jobs:
         with:
           name: xy-windows-x86_64
           path: target/release/xy.exe
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      # Installed from crates.io on purpose: no third-party audit action.
+      - name: Audit dependencies
+        run: cargo install cargo-audit --locked && cargo audit

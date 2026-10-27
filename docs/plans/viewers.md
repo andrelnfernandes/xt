@@ -133,8 +133,12 @@ es, de, fr e zh) e precisa acompanhar cada mudança.
     branch `viewer-charset`, ainda sem push nem PR.
   - **PR 5 (`viewer_max_size` e a RAM, Tarefa 12): implementado** no branch
     `viewer-max-size`, ainda sem push nem PR.
-  - **Próximo passo:** PR 6 (Tarefa 13 em diante). Marque os checkboxes no
-    plano e atualize este status ao fim de cada PR.
+  - **PR 6 (`cargo audit` no CI, Tarefa 13): implementado** no branch
+    `ci-audit`, ainda sem push nem PR.
+  - **Subprojeto 1 implementado** nos PRs 1 a 6, em branches encadeados
+    (`bidi-guard` → `decompress` → `viewer-decompress` → `viewer-charset` →
+    `viewer-max-size` → `ci-audit`), nada enviado. **Próximo passo:** a
+    revisão do branch inteiro, depois push e PRs.
 - **Correções feitas no spec ao escrever o plano** (já incorporadas):
   - o `ruzstd` 0.9.1 já limita a janela a 128 MiB por padrão
     (`new_with_max_window_size`);
