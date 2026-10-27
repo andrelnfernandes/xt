@@ -855,7 +855,7 @@ proptest! {
   beginning" vira a explicação do limite) e `configuration.md`, nas 6
   línguas.
 
-- [ ] **Passo 1: escrever os testes, que devem falhar.**
+- [x] **Passo 1: escrever os testes, que devem falhar.**
 
 ```rust
 #[test] fn auto_is_a_32nd_of_ram_between_16_and_256_mib() {
@@ -875,12 +875,12 @@ proptest! {
   - em `app/tests.rs`, um arquivo de 2 MiB com `viewer_limit = 1 << 20`
     abre `truncated()` com `limit() == 1 << 20`;
   - o teste de `parse_meminfo`, que já existe, continua passando.
-- [ ] **Passo 2:** os testes falham.
-- [ ] **Passo 3:** implementar.
-- [ ] **Passo 4:** os testes passam. Rode também o `clippy` com o target
+- [x] **Passo 2:** os testes falham.
+- [x] **Passo 3:** implementar.
+- [x] **Passo 4:** os testes passam. Rode também o `clippy` com o target
   Windows, porque `windows.rs` mudou.
-- [ ] **Passo 5:** escrever a documentação.
-- [ ] **Passo 6:** commit
+- [x] **Passo 5:** escrever a documentação.
+- [x] **Passo 6:** commit
   `Make the viewer size limit configurable (auto = RAM/32, 16-256 MiB)`.
   Atualize o status. Fim do PR 5.
 
