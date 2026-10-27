@@ -7,6 +7,7 @@ mod archive;
 mod bidi;
 mod clipboard;
 mod config;
+mod decompress;
 mod editors;
 mod filetype;
 mod git;
@@ -18,6 +19,7 @@ mod keymap;
 mod model;
 mod ops;
 mod pane;
+mod panic_guard;
 mod picker;
 mod platform;
 mod rclone;
@@ -213,6 +215,14 @@ fn main() -> anyhow::Result<()> {
     // `init` also installs a panic hook that restores the terminal.
     let mut terminal = ratatui::init();
     let mut keyboard = Keyboard::detect();
+    // Outermost hook: while `panic_guard::catch` runs, a caught panic must
+    // not trigger the hooks that restore the terminal.
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        if !panic_guard::active() {
+            previous(info);
+        }
+    }));
     let result = run(&mut terminal, &mut app, &mut keyboard);
     keyboard.restore();
     ratatui::restore();
