@@ -191,6 +191,8 @@ pub struct Options {
     pub viewer_wrap: bool,
     /// Line numbers in the text viewer (# / L toggles while viewing).
     pub viewer_line_numbers: bool,
+    /// Show .gz/.xz/.zst/.bz2 files decompressed in the viewer and in
+    /// Autoview (F12, J); off shows their raw bytes.
     pub viewer_decompress: bool,
     /// Initial mode of the files window (Alt+F changes it while running).
     pub file_display: FileDisplay,
