@@ -29,4 +29,20 @@
 
 有些不可见字符会改变文本的方向，让代码看起来和它实际的内容不同（Trojan Source，CVE-2021-42574）。查看器从不隐藏它们：每个字符都显示为红色的 `·`，标题栏会告诉你有多少个。
 
+## 压缩文件
+
+以 `.gz`、`.xz`、`.zst` 或 `.bz2` 结尾的文件会解压后以文本打开。Xylem 看的是文件的前几个字节，而不是文件名，并且只解一层：`.gz` 里面的 `.gz` 仍保持压缩。标题栏显示 `gzip → N bytes`（格式和解压后的大小）。
+
+解压有限制。查看器最多读取 16 MiB，最多用时 3 秒，xz 字典或 zstd 窗口最多占用 64 MiB 内存。自动预览（Autoview）的限制是 1 MiB、100 毫秒和 16 MiB。达到限制时，标题栏显示 `(showing first N bytes decompressed)`，并用一条提示说明原因：
+
+- `compressed data truncated or corrupt`（压缩数据被截断或已损坏）
+- `decompression stopped after 3 s`（自动预览中为 100 ms）
+- `needs more than 64 MiB of memory to decompress`（自动预览中为 16 MiB，并带有 ` (V to view)`）
+
+自动预览会在标题中显示这条提示。在十六进制模式（`H`）下看到的是解压后的字节。颜色按去掉压缩扩展名后的文件名决定：`app.rs.gz` 按 Rust 着色。
+
+对于 `.tar.gz`（或 `.tar.xz` 等），提示为 `TAR archive: Alt+F5 opens it as a folder`（按 Alt+F5 可将其作为文件夹打开）。
+
+要查看原始的压缩字节，请关闭 `viewer_decompress`（[配置](configuration.md)第 2 页的 **J**）。
+
 另请参阅：[搜索已标记的文件](search.md)。
