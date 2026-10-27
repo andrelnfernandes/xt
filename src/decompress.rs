@@ -3,7 +3,7 @@
 
 // Nothing outside the tests calls this module until the viewer uses it
 // (Task 8); the allow goes away then.
-#![allow(dead_code)]
+#![cfg_attr(not(test), allow(dead_code))]
 
 use std::io::Read;
 use std::time::{Duration, Instant};
@@ -71,7 +71,7 @@ pub struct Decompressed {
     pub note: Option<String>,
 }
 
-fn elapsed_text(t: Duration) -> String {
+fn duration_text(t: Duration) -> String {
     if t < Duration::from_secs(1) {
         format!("{} ms", t.as_millis())
     } else {
@@ -89,13 +89,17 @@ fn truncated() -> Decompressed {
 
 /// Decompresses one level of `input`, stopping at the output and time limits.
 pub fn decompress(input: &[u8], kind: Compression, limits: Limits) -> Decompressed {
-    crate::panic_guard::catch(|| match kind {
+    guarded(|| match kind {
         Compression::Gzip => read_all(flate2::read::MultiGzDecoder::new(input), limits),
         Compression::Bzip2 => read_all(bzip2::read::MultiBzDecoder::new(input), limits),
         // Task 6 adds xz and zstd.
         Compression::Xz | Compression::Zstd => truncated(),
     })
-    .unwrap_or_else(truncated)
+}
+
+/// A panic inside `f` becomes empty data plus the `TRUNCATED` note.
+fn guarded(f: impl FnOnce() -> Decompressed) -> Decompressed {
+    crate::panic_guard::catch(f).unwrap_or_else(truncated)
 }
 
 fn read_all(mut decoder: impl Read, limits: Limits) -> Decompressed {
@@ -107,8 +111,14 @@ fn read_all(mut decoder: impl Read, limits: Limits) -> Decompressed {
     loop {
         let room = limits.output - data.len();
         if room == 0 {
-            // Cut only if there is more to read.
-            cut = matches!(decoder.read(&mut buf[..1]), Ok(n) if n > 0);
+            // Cut only if there is more to read; an error here (bad CRC at
+            // the end of the stream) still means corrupt data.
+            match decoder.read(&mut buf[..1]) {
+                Ok(0) => {}
+                Ok(_) => cut = true,
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(_) => note = Some(TRUNCATED.to_string()),
+            }
             break;
         }
         let want = room.min(CHUNK);
@@ -121,13 +131,13 @@ fn read_all(mut decoder: impl Read, limits: Limits) -> Decompressed {
                 break;
             }
         }
-        let t = start.elapsed();
-        if t >= limits.time {
+        if start.elapsed() >= limits.time {
             cut = true;
-            note = Some(format!("decompression stopped after {}", elapsed_text(t)));
+            note = Some(format!("decompression stopped after {}", duration_text(limits.time)));
             break;
         }
     }
+    data.shrink_to_fit();
     Decompressed { data, cut, note }
 }
 
@@ -169,6 +179,11 @@ mod tests {
         assert_eq!(sniff(b"BZh91AY"), Some(Compression::Bzip2));
         assert_eq!(sniff(b"plain"), None);
         assert_eq!(sniff(b"\x1F"), None);
+    }
+
+    #[test]
+    fn autoview_limits_are_tighter_than_the_viewer_ones() {
+        assert!(AUTOVIEW_TIME < VIEW_TIME && AUTOVIEW_DICT < VIEW_DICT);
     }
 
     #[test]
@@ -242,15 +257,39 @@ mod tests {
     }
 
     #[test]
+    fn corrupt_crc_at_the_exact_limit_is_flagged() {
+        let mut packed = gz(&TEXT.repeat(100));
+        let n = packed.len();
+        packed[n - 8] ^= 0xFF; // CRC32 trailer
+        let size = TEXT.len() * 100;
+        let d = decompress(&packed, Compression::Gzip, limits(size));
+        assert_eq!(d.note.as_deref(), Some(TRUNCATED));
+    }
+
+    #[test]
+    fn a_panicking_reader_becomes_truncated() {
+        struct Boom;
+        impl Read for Boom {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                panic!("boom")
+            }
+        }
+        let d = guarded(|| read_all(Boom, limits(MIB)));
+        assert!(d.data.is_empty() && !d.cut);
+        assert_eq!(d.note.as_deref(), Some(TRUNCATED));
+        assert!(!crate::panic_guard::active());
+    }
+
+    #[test]
     fn guard_catches_a_panic() {
         assert_eq!(crate::panic_guard::catch(|| -> u8 { panic!("boom") }), None);
         assert!(!crate::panic_guard::active());
     }
 
     #[test]
-    fn elapsed_text_units() {
-        assert_eq!(elapsed_text(Duration::from_millis(250)), "250 ms");
-        assert_eq!(elapsed_text(Duration::from_millis(3200)), "3 s");
+    fn duration_text_units() {
+        assert_eq!(duration_text(Duration::from_millis(250)), "250 ms");
+        assert_eq!(duration_text(Duration::from_millis(3200)), "3 s");
     }
 
     proptest! {
