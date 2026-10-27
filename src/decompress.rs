@@ -5,7 +5,7 @@
 // (Task 8); the allow goes away then.
 #![cfg_attr(not(test), allow(dead_code))]
 
-use std::io::Read;
+use std::io::{self, Read};
 use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -87,13 +87,111 @@ fn truncated() -> Decompressed {
     }
 }
 
+/// xz reader that refuses blocks whose dictionary needs more than `dict` bytes.
+pub fn xz_reader<R: Read>(r: R, dict: u32) -> lzma_rust2::XzReader<R> {
+    lzma_rust2::XzReader::new_mem_limit(r, true, lzma_rust2::lzma2_get_memory_usage(dict))
+}
+
+/// zstd reader for ONE frame; refuses windows larger than `window` bytes.
+pub fn zstd_reader<R: Read>(
+    r: R,
+    window: u32,
+) -> io::Result<ruzstd::decoding::StreamingDecoder<R, ruzstd::decoding::FrameDecoder>> {
+    ruzstd::decoding::StreamingDecoder::new_with_max_window_size(r, window as u64)
+        .map_err(frame_error)
+}
+
+fn frame_error(e: ruzstd::decoding::errors::FrameDecoderError) -> io::Error {
+    use ruzstd::decoding::errors::FrameDecoderError as E;
+    match e {
+        E::WindowSizeTooBig { .. } => io::Error::new(io::ErrorKind::OutOfMemory, e),
+        e => io::Error::new(io::ErrorKind::InvalidData, e),
+    }
+}
+
+/// Reads every zstd frame of a slice as one stream, skipping skippable frames.
+struct ZstdFrames<'a> {
+    rest: &'a [u8],
+    window: u32,
+    current: Option<ruzstd::decoding::StreamingDecoder<&'a [u8], ruzstd::decoding::FrameDecoder>>,
+}
+
+impl<'a> ZstdFrames<'a> {
+    fn new(input: &'a [u8], window: u32) -> Self {
+        ZstdFrames {
+            rest: input,
+            window,
+            current: None,
+        }
+    }
+}
+
+impl Read for ZstdFrames<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        use ruzstd::decoding::errors::{FrameDecoderError as E, ReadFrameHeaderError as H};
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        loop {
+            if let Some(frame) = &mut self.current {
+                match frame.read(buf)? {
+                    0 => self.rest = self.current.take().map_or(&[], |f| f.into_inner()),
+                    n => return Ok(n),
+                }
+            } else if self.rest.is_empty() {
+                return Ok(0);
+            } else {
+                match zstd_reader(self.rest, self.window) {
+                    Ok(frame) => self.current = Some(frame),
+                    Err(e) => {
+                        // A skippable frame is 4 bytes of magic, 4 of length, then the payload.
+                        let skip = e.get_ref().and_then(|s| match s.downcast_ref::<E>() {
+                            Some(E::ReadFrameHeaderError(H::SkipFrame { length, .. })) => {
+                                Some(*length as usize)
+                            }
+                            _ => None,
+                        });
+                        match skip {
+                            Some(len) => {
+                                self.rest =
+                                    self.rest.get(8usize.saturating_add(len)..).unwrap_or(&[])
+                            }
+                            None => return Err(e),
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// True for errors that mean the stream asks for more memory than allowed.
+fn is_memory_error(e: &io::Error) -> bool {
+    e.kind() == io::ErrorKind::OutOfMemory || e.to_string().contains("mem_limit")
+}
+
+fn error_note(e: &io::Error, limits: Limits) -> String {
+    if is_memory_error(e) {
+        memory_note(limits.dict)
+    } else {
+        TRUNCATED.to_string()
+    }
+}
+
+pub fn memory_note(limit: u32) -> String {
+    format!(
+        "needs more than {} MiB of memory to decompress",
+        limit >> 20
+    )
+}
+
 /// Decompresses one level of `input`, stopping at the output and time limits.
 pub fn decompress(input: &[u8], kind: Compression, limits: Limits) -> Decompressed {
     guarded(|| match kind {
         Compression::Gzip => read_all(flate2::read::MultiGzDecoder::new(input), limits),
         Compression::Bzip2 => read_all(bzip2::read::MultiBzDecoder::new(input), limits),
-        // Task 6 adds xz and zstd.
-        Compression::Xz | Compression::Zstd => truncated(),
+        Compression::Xz => read_all(xz_reader(input, limits.dict), limits),
+        Compression::Zstd => read_all(ZstdFrames::new(input, limits.dict), limits),
     })
 }
 
@@ -117,7 +215,7 @@ fn read_all(mut decoder: impl Read, limits: Limits) -> Decompressed {
                 Ok(0) => {}
                 Ok(_) => cut = true,
                 Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-                Err(_) => note = Some(TRUNCATED.to_string()),
+                Err(e) => note = Some(error_note(&e, limits)),
             }
             break;
         }
@@ -126,14 +224,17 @@ fn read_all(mut decoder: impl Read, limits: Limits) -> Decompressed {
             Ok(0) => break,
             Ok(n) => data.extend_from_slice(&buf[..n]),
             Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(_) => {
-                note = Some(TRUNCATED.to_string());
+            Err(e) => {
+                note = Some(error_note(&e, limits));
                 break;
             }
         }
         if start.elapsed() >= limits.time {
             cut = true;
-            note = Some(format!("decompression stopped after {}", duration_text(limits.time)));
+            note = Some(format!(
+                "decompression stopped after {}",
+                duration_text(limits.time)
+            ));
             break;
         }
     }
@@ -156,20 +257,104 @@ pub(crate) mod test_util {
         enc.write_all(data).unwrap();
         enc.finish().unwrap()
     }
+
+    fn crc32(bytes: &[u8]) -> [u8; 4] {
+        let mut c = flate2::Crc::new();
+        c.update(bytes);
+        c.sum().to_le_bytes()
+    }
+
+    /// Stream header (CRC32 check) + LZMA2 block header whose dictionary is `props` (40 = 4 GiB).
+    pub(crate) fn xz_header_with_dict_props(props: u8) -> Vec<u8> {
+        let mut v = b"\xFD7zXZ\0".to_vec();
+        v.extend([0x00, 0x01]);
+        v.extend(crc32(&[0x00, 0x01]));
+        // size=(2+1)*4, flags, LZMA2, 1 prop byte, padding
+        let block = [0x02, 0x00, 0x21, 0x01, props, 0x00, 0x00, 0x00];
+        v.extend(block);
+        v.extend(crc32(&block));
+        v
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::test_util::{bz2, gz};
+    use super::test_util::{bz2, gz, xz_header_with_dict_props};
     use super::*;
     use proptest::prelude::*;
+    use std::io::Write;
 
     const TEXT: &[u8] = b"linha de log\n";
 
     fn limits(output: usize) -> Limits {
-        Limits { output, dict: VIEW_DICT, time: VIEW_TIME }
+        Limits {
+            output,
+            dict: VIEW_DICT,
+            time: VIEW_TIME,
+        }
     }
     const MIB: usize = 1 << 20;
+
+    #[test]
+    fn xz_round_trip_and_dictionary_limit() {
+        let mut enc =
+            lzma_rust2::XzWriter::new(Vec::new(), lzma_rust2::XzOptions::with_preset(6)).unwrap();
+        enc.write_all(TEXT).unwrap();
+        let packed = enc.finish().unwrap();
+        assert_eq!(decompress(&packed, Compression::Xz, limits(MIB)).data, TEXT);
+        let small = Limits {
+            dict: 1 << 20,
+            ..limits(MIB)
+        }; // preset 6 = 8 MiB dictionary
+        assert_eq!(
+            decompress(&packed, Compression::Xz, small).note,
+            Some(memory_note(1 << 20))
+        );
+        let huge = xz_header_with_dict_props(40);
+        assert_eq!(
+            decompress(&huge, Compression::Xz, limits(MIB)).note,
+            Some(memory_note(VIEW_DICT))
+        );
+    }
+
+    fn zstd(data: &[u8]) -> Vec<u8> {
+        let mut out = Vec::new();
+        ruzstd::encoding::compress(data, &mut out, ruzstd::encoding::CompressionLevel::Fastest);
+        out
+    }
+
+    #[test]
+    fn zstd_frames_and_window_limit() {
+        let mut two = zstd(b"one\n");
+        two.extend(zstd(b"two\n"));
+        assert_eq!(
+            decompress(&two, Compression::Zstd, limits(MIB)).data,
+            b"one\ntwo\n"
+        );
+        // Magic, descriptor 0x00, window descriptor 0x88 = 2^(10+17) = 128 MiB.
+        let big_window = [0x28, 0xB5, 0x2F, 0xFD, 0x00, 0x88];
+        assert_eq!(
+            decompress(&big_window, Compression::Zstd, limits(MIB)).note,
+            Some(memory_note(VIEW_DICT))
+        );
+    }
+
+    #[test]
+    fn zstd_skippable_frames_are_skipped() {
+        let mut v = vec![0x50, 0x2A, 0x4D, 0x18, 3, 0, 0, 0, 9, 9, 9];
+        v.extend(zstd(b"after\n"));
+        let d = decompress(&v, Compression::Zstd, limits(MIB));
+        assert_eq!((d.data.as_slice(), d.note), (&b"after\n"[..], None));
+    }
+
+    #[test]
+    fn zstd_output_limit_spans_frames() {
+        let mut two = zstd(&[b'a'; 100]);
+        two.extend(zstd(&[b'b'; 100]));
+        let d = decompress(&two, Compression::Zstd, limits(150));
+        assert_eq!(d.data.len(), 150);
+        assert!(d.cut);
+    }
 
     #[test]
     fn sniffs_by_signature() {
@@ -195,7 +380,10 @@ mod tests {
 
     #[test]
     fn gzip_and_bzip2_round_trip() {
-        for (kind, packed) in [(Compression::Gzip, gz(TEXT)), (Compression::Bzip2, bz2(TEXT))] {
+        for (kind, packed) in [
+            (Compression::Gzip, gz(TEXT)),
+            (Compression::Bzip2, bz2(TEXT)),
+        ] {
             let d = decompress(&packed, kind, limits(MIB));
             assert_eq!((d.data.as_slice(), d.cut, d.note), (TEXT, false, None));
         }
@@ -205,7 +393,10 @@ mod tests {
     fn gzip_members_are_joined() {
         let mut two = gz(b"one\n");
         two.extend(gz(b"two\n"));
-        assert_eq!(decompress(&two, Compression::Gzip, limits(MIB)).data, b"one\ntwo\n");
+        assert_eq!(
+            decompress(&two, Compression::Gzip, limits(MIB)).data,
+            b"one\ntwo\n"
+        );
     }
 
     #[test]
@@ -228,7 +419,10 @@ mod tests {
         let d = decompress(
             &big,
             Compression::Gzip,
-            Limits { time: Duration::ZERO, ..limits(64 * MIB) },
+            Limits {
+                time: Duration::ZERO,
+                ..limits(64 * MIB)
+            },
         );
         assert!(d.data.len() <= CHUNK && d.cut);
         assert_eq!(d.note.as_deref(), Some("decompression stopped after 0 ms"));
@@ -238,7 +432,11 @@ mod tests {
     fn truncated_keeps_what_was_decoded() {
         let all = TEXT.repeat(10_000);
         let packed = gz(&all);
-        let d = decompress(&packed[..packed.len() / 2], Compression::Gzip, limits(64 * MIB));
+        let d = decompress(
+            &packed[..packed.len() / 2],
+            Compression::Gzip,
+            limits(64 * MIB),
+        );
         assert!(!d.data.is_empty() && all.starts_with(&d.data));
         assert_eq!(d.note.as_deref(), Some(TRUNCATED));
     }
@@ -253,7 +451,10 @@ mod tests {
     #[test]
     fn one_level_only() {
         let inner = gz(b"hello");
-        assert_eq!(decompress(&gz(&inner), Compression::Gzip, limits(MIB)).data, inner);
+        assert_eq!(
+            decompress(&gz(&inner), Compression::Gzip, limits(MIB)).data,
+            inner
+        );
     }
 
     #[test]
