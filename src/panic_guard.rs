@@ -21,8 +21,6 @@ impl Drop for Reset {
     }
 }
 
-// Used by `decompress`, which the viewer plugs in at Task 8.
-#[allow(dead_code)]
 /// Runs `f`; a panic becomes `None` and the panic hooks that would restore
 /// the terminal stay quiet.
 pub fn catch<T>(f: impl FnOnce() -> T) -> Option<T> {
