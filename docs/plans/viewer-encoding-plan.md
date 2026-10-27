@@ -37,6 +37,7 @@ de começar; este plano argumenta a partir dele.
   e U+061C. Nenhum deles chega ao terminal, nem um Cc (C0, DEL, C1).
 - **Textos que aparecem na tela** ficam em inglês, como o resto da interface.
   Use os textos exatos deste plano.
+- **Formatação:** `cargo fmt --check` tem que passar (o CI roda no Linux). Rode `cargo fmt` antes de cada commit.
 - **Cada tarefa** termina com `cargo clippy --all-targets -- -D warnings` e
   `cargo test` passando, porque o CI roda os dois em Linux e Windows. Quando
   o código tiver `cfg(windows)`, confira também com
