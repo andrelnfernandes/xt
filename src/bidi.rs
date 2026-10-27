@@ -1,9 +1,6 @@
 //! Trojan Source guard: detects, escapes and strips the bidi controls
 //! (and C0/DEL/C1 control characters) so none of them reaches the terminal.
 
-// Nothing calls this module yet; remove once `ui::draw` and the viewers do.
-#![allow(dead_code)]
-
 use ratatui::{buffer::Buffer, style::Style};
 
 /// True for the 12 bidi controls: U+202A-U+202E, U+2066-U+2069, U+200E,
