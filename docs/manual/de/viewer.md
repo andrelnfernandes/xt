@@ -9,6 +9,7 @@ nur der Anfang angezeigt.
 | ↑ ↓ PgUp PgDn Home End | scrollen |
 | ← → | seitlich scrollen |
 | `H` | Text oder Hex |
+| `O` | nächste Kodierung (UTF-8, CP850, 1252, CP437, UTF-16) |
 | `C` | Syntaxfarben ein oder aus |
 | `W` | Zeilenumbruch ein oder aus |
 | `#` oder `L` | Zeilennummern ein oder aus (im Textmodus) |
@@ -43,6 +44,14 @@ eingefärbt, sodass auch riesige Dateien den Betrachter niemals ausbremsen.
 ## Steuerzeichen für die Schreibrichtung
 
 Manche unsichtbaren Zeichen ändern die Schreibrichtung des Textes und können Code anders aussehen lassen, als er wirklich lautet (Trojan Source, CVE-2021-42574). Der Viewer versteckt sie nie: Jedes erscheint als rotes `·`, und die Kopfzeile nennt ihre Anzahl.
+
+## Textkodierung
+
+Xylem erkennt die Kodierung selbst, in dieser Reihenfolge: zuerst wird die Datei entpackt, dann wird nach einer BOM gesucht (UTF-8, UTF-16 LE oder BE), dann nach UTF-16 ohne BOM, dann nach UTF-8. Passt nichts davon, ist es alter Text: Xylem rät CP850 (DOS, Westeuropa) oder Windows-1252, indem es die Buchstaben mit Akzent zählt. `.reg`-Dateien von Windows sind UTF-16 und öffnen sich als normaler Text.
+
+**O** zeigt die Datei in der nächsten Kodierung: UTF-8, CP850, Windows-1252, CP437, UTF-16 LE, UTF-16 BE und wieder UTF-8. Die Fußzeile sagt, welche, und die Kopfzeile zeigt den Namen, wenn es nicht UTF-8 ist. Wählen Sie UTF-16 bei einer Datei, die in Hex geöffnet wurde, wechselt sie zu Text. Ihre Wahl bleibt, wenn Sie die Datei bearbeiten und zurückkehren.
+
+Um für alte Textdateien immer eine feste Kodierung statt der Vermutung zu nutzen, setzen Sie `legacy_charset` auf `cp850`, `cp1252` oder `cp437` (**K** auf Seite 2 der [Konfiguration](configuration.md)). Standard ist `auto`.
 
 ## Komprimierte Dateien
 

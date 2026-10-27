@@ -20,7 +20,7 @@ histórico nos prompts, ajuda (F1) e tela de configuração (Alt+F10).
 | Recurso | No ZTreeWin | No Xylem |
 |---|---|---|
 | Filespec | nome com regras próprias de nome e extensão, data, tamanho, atributo, filespec invertido (Ctrl+I), rótulos | glob para nomes, data e tamanho como no ZTreeWin (com K/M/G); sem atributos, inversão ou rótulos |
-| Visualizador | modos Alpha, Dump, Hex, Junk e Wrap; conjuntos de caracteres; edição hexadecimal; favoritos; rolagem automática | texto (UTF-8) ou hexadecimal, com a busca do ZTreeWin (F, B, /, \\, Space, + e -), cores de sintaxe (que o ZTreeWin não tem), quebra de linha (W), números de linha (#), ir para linha (g / :); até 16 MiB; sem edição hexadecimal, por opção (um editor próprio para arquivos binários em [`[editors]`](execute.md)) |
+| Visualizador | modos Alpha, Dump, Hex, Junk e Wrap; conjuntos de caracteres; edição hexadecimal; favoritos; rolagem automática | texto (UTF-8, UTF-16, CP850, Windows-1252 e CP437, detectados sozinhos, O muda) ou hexadecimal, com a busca do ZTreeWin (F, B, /, \\, Space, + e -), cores de sintaxe (que o ZTreeWin não tem), quebra de linha (W), números de linha (#), ir para linha (g / :); até 16 MiB; sem edição hexadecimal, por opção (um editor próprio para arquivos binários em [`[editors]`](execute.md)) |
 | Ctrl+S | texto, hexadecimal ou Unicode; busca apenas no índice do ZIP | texto ou hexadecimal |
 | Atributos | atributos do Windows (R, A, S, H) | permissões Unix em octal (`644`); sem dono/grupo. No Windows, R, H, S e A, como no ZTreeWin |
 | Ordenar | Name, Ext, Date, Time, Length, Alpha, nuMber, Size, Value, Unsorted; Charset; igual/diferente na tela dividida | Name, Ext, Date, Size, crescente/decrescente, Path primeiro; cada janela tem sua própria ordem |
