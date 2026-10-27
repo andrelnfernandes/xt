@@ -1977,9 +1977,20 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
             Style::new().fg(theme().dim),
         ),
     ];
-    if v.truncated() {
+    if let Some((kind, _)) = v.compression {
         title.push(Span::styled(
-            format!("  (showing first {})", fmt_num(viewer::MAX_BYTES)),
+            format!("  {} → {} bytes", kind.name(), fmt_num(v.data_len())),
+            Style::new().fg(theme().dim),
+        ));
+    }
+    if v.truncated() {
+        let what = if v.compression.is_some() {
+            "MiB decompressed"
+        } else {
+            "MiB"
+        };
+        title.push(Span::styled(
+            format!("  (showing first {} {what})", v.limit() >> 20),
             Style::new().fg(theme().error),
         ));
     }

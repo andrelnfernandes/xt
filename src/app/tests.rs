@@ -2007,6 +2007,20 @@ fn f7_autoview_follows_the_cursor() {
 }
 
 #[test]
+fn autoview_shows_a_gz_decompressed() {
+    let tmp = crate::testing::tempdir();
+    std::fs::write(
+        tmp.path().join("app.log.gz"),
+        crate::decompress::test_util::gz(b"hello log\n"),
+    )
+    .unwrap();
+    let mut app = App::new(tmp.path().to_path_buf());
+    press(&mut app, KeyCode::F(7));
+    let v = app.autoview.as_ref().unwrap();
+    assert_eq!(v.visible_lines(1)[0], "hello log");
+}
+
+#[test]
 fn n_sets_new_dates() {
     use chrono::{Datelike, Timelike};
     let (tmp, mut app) = sample();

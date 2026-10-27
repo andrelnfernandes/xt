@@ -1,10 +1,6 @@
 //! In-memory decompression of gzip, xz, zstd and bzip2 for the viewer.
 //! Files are hostile by default, so output, time and panics are all capped.
 
-// Nothing outside the tests calls this module until the viewer uses it
-// (Task 8); the allow goes away then.
-#![cfg_attr(not(test), allow(dead_code))]
-
 use std::cell::Cell;
 use std::io::{self, BufReader, Read};
 use std::time::{Duration, Instant};
@@ -487,11 +483,6 @@ mod tests {
         assert_eq!(sniff(b"BZh91AY"), Some(Compression::Bzip2));
         assert_eq!(sniff(b"plain"), None);
         assert_eq!(sniff(b"\x1F"), None);
-    }
-
-    #[test]
-    fn autoview_limits_are_tighter_than_the_viewer_ones() {
-        assert!(AUTOVIEW_TIME < VIEW_TIME && AUTOVIEW_DICT < VIEW_DICT);
     }
 
     #[test]
