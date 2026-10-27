@@ -129,7 +129,9 @@ es, de, fr e zh) e precisa acompanhar cada mudança.
   - **PR 3 (viewer mostra comprimidos e opção `viewer_decompress`, Tarefas
     8 e 9): implementado** no branch `viewer-decompress`, ainda sem push nem
     PR.
-  - **Próximo passo:** PR 4 (Tarefa 10 em diante). Marque os checkboxes no
+  - **PR 4 (codificações e a tecla `O`, Tarefas 10 e 11): implementado** no
+    branch `viewer-charset`, ainda sem push nem PR.
+  - **Próximo passo:** PR 5 (Tarefa 12 em diante). Marque os checkboxes no
     plano e atualize este status ao fim de cada PR.
 - **Correções feitas no spec ao escrever o plano** (já incorporadas):
   - o `ruzstd` 0.9.1 já limita a janela a 128 MiB por padrão

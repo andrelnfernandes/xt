@@ -9,6 +9,7 @@ apenas o início.
 | ↑ ↓ PgUp PgDn Home End | rola verticalmente |
 | ← → | rola horizontalmente |
 | `H` | texto ou hexadecimal |
+| `O` | próxima codificação (UTF-8, CP850, 1252, CP437, UTF-16) |
 | `C` | ativa ou desativa as cores de sintaxe |
 | `W` | ativa ou desativa a quebra de linha automática |
 | `#` ou `L` | ativa ou desativa os números de linha (no modo texto) |
@@ -43,6 +44,14 @@ lento.
 ## Caracteres de controle de direção
 
 Alguns caracteres invisíveis mudam a direção do texto e podem fazer um código parecer diferente do que ele realmente diz (Trojan Source, CVE-2021-42574). O visualizador nunca os esconde: cada um aparece como um `·` vermelho, e o cabeçalho informa quantos são.
+
+## Codificação do texto
+
+O Xylem descobre a codificação sozinho, nesta ordem: primeiro descomprime o arquivo, depois procura um BOM (UTF-8, UTF-16 LE ou BE), depois UTF-16 sem BOM, depois UTF-8. Um arquivo que não é nada disso é texto antigo: o Xylem escolhe CP850 (DOS, Europa Ocidental) ou Windows-1252 contando as letras acentuadas. Os arquivos `.reg` do Windows são UTF-16 e abrem como texto normal.
+
+**O** mostra o arquivo na próxima codificação: UTF-8, CP850, Windows-1252, CP437, UTF-16 LE, UTF-16 BE e de volta ao UTF-8. O rodapé diz qual, e o cabeçalho mostra o nome quando não é UTF-8. Se você escolher UTF-16 num arquivo que abriu em hexadecimal, ele passa para texto. Sua escolha continua depois de editar o arquivo e voltar.
+
+Para usar sempre uma só codificação nos textos antigos, em vez do palpite, defina `legacy_charset` como `cp850`, `cp1252` ou `cp437` (**K** na página 2 da [configuração](configuration.md)). O padrão é `auto`.
 
 ## Arquivos comprimidos
 

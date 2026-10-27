@@ -710,7 +710,7 @@ fn xz_header_with_dict_props(props: u8) -> Vec<u8> {
     `0x90` ou `0x9D`, some 1 para o CP850;
   - **resultado:** CP850 se tiver mais pontos que o 1252; senão 1252.
 
-- [ ] **Passo 1: escrever os testes, que devem falhar.** Use um helper
+- [x] **Passo 1: escrever os testes, que devem falhar.** Use um helper
   `encode(s: &str, table: &[char; 128]) -> Vec<u8>`, que faz a busca
   reversa na tabela.
 
@@ -757,10 +757,10 @@ proptest! {
   O teste da exportação `.reg` (Foco 4) também confere, na tarefa 11, que
   a primeira linha do viewer é exatamente
   `Windows Registry Editor Version 5.00`.
-- [ ] **Passo 2:** `cargo test charset::` falha.
-- [ ] **Passo 3:** implementar.
-- [ ] **Passo 4:** os testes passam.
-- [ ] **Passo 5:** commit
+- [x] **Passo 2:** `cargo test charset::` falha.
+- [x] **Passo 3:** implementar.
+- [x] **Passo 4:** os testes passam.
+- [x] **Passo 5:** commit
   `Add charset module: UTF-16, CP437, CP850, 1252 and a 850/1252 guess`.
 
 ### Tarefa 11: o viewer usa `charset`, a tecla `O` e a opção `legacy_charset` (F12 `K`)
@@ -798,7 +798,7 @@ proptest! {
 - `reload`: se `charset_manual`, reaplica a codificação escolhida; senão,
   detecta de novo.
 
-- [ ] **Passo 1: escrever os testes, que devem falhar.**
+- [x] **Passo 1: escrever os testes, que devem falhar.**
   - `cp850_file_reads_as_portuguese`: o `from_file` do `encode(PT, &CP850)`
     dá `visible_lines(1) == [PT]` e `charset() == Cp850`.
   - `o_cycles_and_says_so`: com o `handle_key('o')` em UTF-8, `charset()`
@@ -815,11 +815,11 @@ proptest! {
   - Em `config.rs`: `legacy_charset = "cp850"` é lido, e um valor inválido
     dá erro.
   - Em `settings.rs`: `K` cicla auto → cp850 → cp1252 → cp437.
-- [ ] **Passo 2:** os testes falham.
-- [ ] **Passo 3:** implementar.
-- [ ] **Passo 4:** `cargo test` passa.
-- [ ] **Passo 5:** escrever a documentação.
-- [ ] **Passo 6:** commit
+- [x] **Passo 2:** os testes falham.
+- [x] **Passo 3:** implementar.
+- [x] **Passo 4:** `cargo test` passa.
+- [x] **Passo 5:** escrever a documentação.
+- [x] **Passo 6:** commit
   `Viewer: detect legacy charsets and UTF-16; O cycles the codepage`.
   Atualize o status. Fim do PR 4.
 

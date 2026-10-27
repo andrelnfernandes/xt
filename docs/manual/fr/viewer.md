@@ -9,6 +9,7 @@ plus de 16 Mio, seul le début est affiché.
 | ↑ ↓ PgUp PgDn Home End | faire défiler |
 | ← → | faire défiler horizontalement |
 | `H` | texte ou hexadécimal |
+| `O` | encodage suivant (UTF-8, CP850, 1252, CP437, UTF-16) |
 | `C` | activer ou désactiver la coloration syntaxique |
 | `W` | activer ou désactiver le retour à la ligne automatique |
 | `#` ou `L` | activer ou désactiver les numéros de ligne (en mode texte) |
@@ -44,6 +45,14 @@ les très gros fichiers ne ralentissent jamais la visionneuse.
 ## Caractères de contrôle de direction
 
 Certains caractères invisibles changent le sens d'écriture du texte et peuvent faire paraître un code différent de ce qu'il dit vraiment (Trojan Source, CVE-2021-42574). La visionneuse ne les cache jamais : chacun apparaît sous la forme d'un `·` rouge, et l'en-tête indique combien il y en a.
+
+## Encodage du texte
+
+Xylem trouve l'encodage seul, dans cet ordre : d'abord il décompresse le fichier, puis cherche un BOM (UTF-8, UTF-16 LE ou BE), puis de l'UTF-16 sans BOM, puis de l'UTF-8. Un fichier qui n'est rien de tout cela est un vieux texte : Xylem choisit CP850 (DOS, Europe occidentale) ou Windows-1252 en comptant les lettres accentuées. Les exports `.reg` de Windows sont en UTF-16 et s'ouvrent comme du texte normal.
+
+**O** affiche le fichier dans l'encodage suivant : UTF-8, CP850, Windows-1252, CP437, UTF-16 LE, UTF-16 BE, puis de nouveau UTF-8. Le pied de page dit lequel, et l'en-tête montre son nom quand ce n'est pas de l'UTF-8. Si vous choisissez l'UTF-16 pour un fichier ouvert en hexadécimal, il passe en texte. Votre choix reste après avoir modifié le fichier et être revenu.
+
+Pour toujours utiliser un seul encodage pour les vieux textes, au lieu de la devinette, réglez `legacy_charset` sur `cp850`, `cp1252` ou `cp437` (**K** à la page 2 de la [configuration](configuration.md)). La valeur par défaut est `auto`.
 
 ## Fichiers compressés
 
