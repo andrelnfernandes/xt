@@ -56,3 +56,8 @@ as a link is what `cp -a` and `rsync -l` do).
   Drive already has, D3 extras (whole duplicated folders).
 - **Xylem in its own window**, further ahead: see "For later" in the README.
 - Postponed by choice: macros, chown, Graft, `.deb` package, macOS.
+- **New file viewers** ([docs/plans/viewers.md](docs/plans/viewers.md)):
+  charsets and compressed files, table mode (DBF, CSV, SDF), windowed
+  viewer, logs, SQLite, external converters; six subprojects, security
+  first. Subproject 1 spec in progress
+  ([docs/plans/viewer-encoding.md](docs/plans/viewer-encoding.md)).
