@@ -35,6 +35,13 @@ editor = ""
 editor_in_frame = true
 # Pass Xylem's active color theme to the editor (vi/vim/nvim and framed editors).
 editor_theme = true
+# Allow editing binary files with E (using binary_editor, [editors].binary or
+# an auto-detected terminal hex editor: hexedit, heh, bvi, dhex). Set to false
+# to refuse binary files on E.
+edit_binary = true
+# Hex / binary editor for the E key on binary files. Empty: [editors].binary
+# or auto-detected (hexedit, heh, bvi, dhex).
+binary_editor = ""
 # Language of the help screen (F1, L switches while open) and `xy --man`:
 # "auto" (from $LC_ALL / $LANG), "en", "pt", "es"...
 help_language = "auto"
@@ -175,6 +182,10 @@ pub struct Options {
     pub editor_in_frame: bool,
     /// Apply Xylem's active theme to the editor (vi/vim/nvim and framed editors).
     pub editor_theme: bool,
+    /// Allow editing binary files with E.
+    pub edit_binary: bool,
+    /// Hex / binary editor for E on binary files; empty auto-detects (`hexedit`, `heh`, `bvi`, `dhex`).
+    pub binary_editor: String,
     /// Language of the help (F1) and `xy --man`: `"auto"` or an ISO code (`"en"`, `"pt"`, `"es"`, ...).
     pub help_language: String,
     /// Program for the O key; empty uses xdg-open (start on Windows).
@@ -219,6 +230,8 @@ impl Default for Options {
             editor: String::new(),
             editor_in_frame: true,
             editor_theme: true,
+            edit_binary: true,
+            binary_editor: String::new(),
             help_language: "auto".into(),
             opener: String::new(),
             date_format: DateFormat::Iso,
@@ -263,6 +276,8 @@ impl Options {
             ("editor", s(&self.editor)),
             ("editor_in_frame", Value::from(self.editor_in_frame)),
             ("editor_theme", Value::from(self.editor_theme)),
+            ("edit_binary", Value::from(self.edit_binary)),
+            ("binary_editor", s(&self.binary_editor)),
             ("help_language", s(&self.help_language)),
             ("opener", s(&self.opener)),
             ("date_format", s(self.date_format.as_str())),

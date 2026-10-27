@@ -7,7 +7,7 @@ window and never reaches Xylem) opens four pages:
 
 | Page | Options |
 |---|---|
-| 1. Programs and formats | editor, open editor inside Xylem's frame, Xylem theme in the editor, help language, opener, date format, number format, Git commands |
+| 1. Programs and formats | editor, open editor inside Xylem's frame, Xylem theme in the editor, edit binary files with E, binary editor, help language, opener, date format, number format, Git commands |
 | 2. Display and sorting | hidden files, initial sort order and direction, what Enter does in the file window, initial display mode, syntax colors, soft wrap and line numbers in the viewer, colors of the built-in terminal |
 | 3. Confirmations and history | confirm on quit, delete to trash, Prune confirmation, entries with `@` not saved, the built-in terminal's own history |
 | 4. Copy, compare and refresh | ignore 2 s, ignore 1 h, automatic refresh, where Alt+C/Alt+M paths start |

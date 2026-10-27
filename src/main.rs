@@ -414,7 +414,8 @@ fn run(
             app.handle_key(key);
         }
         if let Some(ext) = app.external.take() {
-            if ext.file.is_some() && app.options.editor_in_frame {
+            let backgrounded = ext.line.to_string_lossy().trim_end().ends_with('&');
+            if ext.file.is_some() && app.options.editor_in_frame && !backgrounded {
                 if let Err(e) = app.start_framed_editor(ext) {
                     app.message = Some(format!("Cannot start editor: {e}"));
                 }

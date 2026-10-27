@@ -14,39 +14,61 @@ und Oberflächenfarben zum aktiven Thema, wenn der Editor `vi`, `vim` oder
 gesamte Terminal zu überlassen, oder `editor_theme = false`, um das eigene
 Farbschema des Editors beizubehalten.
 
-### Editoren nach Dateityp
+### Binärdateien und Editoren nach Dateityp
 
-Ein Texteditor beschädigt ein Bild oder ein Programm nur, daher öffnet E keine
+Ein Texteditor beschädigt ein Bild oder ein Programm nur, daher öffnet `E`
 **Binärdateien** (solche mit einem Null-Byte nahe am Anfang, die der Betrachter
-im Hex-Modus anzeigt): Er weist in der Fußzeile darauf hin und schlägt `O` vor,
-womit die Datei im zugehörigen Systemprogramm geöffnet wird. Um solche Dateien
-zu bearbeiten oder bestimmten Dateien einen eigenen Editor zuzuweisen, tragen
-Sie diese in der Tabelle `[editors]` der `config.toml` ein:
+im Hex-Modus anzeigt) niemals im Texteditor.
+
+Stattdessen öffnet `E`, wenn **Edit binary files with E** aktiviert ist
+(`edit_binary = true`, Taste **I** auf Seite 1 von **F12**), Binärdateien in
+einem Hex-/Binäreditor:
+
+1. Ein passendes Muster in `[editors]` (falls vorhanden), oder
+2. Den auf Seite 1 von **F12** eingestellten **Binary editor** (`binary_editor`,
+   Taste **J**) bzw. `binary` in `[editors]`, oder
+3. Wenn leer gelassen, den ersten im `PATH` gefundenen Terminal-Hex-Editor:
+   - **Linux**: `hexedit`, `heh`, `bvi`, `dhex`
+   - **Windows**: `heh` (`winget install ndd7xv.heh`), `hexedit`, `bvi`
+
+Terminal-Hex-Editoren laufen genauso wie der Texteditor: standardmäßig
+**innerhalb des Xylem-Rahmens** (`editor_in_frame = true`) und mit dem
+**Farbthema von Xylem** (`editor_theme = true`). Für einen grafischen
+Hex-Editor (`ImHex`, `GHex`, `Okteta` unter Linux; `ImHex`, `HxD` unter
+Windows), der im eigenen Fenster weiterlaufen soll, hängen Sie `&` ans Ende des
+Befehls an (zum Beispiel `imhex %f &` oder `ghex %f &`): Xylem startet ihn dann
+direkt, ohne den Terminal-Rahmen zu öffnen.
+
+Wenn Sie möchten, dass `E` überhaupt keine Binärdateien öffnet (und in der
+Fußzeile lediglich `O` zum Öffnen im Systemprogramm vorschlägt), stellen Sie
+**Edit binary files with E** auf `no` (`edit_binary = false` auf Seite 1 von
+**F12**).
+
+Um bestimmten Dateitypen einen eigenen Editor zuzuweisen, tragen Sie diese in
+der Tabelle `[editors]` der `config.toml` ein:
 
 ```toml
 [editors]
-"*.png *.jpg *.jpeg *.gif" = "gimp %f"
-"*.md" = "typora"
+"*.png *.jpg *.jpeg *.gif" = "gimp %f &"
+"*.md" = "typora %f &"
 "*.svg" = ""            # leer: der gewohnte Editor, obwohl das Muster passt
-binary = "hexedit"      # jede andere Binärdatei
+binary = "hexedit"      # Rückfalloption für jede andere Binärdatei
 ```
 
 Jeder Schlüssel ist eine Liste von Namensmustern wie in [Filespec](filespec.md)
 (Groß-/Kleinschreibung spielt keine Rolle); jeder Wert ist eine Befehlszeile
 mit `%f` für die Datei (andernfalls wird die Datei ans Ende gehängt). Der erste
 passende Schlüssel in der Reihenfolge der Datei gewinnt. `binary` gilt für
-Binärdateien, auf die kein Muster zutraf; alle übrigen Dateien werden im
-gewohnten Editor geöffnet. Befehle laufen genauso wie der Editor: standardmäßig
-innerhalb des Xylem-Rahmens oder mit übergebenem Terminal, wenn
-`editor_in_frame = false` gesetzt ist (für ein grafisches Programm, das
-weiterlaufen soll, hängen Sie `&` an und setzen `editor_in_frame = false`, oder
-verwenden Sie `O`).
+Binärdateien, auf die kein Muster zutraf, wenn `binary_editor` leer ist; alle
+übrigen Dateien werden im gewohnten Texteditor geöffnet.
 
 Xylem bringt keinen eigenen Hex-Editor mit, und das ist eine bewusste
-Entscheidung, kein Versäumnis: Es wäre viel Aufwand für geringen Nutzen, und
-das manuelle Bearbeiten von Bytes führt leicht zu beschädigten Dateien. Wer
-einen Hex-Editor benötigt, kann unter `binary` ein dafür geschaffenes Werkzeug
-wählen (`hexedit`, `bvi`, `dhex`, `ImHex`...).
+Entscheidung: Einen eigenen zu entwickeln und zu pflegen wäre viel Aufwand für
+geringen Nutzen, und das manuelle Bearbeiten von Bytes führt leicht zu
+beschädigten Dateien. Stattdessen integriert Xylem spezialisierte Hex-Editoren
+direkt in seinen Rahmen und sein Farbthema — und lässt Sie das Bearbeiten von
+Binärdateien mit einer einzigen Option unter **F12** abschalten, wenn Sie es
+nicht wünschen.
 
 ## Ausführen – eXecute (X)
 

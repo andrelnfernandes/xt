@@ -637,16 +637,42 @@ impl App {
 }
 
 impl App {
-    /// The editor E opens `file` with, from `[editors]`; a binary file with
-    /// none there gets an explanation instead of the text editor.
+    /// The editor E opens `file` with:
+    /// 1. a matching filename pattern in `[editors]`,
+    /// 2. the usual text editor (`editor` option / `$VISUAL` / `$EDITOR` / `vi`) for text files,
+    /// 3. for binary files (when `edit_binary` is true): `binary_editor`, `[editors].binary`,
+    ///    or an auto-detected terminal hex editor (`hexedit`, `heh`, `bvi`, `dhex`).
     pub(crate) fn editor_for(&self, file: &Path, cwd: &Path) -> Result<shell::External, String> {
         use crate::editors;
         let name = file.file_name().unwrap_or(file.as_os_str());
-        match self.editors.choose(name, || editors::is_binary(file)) {
-            editors::Choice::Command(command) => Ok(shell::editor_command(command, file, cwd)),
-            editors::Choice::Usual => Ok(shell::editor(file, cwd, &self.options.editor)),
-            editors::Choice::None => Err(
-                "Binary file: no editor for it (set one in [editors]). O opens it in its own program"
+        if let Some(choice) = self.editors.match_pattern(name) {
+            return match choice {
+                editors::Choice::Command(command) => Ok(shell::editor_command(command, file, cwd)),
+                editors::Choice::Usual => Ok(shell::editor(file, cwd, &self.options.editor)),
+                #[cfg(test)]
+                editors::Choice::None => unreachable!(),
+            };
+        }
+        if !editors::is_binary(file) {
+            return Ok(shell::editor(file, cwd, &self.options.editor));
+        }
+        if !self.options.edit_binary {
+            return Err(
+                "Binary file: editing binary files is disabled in F12 (O opens it in its own program)"
+                    .into(),
+            );
+        }
+        let cmd = if !self.options.binary_editor.trim().is_empty() {
+            Some(self.options.binary_editor.trim())
+        } else if let Some(c) = self.editors.binary_command() {
+            Some(c)
+        } else {
+            shell::detect_binary_editor()
+        };
+        match cmd {
+            Some(command) => Ok(shell::editor_command(command, file, cwd)),
+            None => Err(
+                "Binary file: no hex editor found (install hexedit, heh or bvi, or set one in F12). O opens it in its own program"
                     .into(),
             ),
         }

@@ -50,6 +50,7 @@ pub enum Choice<'a> {
     /// The usual editor (the `editor` option, `$VISUAL`...).
     Usual,
     /// Nothing: a binary file and no `binary` key.
+    #[cfg(test)]
     None,
 }
 
@@ -83,8 +84,26 @@ impl Editors {
         Ok(editors)
     }
 
+    /// Matches `name` against the filename patterns in `[editors]` (ignoring `binary`).
+    pub fn match_pattern(&self, name: &OsStr) -> Option<Choice<'_>> {
+        let (_, command) = self.rules.iter().find(|(set, _)| set.is_match(name))?;
+        Some(match command.trim() {
+            "" => Choice::Usual,
+            command => Choice::Command(command),
+        })
+    }
+
+    /// The `binary` command configured in `[editors]`, if non-empty.
+    pub fn binary_command(&self) -> Option<&str> {
+        self.binary
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+    }
+
     /// The editor for a file named `name`; `binary` is only asked when no
     /// pattern matches. An empty command means the usual editor.
+    #[cfg(test)]
     pub fn choose(&self, name: &OsStr, binary: impl FnOnce() -> bool) -> Choice<'_> {
         let command = match self.rules.iter().find(|(set, _)| set.is_match(name)) {
             Some((_, command)) => command,
