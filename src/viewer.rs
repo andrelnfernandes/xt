@@ -158,6 +158,8 @@ pub struct Viewer {
     charset: Charset,
     /// The charset was picked with O: kept by `reload`.
     charset_manual: bool,
+    /// The name the colors follow, when it is not `path` (see `colored_as`).
+    color_name: Option<PathBuf>,
     /// The compression the file was shown through, and the file's size.
     pub compression: Option<(Compression, u64)>,
     /// Not all of the file (or of its decompressed contents) is shown.
@@ -414,10 +416,11 @@ impl Viewer {
         };
         let data_len = data.len() as u64;
         let (lines, bidi) = text_lines(&charset::decode(&data, charset));
-        let colors = (mode == ViewMode::Text)
-            .then(|| Highlighter::for_file(&path, lines.first().map_or("", String::as_str)))
+        let colors = (!binary)
+            .then(|| text_colors(&path, None, &lines))
             .flatten();
         Viewer {
+            color_name: None,
             colors_on: colors.is_some(),
             colors,
             path,
@@ -463,27 +466,30 @@ impl Viewer {
         ));
     }
 
-    /// Decodes `data` as `charset` again. A UTF-16 pick on data that looked
-    /// binary switches to text, since that is what the user asked to see; a
-    /// hex view the user chose in a text file stays.
+    /// Decodes `data` as `charset` again, keeping the colors' name and
+    /// whether they are on. A UTF-16 pick on a file in hex whose text then
+    /// looks right switches to text mode (at the top), since that is what
+    /// the user asked to see; other picks keep the mode.
     fn set_charset(&mut self, charset: Charset) {
         self.charset = charset;
         let text = charset::decode(&self.data, charset);
+        let readable = !looks_binary(text.as_bytes());
         if self.mode == ViewMode::Hex
+            && readable
             && matches!(charset, Charset::Utf16Le | Charset::Utf16Be)
-            && !looks_binary(text.as_bytes())
         {
             self.mode = ViewMode::Text;
+            self.top = 0;
+            self.left = 0;
         }
         let (lines, bidi) = text_lines(&text);
         self.lines = lines;
         self.bidi = bidi;
-        self.colors = (self.mode == ViewMode::Text)
-            .then(|| {
-                Highlighter::for_file(&self.path, self.lines.first().map_or("", String::as_str))
-            })
+        let had_colors = self.colors.is_some();
+        self.colors = readable
+            .then(|| text_colors(&self.path, self.color_name.as_deref(), &self.lines))
             .flatten();
-        self.colors_on = self.colors.is_some();
+        self.colors_on = self.colors.is_some() && (self.colors_on || !had_colors);
         self.hit = None;
         if self.mode == ViewMode::Text {
             self.top = self.top.min(self.lines.len().saturating_sub(1));
@@ -497,6 +503,7 @@ impl Viewer {
         if self.mode == ViewMode::Text {
             self.colors = Highlighter::for_name(name, &self.lines);
             self.colors_on = self.colors.is_some();
+            self.color_name = Some(name.to_path_buf());
         }
         self
     }
@@ -1056,6 +1063,14 @@ pub fn looks_binary(data: &[u8]) -> bool {
 /// Splits into lines, expands tabs and replaces control characters with `·`.
 /// Also returns where each bidi control was replaced: (line, character
 /// column after expanding tabs), in order.
+/// The syntax colors of a text: by the name they follow, else by `path`.
+fn text_colors(path: &Path, name: Option<&Path>, lines: &[String]) -> Option<Highlighter> {
+    match name {
+        Some(n) => Highlighter::for_name(n, lines),
+        None => Highlighter::for_file(path, lines.first().map_or("", String::as_str)),
+    }
+}
+
 fn text_lines(text: &str) -> (Vec<String>, Vec<(usize, usize)>) {
     let mut bidi = Vec::new();
     let mut lines: Vec<String> = text
@@ -1721,5 +1736,40 @@ mod tests {
         v.cycle_charset(); // UTF-16LE
         assert_eq!(v.mode, ViewMode::Text);
         assert_eq!(v.visible_lines(1), ["hello there"]);
+    }
+
+    #[test]
+    fn o_keeps_the_color_overrides() {
+        let mut v = Viewer::from_bytes(PathBuf::from("git diff foo.rs"), 8, b"+a\n-b\n".to_vec())
+            .colored_as(Path::new("x.diff"));
+        let before = v.language().map(String::from);
+        assert!(before.is_some());
+        v.cycle_charset();
+        assert_eq!(v.language().map(String::from), before);
+
+        let raw = gz(b"fn main() {}\n");
+        let mut v = from_gz("x.rs.gz", raw, LOAD);
+        assert_eq!(v.language(), Some("Rust"));
+        v.cycle_charset();
+        assert_eq!(v.language(), Some("Rust"));
+        v.handle_key(KeyEvent::from(KeyCode::Char('c')));
+        assert_eq!(v.language(), None);
+        v.cycle_charset();
+        assert_eq!(v.language(), None);
+    }
+
+    #[test]
+    fn bidi_survives_a_redecode() {
+        let bytes: Vec<u8> = "\u{FEFF}a\u{202E}b\n"
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        let mut v = from_raw(bytes);
+        assert_eq!(v.bidi_count(), 1);
+        for _ in 0..6 {
+            v.cycle_charset();
+        }
+        assert_eq!(v.charset(), crate::charset::Charset::Utf16Le);
+        assert_eq!(v.bidi_count(), 1);
     }
 }
