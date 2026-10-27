@@ -60,6 +60,8 @@ pub enum Action {
     },
     /// Copies the file's path to the clipboard.
     CopyPath,
+    /// Prompts for line number to go to.
+    GotoLine,
 }
 
 /// Match found: in text mode, line and columns (in characters); in
@@ -100,11 +102,32 @@ pub struct Viewer {
     pub on_disk: bool,
     /// In a diff (D): the file it belongs to, shown again by D.
     pub behind: Option<Box<Viewer>>,
+    /// Soft wrap long lines to fit `width` (W toggles).
+    pub wrap: bool,
+    /// Show line numbers in text mode (# / L toggles).
+    pub line_numbers: bool,
+    /// First visible wrapped sub-row within `lines[top]` when `wrap` is active.
+    pub sub_top: usize,
 }
 
 /// A piece of a displayed line: text, its color and whether it is part of
 /// the search match.
 pub type Segment = (String, Option<Color>, bool);
+
+/// A displayed visual row: its line number (if first visual row and line numbers
+/// are enabled) and its styled text segments.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StyledRow {
+    pub line_num: Option<usize>,
+    pub segments: Vec<Segment>,
+}
+
+impl std::ops::Deref for StyledRow {
+    type Target = [Segment];
+    fn deref(&self) -> &Self::Target {
+        &self.segments
+    }
+}
 
 impl Viewer {
     /// Reads only the start of the file (Autoview uses a smaller limit, to
@@ -131,23 +154,118 @@ impl Viewer {
         self.page = old.page;
         self.width = old.width;
         self.colors_on = old.colors_on && self.colors.is_some();
+        self.wrap = old.wrap;
+        self.line_numbers = old.line_numbers;
+        self.sub_top = old.sub_top;
         Ok(())
     }
 
     /// Autoview scrolling (Shift+arrows): only moves the content.
     pub fn scroll(&mut self, code: KeyCode) {
         let page = self.page.max(1);
-        let max_top = self.line_count().saturating_sub(page);
-        self.top = match code {
-            KeyCode::Up => self.top.saturating_sub(1),
-            KeyCode::Down => self.top + 1,
-            KeyCode::PageUp => self.top.saturating_sub(page),
-            KeyCode::PageDown => self.top + page,
-            KeyCode::Home => 0,
-            KeyCode::End => max_top,
-            _ => self.top,
+        match code {
+            KeyCode::Up => self.scroll_up(1),
+            KeyCode::Down => self.scroll_down(1),
+            KeyCode::PageUp => self.scroll_up(page),
+            KeyCode::PageDown => self.scroll_down(page),
+            KeyCode::Home => {
+                self.top = 0;
+                self.sub_top = 0;
+            }
+            KeyCode::End => {
+                if self.mode == ViewMode::Text && self.wrap {
+                    self.top = self.lines.len().saturating_sub(1);
+                    self.sub_top = 0;
+                } else {
+                    self.top = self.line_count().saturating_sub(page);
+                }
+            }
+            _ => {}
         }
-        .min(max_top);
+    }
+
+    pub fn scroll_down(&mut self, count: usize) {
+        if self.mode == ViewMode::Text && self.wrap {
+            let cw = self.content_width();
+            for _ in 0..count {
+                if self.top >= self.lines.len() {
+                    break;
+                }
+                let sub_count = wrap_line_ranges(&self.lines[self.top], cw).len();
+                if self.sub_top + 1 < sub_count {
+                    self.sub_top += 1;
+                } else if self.top + 1 < self.lines.len() {
+                    self.top += 1;
+                    self.sub_top = 0;
+                } else {
+                    break;
+                }
+            }
+        } else {
+            let max_top = self.line_count().saturating_sub(self.page.max(1));
+            self.top = (self.top + count).min(max_top);
+        }
+    }
+
+    pub fn scroll_up(&mut self, count: usize) {
+        if self.mode == ViewMode::Text && self.wrap {
+            let cw = self.content_width();
+            for _ in 0..count {
+                if self.sub_top > 0 {
+                    self.sub_top -= 1;
+                } else if self.top > 0 {
+                    self.top -= 1;
+                    let sub_count = wrap_line_ranges(&self.lines[self.top], cw).len();
+                    self.sub_top = sub_count.saturating_sub(1);
+                } else {
+                    break;
+                }
+            }
+        } else {
+            self.top = self.top.saturating_sub(count);
+        }
+    }
+
+    pub fn toggle_wrap(&mut self) {
+        self.wrap = !self.wrap;
+        self.sub_top = 0;
+        self.left = 0;
+        let state = if self.wrap { "on" } else { "off" };
+        self.note = Some(format!("Wrap {state}"));
+    }
+
+    pub fn toggle_line_numbers(&mut self) {
+        self.line_numbers = !self.line_numbers;
+        let state = if self.line_numbers { "on" } else { "off" };
+        self.note = Some(format!("Line numbers {state}"));
+    }
+
+    pub fn goto_line(&mut self, target_1_indexed: usize) {
+        if self.mode == ViewMode::Text {
+            let max_line = self.lines.len().max(1);
+            let line = target_1_indexed.clamp(1, max_line);
+            self.top = line.saturating_sub(1);
+            self.sub_top = 0;
+            self.left = 0;
+            self.note = Some(format!("Line {line} of {max_line}"));
+        } else {
+            let max_offset = self.data.len();
+            let offset = target_1_indexed.min(max_offset);
+            self.top = (offset / HEX_WIDTH).min(self.line_count().saturating_sub(1));
+            self.note = Some(format!("Offset {offset:X}"));
+        }
+    }
+
+    pub fn gutter_width(&self) -> usize {
+        if self.line_numbers && self.mode == ViewMode::Text {
+            self.lines.len().to_string().len().max(1) + 3 // e.g. " 42 │ "
+        } else {
+            0
+        }
+    }
+
+    pub fn content_width(&self) -> usize {
+        self.width.saturating_sub(self.gutter_width()).max(1)
     }
 
     /// Views bytes already read (e.g. an entry of an archive).
@@ -178,6 +296,9 @@ impl Viewer {
             note: None,
             on_disk: false,
             behind: None,
+            wrap: false,
+            line_numbers: false,
+            sub_top: 0,
         }
     }
 
@@ -209,30 +330,67 @@ impl Viewer {
         self.visible(height).into_iter().map(|(l, _)| l).collect()
     }
 
+    #[cfg(test)]
     pub fn visible(&self, height: usize) -> Vec<(String, Option<(usize, usize)>)> {
-        let range = self.top..(self.top + height).min(self.line_count());
         let hit = self.hit.filter(|h| h.mode == self.mode);
         match self.mode {
-            ViewMode::Text => range
-                .map(|i| {
-                    let line: String = self.lines[i].chars().skip(self.left).collect();
-                    let mark = hit.filter(|h| h.line == i).and_then(|h| {
-                        let s = h.start.saturating_sub(self.left);
-                        let e = h.end.saturating_sub(self.left);
-                        (e > s).then_some((s, e))
-                    });
-                    (line, mark)
-                })
-                .collect(),
-            ViewMode::Hex => range
-                .map(|row| {
-                    let line = hex_row(&self.data, row * HEX_WIDTH);
-                    let mark = hit
-                        .filter(|h| h.line == row)
-                        .map(|_| (0, line.chars().count()));
-                    (line, mark)
-                })
-                .collect(),
+            ViewMode::Text if !self.wrap => {
+                let range = self.top..(self.top + height).min(self.lines.len());
+                range
+                    .map(|i| {
+                        let line: String = self.lines[i].chars().skip(self.left).collect();
+                        let mark = hit.filter(|h| h.line == i).and_then(|h| {
+                            let s = h.start.saturating_sub(self.left);
+                            let e = h.end.saturating_sub(self.left);
+                            (e > s).then_some((s, e))
+                        });
+                        (line, mark)
+                    })
+                    .collect()
+            }
+            ViewMode::Text => {
+                let cw = self.content_width();
+                let mut out = Vec::new();
+                let mut line_idx = self.top;
+                let mut sub_idx = self.sub_top;
+                while out.len() < height && line_idx < self.lines.len() {
+                    let ranges = wrap_line_ranges(&self.lines[line_idx], cw);
+                    while sub_idx < ranges.len() && out.len() < height {
+                        let r = &ranges[sub_idx];
+                        let chars: String = self.lines[line_idx]
+                            .chars()
+                            .skip(r.start)
+                            .take(r.end - r.start)
+                            .collect();
+                        let mark = hit.filter(|h| h.line == line_idx).and_then(|h| {
+                            let s = h.start.max(r.start);
+                            let e = h.end.min(r.end);
+                            if e > s {
+                                Some((s - r.start, e - r.start))
+                            } else {
+                                None
+                            }
+                        });
+                        out.push((chars, mark));
+                        sub_idx += 1;
+                    }
+                    line_idx += 1;
+                    sub_idx = 0;
+                }
+                out
+            }
+            ViewMode::Hex => {
+                let range = self.top..(self.top + height).min(self.line_count());
+                range
+                    .map(|row| {
+                        let line = hex_row(&self.data, row * HEX_WIDTH);
+                        let mark = hit
+                            .filter(|h| h.line == row)
+                            .map(|_| (0, line.chars().count()));
+                        (line, mark)
+                    })
+                    .collect()
+            }
         }
     }
 
@@ -246,37 +404,119 @@ impl Viewer {
 
     /// Like `visible`, split into colored pieces (syntax colors and the
     /// search match).
-    pub fn styled(&mut self, height: usize) -> Vec<Vec<Segment>> {
-        let rows = self.visible(height);
+    pub fn styled(&mut self, height: usize) -> Vec<StyledRow> {
         let use_colors = self.colors_on && self.mode == ViewMode::Text;
-        let (top, left) = (self.top, self.left);
-        let (colors, lines) = (&mut self.colors, &self.lines);
-        rows.into_iter()
-            .enumerate()
-            .map(|(k, (line, mark))| {
-                // Color of each character of the whole line.
-                let per_char: Vec<Color> = colors
-                    .as_mut()
-                    .filter(|_| use_colors)
-                    .and_then(|h| h.line(top + k, lines))
-                    .map(|segs| {
-                        segs.iter()
-                            .flat_map(|(c, s)| std::iter::repeat_n(*c, s.chars().count()))
-                            .collect()
+        let hit = self.hit.filter(|h| h.mode == self.mode);
+        match self.mode {
+            ViewMode::Text if !self.wrap => {
+                let range = self.top..(self.top + height).min(self.lines.len());
+                let (left, colors, lines) = (self.left, &mut self.colors, &self.lines);
+                range
+                    .map(|i| {
+                        let line_str = &lines[i];
+                        let line_chars: Vec<char> = line_str.chars().skip(left).collect();
+                        let mark = hit.filter(|h| h.line == i).and_then(|h| {
+                            let s = h.start.saturating_sub(left);
+                            let e = h.end.saturating_sub(left);
+                            (e > s).then_some((s, e))
+                        });
+                        let per_char: Vec<Color> = colors
+                            .as_mut()
+                            .filter(|_| use_colors)
+                            .and_then(|h| h.line(i, lines))
+                            .map(|segs| {
+                                segs.iter()
+                                    .flat_map(|(c, s)| std::iter::repeat_n(*c, s.chars().count()))
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        let mut segments: Vec<Segment> = Vec::new();
+                        for (j, ch) in line_chars.into_iter().enumerate() {
+                            let color = per_char.get(left + j).copied();
+                            let marked = mark.is_some_and(|(s, e)| j >= s && j < e);
+                            match segments.last_mut() {
+                                Some((text, c, m)) if *c == color && *m == marked => text.push(ch),
+                                _ => segments.push((ch.to_string(), color, marked)),
+                            }
+                        }
+                        StyledRow {
+                            line_num: if self.line_numbers { Some(i + 1) } else { None },
+                            segments,
+                        }
                     })
-                    .unwrap_or_default();
-                let mut out: Vec<Segment> = Vec::new();
-                for (j, ch) in line.chars().enumerate() {
-                    let color = per_char.get(left + j).copied();
-                    let marked = mark.is_some_and(|(s, e)| j >= s && j < e);
-                    match out.last_mut() {
-                        Some((text, c, m)) if *c == color && *m == marked => text.push(ch),
-                        _ => out.push((ch.to_string(), color, marked)),
+                    .collect()
+            }
+            ViewMode::Text => {
+                let cw = self.content_width();
+                let mut out = Vec::new();
+                let mut line_idx = self.top;
+                let mut sub_idx = self.sub_top;
+                while out.len() < height && line_idx < self.lines.len() {
+                    let ranges = wrap_line_ranges(&self.lines[line_idx], cw);
+                    let line_chars: Vec<char> = self.lines[line_idx].chars().collect();
+                    let per_char: Vec<Color> = self
+                        .colors
+                        .as_mut()
+                        .filter(|_| use_colors)
+                        .and_then(|h| h.line(line_idx, &self.lines))
+                        .map(|segs| {
+                            segs.iter()
+                                .flat_map(|(c, s)| std::iter::repeat_n(*c, s.chars().count()))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+
+                    while sub_idx < ranges.len() && out.len() < height {
+                        let r = &ranges[sub_idx];
+                        let mark = hit.filter(|h| h.line == line_idx).and_then(|h| {
+                            let s = h.start.max(r.start);
+                            let e = h.end.min(r.end);
+                            if e > s {
+                                Some((s - r.start, e - r.start))
+                            } else {
+                                None
+                            }
+                        });
+                        let mut segments: Vec<Segment> = Vec::new();
+                        let slice = &line_chars[r.start..r.end];
+                        for (j, &ch) in slice.iter().enumerate() {
+                            let char_idx = r.start + j;
+                            let color = per_char.get(char_idx).copied();
+                            let marked = mark.is_some_and(|(s, e)| j >= s && j < e);
+                            match segments.last_mut() {
+                                Some((text, c, m)) if *c == color && *m == marked => text.push(ch),
+                                _ => segments.push((ch.to_string(), color, marked)),
+                            }
+                        }
+                        out.push(StyledRow {
+                            line_num: if self.line_numbers && sub_idx == 0 {
+                                Some(line_idx + 1)
+                            } else {
+                                None
+                            },
+                            segments,
+                        });
+                        sub_idx += 1;
                     }
+                    line_idx += 1;
+                    sub_idx = 0;
                 }
                 out
-            })
-            .collect()
+            }
+            ViewMode::Hex => {
+                let range = self.top..(self.top + height).min(self.line_count());
+                range
+                    .map(|row| {
+                        let line = hex_row(&self.data, row * HEX_WIDTH);
+                        let marked = hit.is_some_and(|h| h.line == row);
+                        StyledRow {
+                            line_num: None,
+                            segments: vec![(line, None, marked)],
+                        }
+                    })
+                    .collect()
+            }
+        }
     }
 
     /// Handles a key; what does not belong to the viewer itself (close, switch
@@ -291,37 +531,52 @@ impl Viewer {
             KeyCode::Home if alt => Action::First,
             KeyCode::End if alt => Action::Last,
             KeyCode::Up => {
-                self.top = self.top.saturating_sub(1);
+                self.scroll_up(1);
                 Action::None
             }
             KeyCode::Down => {
-                self.top += 1;
+                self.scroll_down(1);
                 Action::None
             }
             KeyCode::PageUp => {
-                self.top = self.top.saturating_sub(page);
+                self.scroll_up(page);
                 Action::None
             }
             KeyCode::PageDown => {
-                self.top += page;
+                self.scroll_down(page);
                 Action::None
             }
             KeyCode::Home => {
                 self.top = 0;
+                self.sub_top = 0;
                 Action::None
             }
             KeyCode::End => {
-                self.top = max_top;
+                if self.mode == ViewMode::Text && self.wrap {
+                    self.top = self.lines.len().saturating_sub(1);
+                    self.sub_top = 0;
+                } else {
+                    self.top = max_top;
+                }
                 Action::None
             }
-            KeyCode::Left => {
+            KeyCode::Left if self.mode == ViewMode::Text && !self.wrap => {
                 self.left = self.left.saturating_sub(PAN_STEP);
                 Action::None
             }
-            KeyCode::Right if self.mode == ViewMode::Text => {
+            KeyCode::Right if self.mode == ViewMode::Text && !self.wrap => {
                 self.left += PAN_STEP;
                 Action::None
             }
+            KeyCode::Char('w' | 'W') => {
+                self.toggle_wrap();
+                Action::None
+            }
+            KeyCode::Char('#' | 'l' | 'L') => {
+                self.toggle_line_numbers();
+                Action::None
+            }
+            KeyCode::Char('g' | 'G' | ':') => Action::GotoLine,
             KeyCode::Char(c) => match c.to_ascii_lowercase() {
                 'h' => {
                     self.toggle_mode();
@@ -376,7 +631,11 @@ impl Viewer {
             },
             _ => Action::None,
         };
-        self.top = self.top.min(max_top);
+        if self.mode == ViewMode::Text && self.wrap {
+            self.top = self.top.min(self.lines.len().saturating_sub(1));
+        } else {
+            self.top = self.top.min(max_top);
+        }
         action
     }
 
@@ -386,6 +645,7 @@ impl Viewer {
             ViewMode::Hex => ViewMode::Text,
         };
         self.top = 0;
+        self.sub_top = 0;
         self.left = 0;
     }
 
@@ -482,17 +742,73 @@ impl Viewer {
     fn show(&mut self, hit: Hit) {
         self.hit = Some(hit);
         let page = self.page.max(1);
-        if hit.line < self.top || hit.line >= self.top + page {
-            self.top = hit.line.saturating_sub(page / 3);
-        }
-        self.top = self.top.min(self.line_count().saturating_sub(page));
-        if hit.mode == ViewMode::Text {
-            let width = self.width.max(10);
-            if hit.start < self.left || hit.end > self.left + width {
-                self.left = hit.start.saturating_sub(width / 4);
+        if self.mode == ViewMode::Text && self.wrap {
+            if hit.line < self.top || hit.line >= self.top + page {
+                self.top = hit.line.saturating_sub(page / 3);
+            }
+            let cw = self.content_width();
+            let ranges = wrap_line_ranges(&self.lines[hit.line], cw);
+            self.sub_top = ranges
+                .iter()
+                .position(|r| hit.start >= r.start && hit.start < r.end)
+                .unwrap_or(0);
+            self.left = 0;
+        } else {
+            if hit.line < self.top || hit.line >= self.top + page {
+                self.top = hit.line.saturating_sub(page / 3);
+            }
+            self.top = self.top.min(self.line_count().saturating_sub(page));
+            if hit.mode == ViewMode::Text {
+                let width = self.width.max(10);
+                if hit.start < self.left || hit.end > self.left + width {
+                    self.left = hit.start.saturating_sub(width / 4);
+                }
             }
         }
     }
+}
+
+/// Returns the ranges of characters for each wrapped visual row of `text`.
+/// Width must be at least 1.
+#[allow(clippy::single_range_in_vec_init)]
+pub fn wrap_line_ranges(text: &str, width: usize) -> Vec<std::ops::Range<usize>> {
+    let width = width.max(1);
+    let chars: Vec<char> = text.chars().collect();
+    let n = chars.len();
+    if n == 0 {
+        return vec![0..0];
+    }
+    let mut ranges = Vec::new();
+    let mut start = 0;
+    while start < n {
+        let remaining = n - start;
+        if remaining <= width {
+            ranges.push(start..n);
+            break;
+        }
+        let limit = start + width;
+        let break_at = chars[start..=limit]
+            .iter()
+            .enumerate()
+            .rposition(|(idx, &c)| idx > 0 && c.is_whitespace());
+
+        if let Some(pos) = break_at {
+            let space_pos = start + pos;
+            ranges.push(start..space_pos);
+            let mut next_start = space_pos + 1;
+            while next_start < n && chars[next_start] == ' ' {
+                next_start += 1;
+            }
+            start = next_start;
+        } else {
+            ranges.push(start..limit);
+            start = limit;
+        }
+    }
+    if ranges.is_empty() {
+        ranges.push(0..0);
+    }
+    ranges
 }
 
 /// How far `looks_binary` looks.
@@ -782,5 +1098,100 @@ mod tests {
             plain.note.as_deref(),
             Some("No syntax colors for this file")
         );
+    }
+
+    #[test]
+    fn test_wrap_line_ranges() {
+        // Simple word wrap
+        let ranges = wrap_line_ranges("hello world this is a test", 12);
+        assert_eq!(ranges, vec![0..11, 12..21, 22..26]);
+
+        // Long unbroken word
+        let ranges = wrap_line_ranges("abcdefghij", 4);
+        assert_eq!(ranges, vec![0..4, 4..8, 8..10]);
+
+        // Empty line
+        let ranges = wrap_line_ranges("", 10);
+        assert_eq!(ranges, vec![0..0]);
+    }
+
+    #[test]
+    fn test_wrap_toggle_and_scrolling() {
+        let text = b"line 1\nthis is a very long line that should wrap into multiple visual lines when wrap is enabled\nline 3\n";
+        let mut v = viewer(text);
+        v.width = 30;
+        v.page = 10;
+        assert!(!v.wrap);
+
+        // Toggle wrap with 'w'
+        press(&mut v, KeyCode::Char('w'));
+        assert!(v.wrap);
+        assert_eq!(v.note.as_deref(), Some("Wrap on"));
+
+        let lines = v.visible_lines(10);
+        assert!(lines.len() >= 4);
+        assert_eq!(lines[0], "line 1");
+
+        // Scroll down advances sub-rows
+        press(&mut v, KeyCode::Down);
+        assert_eq!(v.top, 1);
+        assert_eq!(v.sub_top, 0);
+
+        press(&mut v, KeyCode::Down);
+        assert_eq!(v.top, 1);
+        assert_eq!(v.sub_top, 1);
+
+        // Scroll up rewinds sub-rows
+        press(&mut v, KeyCode::Up);
+        assert_eq!(v.top, 1);
+        assert_eq!(v.sub_top, 0);
+    }
+
+    #[test]
+    fn test_line_numbers_toggle() {
+        let text = b"first\nsecond\nthird\n";
+        let mut v = viewer(text);
+        assert!(!v.line_numbers);
+
+        // Toggle with '#'
+        press(&mut v, KeyCode::Char('#'));
+        assert!(v.line_numbers);
+        assert_eq!(v.note.as_deref(), Some("Line numbers on"));
+
+        let rows = v.styled(3);
+        assert_eq!(rows[0].line_num, Some(1));
+        assert_eq!(rows[1].line_num, Some(2));
+        assert_eq!(rows[2].line_num, Some(3));
+
+        // Toggle with 'l'
+        press(&mut v, KeyCode::Char('l'));
+        assert!(!v.line_numbers);
+        assert_eq!(v.note.as_deref(), Some("Line numbers off"));
+    }
+
+    #[test]
+    fn test_goto_line() {
+        let text = (1..=100).map(|i| format!("line {i}\n")).collect::<String>();
+        let mut v = viewer(text.as_bytes());
+        v.page = 10;
+
+        // Key 'g' or ':' triggers Action::GotoLine
+        assert_eq!(
+            v.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE)),
+            Action::GotoLine
+        );
+        assert_eq!(
+            v.handle_key(KeyEvent::new(KeyCode::Char(':'), KeyModifiers::NONE)),
+            Action::GotoLine
+        );
+
+        // goto_line directly
+        v.goto_line(50);
+        assert_eq!(v.top, 49);
+        assert_eq!(v.note.as_deref(), Some("Line 50 of 100"));
+
+        // Out of bounds clamp
+        v.goto_line(999);
+        assert_eq!(v.top, 99);
     }
 }

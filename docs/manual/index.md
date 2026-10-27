@@ -9,7 +9,8 @@ whole branch and copy, move, delete, compare or rename them in one go.
 about what you are doing: inside a prompt, the help for that prompt; in the
 tree or the file window, the help for that window. In the help, **Tab** and
 **Shift+Tab** pick a link, **Enter** follows it, **Backspace** goes back,
-**I** shows this index, **K** the keys in effect and **Esc** closes.
+**I** shows this index, **K** the keys in effect, **L** switches the language
+and **Esc** closes.
 
 ## Windows and views
 

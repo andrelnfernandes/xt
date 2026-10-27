@@ -156,7 +156,9 @@ fn main() -> anyhow::Result<()> {
                 return Ok(());
             }
             Some("--man") => {
-                show_man_page(&help::man_page());
+                let (config, _) = config::Config::load();
+                let lang = help::resolve_language(&config.options.help_language);
+                show_man_page(&help::man_page_in(&lang));
                 return Ok(());
             }
             Some(s) if s.starts_with('-') => bail!("unknown option {s}\n\n{USAGE}"),
@@ -277,8 +279,12 @@ impl Keyboard {
 
     /// Enables full mode outside prompts and disables it inside them.
     fn sync(&mut self, app: &mut App) -> std::io::Result<()> {
-        // In the terminal, typing must reach the shell as usual (accents, dead keys).
-        let want_full = self.supported && app.prompt.is_none() && !app.terminal_focus;
+        // In the terminal or framed editor, typing must reach the program as
+        // usual (accents, dead keys).
+        let want_full = self.supported
+            && app.prompt.is_none()
+            && !app.terminal_focus
+            && app.editor_pty.is_none();
         if want_full == self.full {
             return Ok(());
         }
@@ -317,12 +323,20 @@ fn run_external(
     terminal: &mut DefaultTerminal,
     keyboard: &mut Keyboard,
     ext: &shell::External,
+    editor_theme: bool,
 ) -> std::io::Result<std::process::ExitStatus> {
     keyboard.restore();
     terminal::disable_raw_mode()?;
     execute!(stdout(), LeaveAlternateScreen, cursor::Show)?;
 
-    let status = ext.command().status();
+    let theme = (ext.file.is_some() && editor_theme)
+        .then(|| app::write_vim_theme(false))
+        .flatten();
+    let script = theme.as_ref().map(|(_, s)| s.as_path());
+    let status = ext.command_with_theme(script).status();
+    if let Some((dir, _)) = theme {
+        let _ = std::fs::remove_dir_all(dir);
+    }
     if ext.wait {
         print!("\n[Xylem] Press Enter to return to Xylem...");
         let _ = stdout().flush();
@@ -360,6 +374,7 @@ fn run(
         // A connection being made: ssh's questions and the result.
         app.poll_connection();
         redraw |= app.terminal_tick();
+        redraw |= app.editor_tick();
         if redraw {
             terminal.draw(|frame| ui::draw(frame, app))?;
         }
@@ -373,9 +388,10 @@ fn run(
         // Idle, wait for a key for up to half a second; in the meantime,
         // apply the changes seen on disk (batched, so a large copy
         // done by another program doesn't trigger a reread per file).
-        // With the terminal on screen, wake up often to show what the
-        // shell writes, but redraw only when it writes something.
-        let wait = if app.terminal_focus {
+        // With the terminal or framed editor on screen, wake up often to show
+        // what the program writes, but redraw only when it writes something.
+        let in_pty = app.terminal_focus || app.editor_pty.is_some();
+        let wait = if in_pty {
             15
         } else if app.connecting.is_some() {
             100
@@ -383,7 +399,7 @@ fn run(
             500
         };
         if !event::poll(Duration::from_millis(wait))? {
-            redraw = !app.terminal_focus;
+            redraw = !in_pty;
             if last_fs_check.elapsed() >= Duration::from_millis(500) {
                 last_fs_check = Instant::now();
                 if let Some(w) = &watcher {
@@ -398,8 +414,14 @@ fn run(
             app.handle_key(key);
         }
         if let Some(ext) = app.external.take() {
-            let result = run_external(terminal, keyboard, &ext);
-            app.after_external(result);
+            if ext.file.is_some() && app.options.editor_in_frame {
+                if let Err(e) = app.start_framed_editor(ext) {
+                    app.message = Some(format!("Cannot start editor: {e}"));
+                }
+            } else {
+                let result = run_external(terminal, keyboard, &ext, app.options.editor_theme);
+                app.after_external(result);
+            }
         }
     }
     Ok(())
