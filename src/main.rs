@@ -5,6 +5,7 @@
 mod app;
 mod archive;
 mod bidi;
+mod charset;
 mod clipboard;
 mod config;
 mod decompress;
