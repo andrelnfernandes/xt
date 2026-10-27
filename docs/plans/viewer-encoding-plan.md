@@ -370,7 +370,7 @@ fn o_asks_before_opening_a_name_with_hidden_bidi() {
   - gzip usa `flate2::read::MultiGzDecoder` e bzip2 usa
     `bzip2::read::MultiBzDecoder`.
 
-- [ ] **Passo 1: escrever os testes, que devem falhar.** Use os helpers
+- [x] **Passo 1: escrever os testes, que devem falhar.** Use os helpers
   `gz(&[u8]) -> Vec<u8>` e `bz2(&[u8]) -> Vec<u8>` com os encoders, como em
   `archive.rs:755`, e `TEXT = b"linha de log\n"`.
 
@@ -434,10 +434,10 @@ proptest! {
 ```
 
   Enquanto a tarefa 6 não fizer xz e zstd, eles devolvem a nota `TRUNCATED`.
-- [ ] **Passo 2:** `cargo test decompress:: panic_guard::` falha.
-- [ ] **Passo 3:** implementar.
-- [ ] **Passo 4:** os testes passam.
-- [ ] **Passo 5:** commit
+- [x] **Passo 2:** `cargo test decompress:: panic_guard::` falha.
+- [x] **Passo 3:** implementar.
+- [x] **Passo 4:** os testes passam.
+- [x] **Passo 5:** commit
   `Add decompress module (gzip, bzip2) with output, time and panic guards`.
 
 ### Tarefa 6: xz e zstd com limite de memória
@@ -467,7 +467,7 @@ proptest! {
     (`needed memory too big for mem_limit_kb`), e o teste abaixo acusa se
     ela mudar.
 
-- [ ] **Passo 1: escrever os testes, que devem falhar.**
+- [x] **Passo 1: escrever os testes, que devem falhar.**
   - O helper `xz_header_with_dict_props(props: u8) -> Vec<u8>` monta um xz
     só com cabeçalhos, que pede um dicionário enorme sem precisar de um
     encoder com esse dicionário. O CRC32 usa `flate2::Crc`, que é API
@@ -504,12 +504,12 @@ fn xz_header_with_dict_props(props: u8) -> Vec<u8> {
 }
 ```
 
-- [ ] **Passo 2:** os testes falham.
-- [ ] **Passo 3:** implementar. Se a forma de chamar o `lzma-rust2` ou o
+- [x] **Passo 2:** os testes falham.
+- [x] **Passo 3:** implementar. Se a forma de chamar o `lzma-rust2` ou o
   `ruzstd` for diferente da escrita acima, ajuste o helper, não a
   expectativa.
-- [ ] **Passo 4:** `cargo test decompress::` passa, inclusive o proptest.
-- [ ] **Passo 5:** commit `decompress: xz and zstd with memory limits`.
+- [x] **Passo 4:** `cargo test decompress::` passa, inclusive o proptest.
+- [x] **Passo 5:** commit `decompress: xz and zstd with memory limits`.
 
 ### Tarefa 7: `archive.rs` usa os leitores com limite
 
@@ -520,16 +520,16 @@ fn xz_header_with_dict_props(props: u8) -> Vec<u8> {
 - Consome `decompress::xz_reader(file, decompress::VIEW_DICT)` e
   `decompress::zstd_reader(file, decompress::VIEW_DICT)`.
 
-- [ ] **Passo 1: escrever o teste em `archive.rs`, que deve falhar.** Um
+- [x] **Passo 1: escrever o teste em `archive.rs`, que deve falhar.** Um
   arquivo `big.tar.xz` com o conteúdo `xz_header_with_dict_props(40)`.
   Torne o helper `pub(crate)` dentro de `#[cfg(test)]` em `decompress.rs`.
   Listar ou extrair dá um `Err` cuja mensagem contém `mem_limit`. Hoje o
   `XzReader::new` sem limite tentaria alocar 4 GiB.
-- [ ] **Passo 2:** o teste falha (ou aloca: rode-o sozinho primeiro).
-- [ ] **Passo 3:** trocar os dois construtores.
-- [ ] **Passo 4:** `cargo test archive::` passa, inclusive os testes de
+- [x] **Passo 2:** o teste falha (ou aloca: rode-o sozinho primeiro).
+- [x] **Passo 3:** trocar os dois construtores.
+- [x] **Passo 4:** `cargo test archive::` passa, inclusive os testes de
   `.tar.xz` e `.tar.zst` que já existiam.
-- [ ] **Passo 5:** commit
+- [x] **Passo 5:** commit
   `Archives: cap xz dictionary and zstd window at 64 MiB`. Atualize o status
   em `viewers.md`. Fim do PR 2.
 

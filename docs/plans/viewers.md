@@ -124,7 +124,9 @@ es, de, fr e zh) e precisa acompanhar cada mudança.
   está em execução.
   - **PR 1 (guarda bidi, Tarefas 1 a 4): implementado** no branch
     `bidi-guard`, ainda sem push nem PR.
-  - **Próximo passo:** PR 2 (Tarefa 5 em diante). Marque os checkboxes no
+  - **PR 2 (módulo `decompress` e correção do Alt+F5, Tarefas 5 a 7):
+    implementado** no branch `decompress`, ainda sem push nem PR.
+  - **Próximo passo:** PR 3 (Tarefa 8 em diante). Marque os checkboxes no
     plano e atualize este status ao fim de cada PR.
 - **Correções feitas no spec ao escrever o plano** (já incorporadas):
   - o `ruzstd` 0.9.1 já limita a janela a 128 MiB por padrão
