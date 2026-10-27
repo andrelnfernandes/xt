@@ -169,6 +169,9 @@ es, de, fr e zh) e precisa acompanhar cada mudança.
   - o `catch_unwind` precisa de um hook que não restaure o terminal dentro
     da área protegida (`src/panic_guard.rs`);
   - as letras do F12 seguem a ordem dos PRs (J, K, L).
+- **Pendente — PR 8 (declaração de segurança):** texto aprovado e roteiro em
+  [security-statement.md](security-statement.md), branch `security-statement`
+  (base `ci-audit`). Falta: canal de denúncia, traduções, commit e PR.
 - **Medições:** ficam em `~/.cache/xt-dev/viewer-mem/`:
   - `data/app.log`: log de 16 MiB;
   - `scripts/gen.py`: gera o log;
