@@ -1,7 +1,5 @@
 //! Text encodings for the viewer: UTF-16, CP437, CP850, Windows-1252, plus
 //! detection and a CP850/1252 guess for data that is not valid UTF-8.
-// Task 11 wires this module into the viewer and removes this allow.
-#![allow(dead_code)]
 
 use crate::viewer::looks_binary;
 
@@ -210,6 +208,7 @@ pub fn guess_legacy(data: &[u8]) -> Charset {
     }
 }
 
+#[rustfmt::skip]
 pub(crate) const CP437: [char; 128] = [
     // 0x80
     'Ç', 'ü', 'é', 'â', 'ä', 'à', 'å', 'ç', 'ê', 'ë', 'è', 'ï', 'î', 'ì', 'Ä', 'Å',
@@ -229,6 +228,7 @@ pub(crate) const CP437: [char; 128] = [
     '≡', '±', '≥', '≤', '⌠', '⌡', '÷', '≈', '°', '∙', '·', '√', 'ⁿ', '²', '■', '\u{A0}',
 ];
 
+#[rustfmt::skip]
 pub(crate) const CP850: [char; 128] = [
     // 0x80
     'Ç', 'ü', 'é', 'â', 'ä', 'à', 'å', 'ç', 'ê', 'ë', 'è', 'ï', 'î', 'ì', 'Ä', 'Å',
@@ -247,6 +247,7 @@ pub(crate) const CP850: [char; 128] = [
     '\u{AD}', '±', '‗', '¾', '¶', '§', '÷', '¸', '°', '¨', '·', '¹', '³', '²', '■', '\u{A0}',
 ];
 
+#[rustfmt::skip]
 pub(crate) const CP1252: [char; 128] = [
     // 0x80
     '€', '\u{FFFD}', '‚', 'ƒ', '„', '…', '†', '‡', 'ˆ', '‰', 'Š', '‹', 'Œ', '\u{FFFD}', 'Ž',

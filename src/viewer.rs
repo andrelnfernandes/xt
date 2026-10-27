@@ -9,6 +9,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use ratatui::style::Color;
 
+use crate::charset::{self, Charset};
 use crate::decompress::{
     self, AUTOVIEW_DICT, AUTOVIEW_TIME, Compression, Limits, VIEW_DICT, VIEW_TIME,
 };
@@ -73,6 +74,8 @@ pub enum Action {
 pub struct LoadOptions {
     pub decompress: bool,
     pub limits: Limits,
+    /// Fixed charset for files that are not UTF-8 or UTF-16 (`None`: guess).
+    pub fallback: Option<Charset>,
 }
 
 impl LoadOptions {
@@ -85,6 +88,7 @@ impl LoadOptions {
                 dict: VIEW_DICT,
                 time: VIEW_TIME,
             },
+            fallback: None,
         }
     }
 
@@ -97,6 +101,7 @@ impl LoadOptions {
                 dict: AUTOVIEW_DICT,
                 time: AUTOVIEW_TIME,
             },
+            fallback: None,
         }
     }
 }
@@ -149,6 +154,10 @@ pub struct Viewer {
     pub sub_top: usize,
     /// How the file was read (kept by `reload`).
     pub load: LoadOptions,
+    /// How `data` is decoded into `lines`.
+    charset: Charset,
+    /// The charset was picked with O: kept by `reload`.
+    charset_manual: bool,
     /// The compression the file was shown through, and the file's size.
     pub compression: Option<(Compression, u64)>,
     /// Not all of the file (or of its decompressed contents) is shown.
@@ -233,7 +242,8 @@ impl Viewer {
             let s = path.to_str()?.strip_suffix(kind.extension())?;
             Some(PathBuf::from(s.strip_suffix('.')?))
         });
-        let mut v = Self::from_bytes(path, size, data);
+        let found = charset::detect(&data, load.fallback);
+        let mut v = Self::build(path, size, data, found.charset, found.binary);
         if let Some(name) = name {
             v = v.colored_as(&name);
         }
@@ -265,6 +275,10 @@ impl Viewer {
     pub fn reload(&mut self) -> io::Result<()> {
         let new = Self::open(self.path.clone(), self.load)?;
         let old = std::mem::replace(self, new);
+        if old.charset_manual {
+            self.set_charset(old.charset);
+            self.charset_manual = true;
+        }
         self.mode = old.mode;
         self.top = old.top.min(self.line_count().saturating_sub(1));
         self.left = old.left;
@@ -387,13 +401,19 @@ impl Viewer {
 
     /// Views bytes already read (e.g. an entry of an archive).
     pub fn from_bytes(path: PathBuf, size: u64, data: Vec<u8>) -> Self {
-        let mode = if looks_binary(&data) {
+        let binary = looks_binary(&data);
+        Self::build(path, size, data, Charset::Utf8, binary)
+    }
+
+    /// `data` shown as `charset` text, or as hex when it is `binary`.
+    fn build(path: PathBuf, size: u64, data: Vec<u8>, charset: Charset, binary: bool) -> Self {
+        let mode = if binary {
             ViewMode::Hex
         } else {
             ViewMode::Text
         };
         let data_len = data.len() as u64;
-        let (lines, bidi) = text_lines(&String::from_utf8_lossy(&data));
+        let (lines, bidi) = text_lines(&charset::decode(&data, charset));
         let colors = (mode == ViewMode::Text)
             .then(|| Highlighter::for_file(&path, lines.first().map_or("", String::as_str)))
             .flatten();
@@ -419,10 +439,56 @@ impl Viewer {
             line_numbers: false,
             sub_top: 0,
             load: LoadOptions::view(MAX_BYTES),
+            charset,
+            charset_manual: false,
             compression: None,
             cut: size > data_len,
             problem: None,
         }
+    }
+
+    pub fn charset(&self) -> Charset {
+        self.charset
+    }
+
+    /// O: the next codepage, decoded again from the bytes.
+    pub fn cycle_charset(&mut self) {
+        let next = self.charset.next();
+        self.set_charset(next);
+        self.charset_manual = true;
+        self.note = Some(format!(
+            "Codepage: {} ({})",
+            next.name(),
+            next.description()
+        ));
+    }
+
+    /// Decodes `data` as `charset` again. A UTF-16 pick on data that looked
+    /// binary switches to text, since that is what the user asked to see; a
+    /// hex view the user chose in a text file stays.
+    fn set_charset(&mut self, charset: Charset) {
+        self.charset = charset;
+        let text = charset::decode(&self.data, charset);
+        if self.mode == ViewMode::Hex
+            && matches!(charset, Charset::Utf16Le | Charset::Utf16Be)
+            && !looks_binary(text.as_bytes())
+        {
+            self.mode = ViewMode::Text;
+        }
+        let (lines, bidi) = text_lines(&text);
+        self.lines = lines;
+        self.bidi = bidi;
+        self.colors = (self.mode == ViewMode::Text)
+            .then(|| {
+                Highlighter::for_file(&self.path, self.lines.first().map_or("", String::as_str))
+            })
+            .flatten();
+        self.colors_on = self.colors.is_some();
+        self.hit = None;
+        if self.mode == ViewMode::Text {
+            self.top = self.top.min(self.lines.len().saturating_sub(1));
+        }
+        self.sub_top = 0;
     }
 
     /// Colors as if it were the file `name` (`x.diff` for git's output, or
@@ -723,6 +789,10 @@ impl Viewer {
             KeyCode::Char(c) => match c.to_ascii_lowercase() {
                 'h' => {
                     self.toggle_mode();
+                    Action::None
+                }
+                'o' => {
+                    self.cycle_charset();
                     Action::None
                 }
                 'c' => {
@@ -1061,6 +1131,7 @@ mod tests {
             dict: VIEW_DICT,
             time: VIEW_TIME,
         },
+        fallback: None,
     };
 
     fn from_gz(name: &str, raw: Vec<u8>, load: LoadOptions) -> Viewer {
@@ -1566,5 +1637,89 @@ mod tests {
         // Out of bounds clamp
         v.goto_line(999);
         assert_eq!(v.top, 99);
+    }
+
+    const PT: &str = "ação, coração e informação";
+
+    fn from_raw(raw: Vec<u8>) -> Viewer {
+        let n = raw.len() as u64;
+        Viewer::from_file(PathBuf::from("a.txt"), n, raw, LOAD)
+    }
+
+    #[test]
+    fn cp850_file_reads_as_portuguese() {
+        use crate::charset::{CP850, Charset, test_util::encode};
+        let v = from_raw(encode(PT, &CP850));
+        assert_eq!(v.visible_lines(1), [PT]);
+        assert_eq!(v.charset(), Charset::Cp850);
+    }
+
+    #[test]
+    fn o_cycles_and_says_so() {
+        use crate::charset::Charset;
+        let mut v = from_raw(b"plain".to_vec());
+        assert_eq!(v.charset(), Charset::Utf8);
+        v.handle_key(KeyEvent::from(KeyCode::Char('o')));
+        assert_eq!(v.charset(), Charset::Cp850);
+        assert_eq!(
+            v.note.as_deref(),
+            Some("Codepage: CP850 (DOS, Western Europe)")
+        );
+        for _ in 0..5 {
+            v.handle_key(KeyEvent::from(KeyCode::Char('o')));
+        }
+        assert_eq!(v.charset(), Charset::Utf8);
+    }
+
+    #[test]
+    fn manual_choice_survives_reload() {
+        use crate::charset::Charset;
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("f.txt");
+        std::fs::write(&path, "hello").unwrap();
+        let mut v = Viewer::open(path, LoadOptions::view(MAX_BYTES)).unwrap();
+        v.cycle_charset(); // CP850
+        v.cycle_charset(); // 1252
+        v.cycle_charset(); // CP437
+        assert_eq!(v.charset(), Charset::Cp437);
+        v.reload().unwrap();
+        assert_eq!(v.charset(), Charset::Cp437);
+    }
+
+    #[test]
+    fn search_finds_accented_text_in_cp850() {
+        use crate::charset::{CP850, test_util::encode};
+        let mut v = from_raw(encode(&format!("one\n{PT}\n"), &CP850));
+        assert!(v.search(&pat("ação"), true, SearchFrom::Edge));
+        assert_eq!(v.hit.map(|h| h.line), Some(1));
+    }
+
+    #[test]
+    fn reg_export_first_line_is_clean() {
+        use crate::charset::Charset;
+        let reg = "\u{FEFF}Windows Registry Editor Version 5.00\r\n\r\n[HKEY_CURRENT_USER]\r\n";
+        let bytes: Vec<u8> = reg.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        let v = from_raw(bytes);
+        assert_eq!(v.charset(), Charset::Utf16Le);
+        assert_eq!(v.mode, ViewMode::Text);
+        assert_eq!(v.visible_lines(1), ["Windows Registry Editor Version 5.00"]);
+    }
+
+    #[test]
+    fn cycling_to_utf16_on_binary_looking_data_shows_text() {
+        let bytes: Vec<u8> = "hello there"
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        // Xylem's own bytes are taken as UTF-8, so this one looks binary.
+        let mut v = Viewer::from_bytes(PathBuf::from("a"), bytes.len() as u64, bytes);
+        assert_eq!(v.mode, ViewMode::Hex);
+        for _ in 0..3 {
+            v.cycle_charset(); // CP850, 1252, CP437
+            assert_eq!(v.mode, ViewMode::Hex);
+        }
+        v.cycle_charset(); // UTF-16LE
+        assert_eq!(v.mode, ViewMode::Text);
+        assert_eq!(v.visible_lines(1), ["hello there"]);
     }
 }

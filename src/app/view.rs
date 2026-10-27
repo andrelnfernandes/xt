@@ -86,12 +86,14 @@ impl App {
     pub(crate) fn load_viewer(&self, path: PathBuf, size: u64) -> std::io::Result<Viewer> {
         let mut load = LoadOptions::view(viewer::MAX_BYTES);
         load.decompress = self.options.viewer_decompress;
+        load.fallback = self.options.legacy_charset.fallback();
         self.load_viewer_with(path, size, load)
     }
 
     fn autoview_load_options(&self) -> LoadOptions {
         let mut load = LoadOptions::autoview();
         load.decompress = self.options.viewer_decompress;
+        load.fallback = self.options.legacy_charset.fallback();
         load
     }
 
