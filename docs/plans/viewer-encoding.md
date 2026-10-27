@@ -299,6 +299,30 @@ tamanho. No remoto, também controla as respostas do servidor.
   original no disco. O pico fica perto de 2,5× o limite, mais o dicionário.
   Com `auto`, isso dá cerca de 8% da RAM, mais o dicionário (64 MiB no
   máximo).
+  - **Custo por linha (revisão final, C2):** a conta acima vale para texto
+    comum. Cada linha é uma `String` (24 bytes, mais o bloco do alocador,
+    de no mínimo 32 bytes, em passos de 16), cada caractere bidi guarda 16
+    bytes de posição e uma tabulação vira até 8 espaços. Medido antes da
+    correção: 16 MiB de `\n` davam 402 MiB de pico (×25), e 64 MiB davam
+    1,6 GiB. Com `auto`, o pico chegava a ~0,9× a RAM, e 256 MiB de quebras
+    de linha cabem num `.bz2` de 208 bytes.
+  - **Orçamento:** o `text_lines` estima a memória enquanto monta as linhas
+    (por linha, `size_of::<String>()` e, se não for vazia, a capacidade
+    arredondada para 16 com mínimo de 32; mais 16 por marca bidi) e para
+    quando a estimativa passa de 2× o limite de leitura
+    (`load.limits.output`; `MAX_BYTES` no `from_bytes`). A estimativa é
+    conferida a cada caractere, então uma linha única de tabulações ou de
+    marcas bidi também para. O vetor de linhas é reservado de uma vez, pela
+    contagem de `\n` limitada ao orçamento, e não cresce.
+  - Quando o orçamento corta, o viewer fica cortado (`truncated()`) e o
+    cabeçalho diz `(showing first N lines)`, na cor de erro. No hex, que
+    mostra todos os bytes lidos, esse aviso não aparece. A troca de
+    codificação (`O`) usa o mesmo orçamento.
+  - Um log com linhas de ~100 bytes custa ~1,4× o tamanho e não é cortado.
+    Linhas de 16 bytes custam ~3,3× e são cortadas perto de 60%.
+  - Medido depois (release, `lines` do harness da revisão, com orçamento
+    de 2× a entrada): 16 MiB de `\n` → 50 MiB de pico (×3,1); 64 MiB → 194
+    MiB (×3,0).
 - **Arquivo truncado ou corrompido:** mostra o que conseguiu descomprimir e
   o aviso `compressed data truncated or corrupt`.
 - **Defesa extra:** a chamada aos descompressores roda dentro de
