@@ -364,10 +364,10 @@ impl App {
     /// temporary folder (deleted when Xylem exits), in steps like any copy
     /// (Esc stops it), and opens them at the end.
     pub(crate) fn open_with(&mut self, tagged: bool) {
-        // A name with hidden bidi controls may not be what it looks like.
         let Some(sources) = self.sources_or_warn(tagged) else {
             return;
         };
+        // A name with hidden bidi controls may not be what it looks like.
         let hidden = sources.iter().find_map(|s| {
             let name = s.path.file_name()?.to_string_lossy().into_owned();
             crate::bidi::has_bidi(&name).then_some(name)
@@ -377,9 +377,11 @@ impl App {
                 "Hidden bidirectional characters in {}. Open anyway?",
                 crate::bidi::escape(&name)
             );
-            self.ask(ConfirmKind::OpenHidden { tagged }, q);
+            // 'y' opens the files asked about, even if the selection
+            // changes before the answer.
+            self.ask(ConfirmKind::OpenHidden { sources }, q);
         } else {
-            self.open_sources(tagged);
+            self.open_sources(sources);
         }
     }
 
@@ -389,10 +391,7 @@ impl App {
             .is_some_and(|f| crate::bidi::has_bidi(&self.file(f).name.to_string_lossy()))
     }
 
-    pub(crate) fn open_sources(&mut self, tagged: bool) {
-        let Some(sources) = self.sources_or_warn(tagged) else {
-            return;
-        };
+    pub(crate) fn open_sources(&mut self, sources: Vec<Source>) {
         if self.remote.is_none() && self.archive.is_none() {
             let paths = sources.into_iter().map(|s| s.path).collect();
             return self.open_paths(paths, &[]);
