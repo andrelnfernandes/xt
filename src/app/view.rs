@@ -1,14 +1,11 @@
 use super::*;
-use crate::viewer::ViewMode;
+use crate::viewer::{LoadOptions, ViewMode};
 
 /// View of the tagged files (Ctrl+V): the files and which one is open.
 pub struct TaggedView {
     pub items: Vec<(FileRef, PathBuf)>,
     pub index: usize,
 }
-
-/// Autoview reads only the start of each file, to stay fast.
-pub(crate) const AUTOVIEW_BYTES: u64 = 1024 * 1024;
 
 impl App {
     /// Autoview's own keys: F7, Esc and Enter exit; Shift+arrows scroll
@@ -64,7 +61,7 @@ impl App {
         let (wrap, line_numbers) = (current.wrap, current.line_numbers);
         let size = self.file(f).size;
         let mut v = self
-            .load_viewer_limited(path.clone(), size, AUTOVIEW_BYTES)
+            .load_viewer_with(path.clone(), size, LoadOptions::autoview())
             .unwrap_or_else(|e| {
                 Viewer::from_bytes(path, 0, format!("Cannot view file: {e}").into_bytes())
             });
@@ -87,27 +84,31 @@ impl App {
 
     /// Opens `path` in the viewer (from inside the ZIP/TAR, if applicable).
     pub(crate) fn load_viewer(&self, path: PathBuf, size: u64) -> std::io::Result<Viewer> {
-        self.load_viewer_limited(path, size, viewer::MAX_BYTES)
+        self.load_viewer_with(path, size, LoadOptions::view(viewer::MAX_BYTES))
     }
 
-    pub(crate) fn load_viewer_limited(
+    pub(crate) fn load_viewer_with(
         &self,
         path: PathBuf,
         size: u64,
-        limit: u64,
+        load: LoadOptions,
     ) -> std::io::Result<Viewer> {
         let mut v = if let Some(remote) = &self.remote {
-            let data = remote.read(&path, limit)?;
-            Viewer::from_bytes(path, size, data)
+            let data = remote.read(&path, load.limits.output as u64)?;
+            Viewer::from_file(path, size, data, load)
         } else {
             match &self.archive {
                 Some(root) => {
                     let entry = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
                     let mut data = Vec::new();
-                    archive::Reader::open(root)?.extract(&entry, &mut data, limit)?;
-                    Viewer::from_bytes(path, size, data)
+                    archive::Reader::open(root)?.extract(
+                        &entry,
+                        &mut data,
+                        load.limits.output as u64,
+                    )?;
+                    Viewer::from_file(path, size, data, load)
                 }
-                None => Viewer::open_limited(path, limit)?,
+                None => Viewer::open(path, load)?,
             }
         };
         v.wrap = self.options.viewer_wrap;
