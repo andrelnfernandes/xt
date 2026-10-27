@@ -12,6 +12,8 @@ ventana y nunca llega a Xylem) abre cuatro páginas:
 | 3. Confirmaciones e historial | confirmar al salir, eliminar a la papelera, confirmación de Prune, no guardar entradas con `@`, historial propio de la terminal integrada |
 | 4. Copiar, comparar y actualizar | ignorar 2 s, ignorar 1 h, actualización automática, dónde empiezan las rutas de Alt+C/Alt+M |
 
+El límite de tamaño del visor (**L** en la página 2) cuesta memoria y tiempo: con `1024` MiB, abrir un archivo de texto normal de ese tamaño ocupa unos 2,5 GiB de RAM y tarda unos 5 s, y los archivos de líneas muy cortas cuestan más por byte (consulta [el visor](viewer.md)).
+
 La letra de la opción (o Enter) cambia el valor, PgUp/PgDn o 1–4 cambian de
 página, **F4** elige el tema de una lista (con vista previa instantánea), **F3**
 guarda y aplica, y **Esc** cancela (pregunta si hay cambios).
