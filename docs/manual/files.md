@@ -50,6 +50,10 @@ wrap, `#` toggles line numbers; F7, Esc or Enter leave. It shows the first
   deleted when Xylem exits. Another program can be set in `opener`.
 - Alt+F5: open an [archive](archives.md) as a directory.
 
+## Hidden direction characters
+
+Some invisible characters change the direction of the text, so a name can look different from what it really is (Trojan Source, CVE-2021-42574; for example `fatura\u{202E}fdp.sh` can look like a harmless PDF). Xylem never sends them to the terminal: in a name they appear marked in red, the footer warns "Name has hidden bidirectional characters" when the cursor is on one, and `O` asks for confirmation before opening it, showing the name with the characters spelled out as `\u{XXXX}`.
+
 ## The clipboard
 
 `Y` or Ctrl+Insert copies the path of the file (in the tree, of the directory)

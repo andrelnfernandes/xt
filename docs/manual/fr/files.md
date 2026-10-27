@@ -55,6 +55,10 @@ ligne ; F7, Esc ou Enter quittent. Il affiche le premier 1 Mio de chaque fichier
   Xylem. Un autre programme peut être défini dans `opener`.
 - Alt+F5 : ouvrir une [archive](archives.md) comme un répertoire.
 
+## Caractères de direction cachés
+
+Certains caractères invisibles changent le sens d'écriture du texte, si bien qu'un nom peut paraître différent de ce qu'il est vraiment (Trojan Source, CVE-2021-42574 ; par exemple, `fatura\u{202E}fdp.sh` peut ressembler à un PDF inoffensif). Xylem ne les envoie jamais au terminal : dans le nom, ils apparaissent marqués en rouge, le pied de page avertit « Name has hidden bidirectional characters » quand le curseur est sur un tel nom, et `O` demande confirmation avant d'ouvrir, en montrant le nom avec les caractères écrits sous la forme `\u{XXXX}`.
+
 ## Le presse-papiers
 
 `Y` ou Ctrl+Insert copie le chemin du fichier (dans l'arborescence, celui du

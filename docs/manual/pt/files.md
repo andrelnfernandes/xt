@@ -51,6 +51,10 @@ Exibe o primeiro 1 MiB de cada arquivo (`V` exibe até 16 MiB).
   programa pode ser definido em `opener`.
 - Alt+F5: abre um [arquivo compactado](archives.md) como um diretório.
 
+## Caracteres de direção escondidos
+
+Alguns caracteres invisíveis mudam a direção do texto, e por isso um nome pode parecer diferente do que realmente é (Trojan Source, CVE-2021-42574; por exemplo, `fatura\u{202E}fdp.sh` pode parecer um PDF inofensivo). O Xylem nunca os envia ao terminal: no nome eles aparecem marcados em vermelho, o rodapé avisa "Name has hidden bidirectional characters" quando o cursor está sobre um deles, e o `O` pede confirmação antes de abrir, mostrando o nome com os caracteres escritos como `\u{XXXX}`.
+
 ## A área de transferência
 
 `Y` ou Ctrl+Insert copia o caminho do arquivo (na árvore, do diretório) para a

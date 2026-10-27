@@ -2,7 +2,9 @@
 
 Subprojeto 1 do [plano de visualizadores](viewers.md).
 
-**Status (2026-10-27):** spec aprovado pelo autor. O plano de implementação
+**Status (2026-10-27):** PR 1 (guarda bidi, Tarefas 1 a 4) implementado no
+branch `bidi-guard`; o próximo é o PR 2 (Tarefa 5). Spec aprovado pelo
+autor. O plano de implementação
 está em [viewer-encoding-plan.md](viewer-encoding-plan.md). Ao escrevê-lo,
 quatro pontos foram corrigidos aqui: a janela do zstd, a conta do xz, o
 panic hook e as letras do F12.
