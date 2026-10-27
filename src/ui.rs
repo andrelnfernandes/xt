@@ -1995,15 +1995,23 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
         ));
     }
     if v.truncated() {
-        let shown = if v.compression.is_some() {
-            format!("{} bytes decompressed", fmt_num(v.data_len()))
+        // The hex view shows every byte read: the line budget cuts only
+        // the text.
+        let shown = if v.lines_cut() && v.mode == ViewMode::Text {
+            Some(format!("{} lines", fmt_num(v.line_count() as u64)))
+        } else if !v.bytes_cut() {
+            None
+        } else if v.compression.is_some() {
+            Some(format!("{} bytes decompressed", fmt_num(v.data_len())))
         } else {
-            format!("{} MiB", v.limit() >> 20)
+            Some(format!("{} MiB", v.limit() >> 20))
         };
-        title.push(Span::styled(
-            format!("  (showing first {shown})"),
-            Style::new().fg(theme().error),
-        ));
+        if let Some(shown) = shown {
+            title.push(Span::styled(
+                format!("  (showing first {shown})"),
+                Style::new().fg(theme().error),
+            ));
+        }
     }
     if let Some(problem) = v.problem() {
         title.push(Span::styled(
@@ -2427,7 +2435,8 @@ mod tests {
         let tmp = crate::testing::tempdir();
         let mut app = App::new(tmp.path().to_path_buf());
         let load = LoadOptions::view(1 << 20);
-        let text = "0123456789abcdef\n".repeat(1 << 17);
+        // Lines long enough for the line budget: these are cut by bytes.
+        let text = format!("{}\n", "0123456789abcdef".repeat(4)).repeat(1 << 15);
         let raw = text.as_bytes()[..1 << 20].to_vec();
         app.viewer = Some(Viewer::from_file(
             "x.txt".into(),
@@ -2481,6 +2490,31 @@ mod tests {
             let row0 = draw_row0(&mut app);
             assert!(row0.contains(shown), "{row0}");
         }
+    }
+
+    /// Cut by the line budget, not by the bytes read: the header counts lines.
+    #[test]
+    fn viewer_header_counts_the_lines_the_budget_kept() {
+        use crate::viewer::{LoadOptions, Viewer};
+        let tmp = crate::testing::tempdir();
+        let mut app = App::new(tmp.path().to_path_buf());
+        let raw = vec![b'\n'; 1 << 20];
+        let v = Viewer::from_file("nl.txt".into(), 1 << 20, raw, LoadOptions::view(1 << 20));
+        let lines = format!("(showing first {} lines)", fmt_num(v.line_count() as u64));
+        app.viewer = Some(v);
+        let row0 = draw_row0(&mut app);
+        assert!(row0.contains(&lines), "{row0}");
+        assert!(!row0.contains("MiB)"), "{row0}");
+        // The hex view shows every byte: nothing was cut there.
+        app.viewer
+            .as_mut()
+            .unwrap()
+            .handle_key(ratatui::crossterm::event::KeyEvent::new(
+                ratatui::crossterm::event::KeyCode::Char('h'),
+                ratatui::crossterm::event::KeyModifiers::NONE,
+            ));
+        let row0 = draw_row0(&mut app);
+        assert!(!row0.contains("(showing first"), "{row0}");
     }
 
     #[test]

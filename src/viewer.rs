@@ -165,6 +165,8 @@ pub struct Viewer {
     pub compression: Option<(Compression, u64)>,
     /// Not all of the file (or of its decompressed contents) is shown.
     cut: bool,
+    /// The line budget stopped `lines` before the end of the text.
+    lines_cut: bool,
     /// What went wrong decompressing, for the header: the note says it
     /// too, but any key clears the note.
     problem: Option<String>,
@@ -246,7 +248,8 @@ impl Viewer {
             Some(PathBuf::from(s.strip_suffix('.')?))
         });
         let found = charset::detect(&data, load.fallback);
-        let mut v = Self::build(path, size, data, found.charset, found.binary);
+        let limit = load.limits.output;
+        let mut v = Self::build(path, size, data, found.charset, found.binary, limit);
         if let Some(name) = name {
             v = v.colored_as(&name);
         }
@@ -405,18 +408,27 @@ impl Viewer {
     /// Views bytes already read (e.g. an entry of an archive).
     pub fn from_bytes(path: PathBuf, size: u64, data: Vec<u8>) -> Self {
         let binary = looks_binary(&data);
-        Self::build(path, size, data, Charset::Utf8, binary)
+        Self::build(path, size, data, Charset::Utf8, binary, MAX_BYTES as usize)
     }
 
     /// `data` shown as `charset` text, or as hex when it is `binary`.
-    fn build(path: PathBuf, size: u64, data: Vec<u8>, charset: Charset, binary: bool) -> Self {
+    /// `limit` is the read limit, which sets the lines' memory budget.
+    fn build(
+        path: PathBuf,
+        size: u64,
+        data: Vec<u8>,
+        charset: Charset,
+        binary: bool,
+        limit: usize,
+    ) -> Self {
         let mode = if binary {
             ViewMode::Hex
         } else {
             ViewMode::Text
         };
         let data_len = data.len() as u64;
-        let (lines, bidi) = text_lines(&charset::decode(&data, charset));
+        let text = text_lines(&charset::decode(&data, charset), line_budget(limit));
+        let (lines, bidi) = (text.lines, text.bidi);
         let colors = (!binary)
             .then(|| text_colors(&path, None, &lines))
             .flatten();
@@ -442,11 +454,12 @@ impl Viewer {
             wrap: false,
             line_numbers: false,
             sub_top: 0,
-            load: LoadOptions::view(MAX_BYTES),
+            load: LoadOptions::view(limit as u64),
             charset,
             charset_manual: false,
             compression: None,
             cut: size > data_len,
+            lines_cut: text.cut,
             problem: None,
         }
     }
@@ -483,9 +496,10 @@ impl Viewer {
             self.top = 0;
             self.left = 0;
         }
-        let (lines, bidi) = text_lines(&text);
-        self.lines = lines;
-        self.bidi = bidi;
+        let text = text_lines(&text, line_budget(self.load.limits.output));
+        self.lines = text.lines;
+        self.bidi = text.bidi;
+        self.lines_cut = text.cut;
         let had_colors = self.colors.is_some();
         self.colors = readable
             .then(|| text_colors(&self.path, self.color_name.as_deref(), &self.lines))
@@ -514,8 +528,19 @@ impl Viewer {
         self.bidi.len()
     }
 
+    /// Not all of the file is shown: its bytes, or its text's lines.
     pub fn truncated(&self) -> bool {
+        self.cut || self.lines_cut
+    }
+
+    /// The bytes were cut: by the read limit, or decompression stopped.
+    pub fn bytes_cut(&self) -> bool {
         self.cut
+    }
+
+    /// The text has more lines than the line budget let in.
+    pub fn lines_cut(&self) -> bool {
+        self.lines_cut
     }
 
     /// The decompression failed or stopped on damaged data (the header
@@ -1069,43 +1094,87 @@ fn text_colors(path: &Path, name: Option<&Path>, lines: &[String]) -> Option<Hig
     }
 }
 
-/// Splits into lines, expands tabs and replaces control characters with `·`.
-/// Also returns where each bidi control was replaced: (line, character
-/// column after expanding tabs), in order.
-fn text_lines(text: &str) -> (Vec<String>, Vec<(usize, usize)>) {
-    let mut bidi = Vec::new();
-    let mut lines: Vec<String> = text
-        .split('\n')
-        .enumerate()
-        .map(|(i, line)| {
-            let line = line.strip_suffix('\r').unwrap_or(line);
-            let mut out = String::with_capacity(line.len());
-            let mut col = 0;
-            for c in line.chars() {
-                if c == '\t' {
-                    let n = TAB_WIDTH - col % TAB_WIDTH;
-                    out.extend(std::iter::repeat_n(' ', n));
-                    col += n;
-                } else {
-                    if crate::bidi::is_bidi(c) {
-                        bidi.push((i, col));
-                    }
-                    out.push(if c.is_control() || crate::bidi::is_bidi(c) {
-                        '·'
-                    } else {
-                        c
-                    });
-                    col += 1;
-                }
-            }
-            out
-        })
-        .collect();
+/// The memory the lines of a text may take, by `line_cost`: twice the
+/// read limit. Ordinary text costs about 1.4 × its size (~100-byte lines);
+/// tiny lines, tabs and bidi marks cost many times the bytes they come from.
+fn line_budget(limit: usize) -> usize {
+    limit.saturating_mul(2)
+}
+
+/// What a line costs in memory, roughly: the `String` itself, plus its heap
+/// block when it has one (allocators hand out at least 32 bytes, in steps
+/// of 16).
+fn line_cost(capacity: usize) -> usize {
+    let heap = match capacity {
+        0 => 0,
+        n => n.next_multiple_of(16).max(32),
+    };
+    size_of::<String>() + heap
+}
+
+/// What each bidi position costs in `Viewer::bidi`.
+const MARK_COST: usize = size_of::<(usize, usize)>();
+
+/// A text split by `text_lines`.
+struct TextLines {
+    lines: Vec<String>,
+    /// Where each bidi control was replaced: (line, character column after
+    /// expanding tabs), in order.
+    bidi: Vec<(usize, usize)>,
+    /// The budget ran out before the end of the text.
+    cut: bool,
+}
+
+/// Splits into lines, expands tabs and replaces control characters with `·`,
+/// noting where the bidi controls were. Stops once the lines would cost
+/// more than `budget` bytes: a file of newlines would otherwise take 25
+/// times its size (16 MiB of them, a .bz2 of a few hundred bytes, became
+/// 400 MiB).
+fn text_lines(text: &str, budget: usize) -> TextLines {
     // The final '\n' does not open a new line.
-    if lines.len() > 1 && lines.last().is_some_and(String::is_empty) {
-        lines.pop();
+    let body = text.strip_suffix('\n').unwrap_or(text);
+    // Room for all the lines the budget allows, so the vector never grows.
+    let count = body.bytes().filter(|&b| b == b'\n').count() + 1;
+    let mut lines = Vec::with_capacity(count.min(budget / size_of::<String>() + 1));
+    let mut bidi = Vec::new();
+    let mut used = 0;
+    let mut cut = false;
+    let mut parts = body.split('\n').peekable();
+    while let Some(line) = parts.next() {
+        let line = line.strip_suffix('\r').unwrap_or(line);
+        let i = lines.len();
+        let mut out = String::with_capacity(line.len());
+        let mut col = 0;
+        let mut chars = line.chars();
+        let mut full = false;
+        for c in chars.by_ref() {
+            if c == '\t' {
+                let n = TAB_WIDTH - col % TAB_WIDTH;
+                out.extend(std::iter::repeat_n(' ', n));
+                col += n;
+            } else {
+                let hidden = crate::bidi::is_bidi(c);
+                if hidden {
+                    bidi.push((i, col));
+                    used += MARK_COST;
+                }
+                out.push(if c.is_control() || hidden { '·' } else { c });
+                col += 1;
+            }
+            // One long line (of tabs or bidi marks) can be over the budget.
+            if used + out.len() > budget {
+                full = true;
+                break;
+            }
+        }
+        used += line_cost(out.capacity());
+        lines.push(out);
+        if full || used > budget {
+            cut = !chars.as_str().is_empty() || parts.peek().is_some();
+            break;
+        }
     }
-    (lines, bidi)
+    TextLines { lines, bidi, cut }
 }
 
 /// `00000010  48 65 6C 6C 6F 0A 00 00  00 00 00 00 00 00 00 00  |Hello...........|`
@@ -1355,10 +1424,75 @@ mod tests {
 
     #[test]
     fn splits_text_lines() {
-        assert_eq!(text_lines("a\r\nb\n").0, ["a", "b"]);
-        assert_eq!(text_lines("a\tb").0, ["a       b"]);
-        assert_eq!(text_lines("x\x07y").0, ["x·y"]);
-        assert_eq!(text_lines("").0, [""]);
+        let lines = |t: &str| text_lines(t, usize::MAX).lines;
+        assert_eq!(lines("a\r\nb\n"), ["a", "b"]);
+        assert_eq!(lines("a\tb"), ["a       b"]);
+        assert_eq!(lines("x\x07y"), ["x·y"]);
+        assert_eq!(lines(""), [""]);
+        assert_eq!(lines("\n"), [""]);
+        assert_eq!(lines("a\n\n"), ["a", ""]);
+    }
+
+    /// Each empty line costs a `String` (24 bytes on 64 bits) and no heap
+    /// block: 16 MiB of newlines, from a .gz of a few KiB, would be 16 M of
+    /// them (400 MiB). The line budget, 2 × the read limit, stops it.
+    #[test]
+    fn many_tiny_lines_stop_at_the_line_budget() {
+        let limit = 1 << 20;
+        let budget = 2 * limit;
+        let most = budget / size_of::<String>() + 1;
+        let mut v = from_gz(
+            "nl.txt.gz",
+            gz(&vec![b'\n'; 16 << 20]),
+            LoadOptions::view(limit as u64),
+        );
+        assert!(v.truncated());
+        assert!(v.line_count() <= most, "{} lines", v.line_count());
+        assert!(v.line_count() > most / 2, "{} lines", v.line_count());
+        // O decodes again under the same budget.
+        v.cycle_charset();
+        assert!(v.truncated());
+        assert!(v.line_count() <= most, "{} lines", v.line_count());
+    }
+
+    #[test]
+    fn bidi_marks_and_tabs_count_against_the_line_budget() {
+        let limit = 1 << 20;
+        let budget = 2 * limit;
+        let view = |text: String| {
+            let n = text.len() as u64;
+            Viewer::from_file("t.txt".into(), n, text.into_bytes(), LoadOptions::view(n))
+        };
+        // 16 bytes per mark: 349,525 of them would be 5.3 MiB.
+        let v = view("\u{202E}".repeat(limit / 3));
+        assert!(v.truncated());
+        assert!(v.bidi_count() <= budget / 16 + 1, "{}", v.bidi_count());
+        // A tab grows to 8 spaces: one line of 1 MiB of tabs would be 8 MiB.
+        let v = view("\t".repeat(limit));
+        assert!(v.truncated());
+        assert!(
+            v.lines[0].len() <= budget + TAB_WIDTH,
+            "{}",
+            v.lines[0].len()
+        );
+    }
+
+    /// A log of ~100-byte lines costs ~1.4 × its size: it is not cut.
+    #[test]
+    fn ordinary_lines_fit_the_line_budget() {
+        let limit = 1 << 20;
+        let line =
+            "2026-10-27 12:00:00 INFO an ordinary line of a log file, about a hundred bytes long\n";
+        let text = line.repeat(limit / line.len());
+        let n = text.len() as u64;
+        let v = Viewer::from_file(
+            "app.log".into(),
+            n,
+            text.into_bytes(),
+            LoadOptions::view(limit as u64),
+        );
+        assert!(!v.truncated());
+        assert_eq!(v.line_count(), limit / line.len());
     }
 
     #[test]
