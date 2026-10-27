@@ -1,6 +1,6 @@
 # 查看器
 
-`V` 在查看器中打开文件（自动预览 Autoview，即 F7，则将其显示在文件列表旁）。二进制文件默认以十六进制模式打开。超过 16 MiB 的文件仅显示开头部分。
+`V` 在查看器中打开文件（自动预览 Autoview，即 F7，则将其显示在文件列表旁）。二进制文件默认以十六进制模式打开。超过大小限制的文件仅显示开头部分。
 
 | 按键 | 功能 |
 |---|---|
@@ -38,11 +38,17 @@ Xylem 会自己判断编码，顺序如下：先解压文件，再找 BOM（UTF-
 
 如果想让旧文本文件总是使用同一种编码，而不是靠猜，把 `legacy_charset` 设为 `cp850`、`cp1252` 或 `cp437`（[配置](configuration.md)第 2 页的 **K**）。默认值是 `auto`。
 
+## 大小限制
+
+查看器只读取大文件的开头部分，标题栏会显示 `(showing first N MiB)`。读取多少由选项 `viewer_max_size` 决定（[配置](configuration.md)第 2 页的 **L**）：`auto`、`16`、`64`、`256` 或 `1024`（单位 MiB）。默认的 `auto` 取机器内存的 1/32，但不少于 16 MiB，也不超过 256 MiB（读不到内存大小时为 16 MiB）。配置界面会显示实际使用的值，例如 `auto (256 MiB)`。
+
+有两种情况不遵循这一规则。自动预览（Autoview）始终只读 1 MiB。远程机器（SFTP）上的文件最多读取 16 MiB，因为 Esc 无法取消这种读取。
+
 ## 压缩文件
 
 以 `.gz`、`.xz`、`.zst` 或 `.bz2` 结尾的文件会解压后以文本打开。Xylem 看的是文件的前几个字节，而不是文件名，并且只解一层：`.gz` 里面的 `.gz` 仍保持压缩。标题栏显示 `gzip → N bytes`（格式和解压后的大小）。
 
-解压有限制。查看器最多读取 16 MiB，最多用时 3 秒，xz 字典或 zstd 窗口最多占用 64 MiB 内存。自动预览（Autoview）的限制是 1 MiB、100 毫秒和 16 MiB。达到输出或时间限制时，标题栏显示 `(showing first N bytes decompressed)`。一条提示说明发生了什么：
+解压有限制。查看器最多读取到大小限制，最多用时 3 秒，xz 字典或 zstd 窗口最多占用 64 MiB 内存。自动预览（Autoview）的限制是 1 MiB、100 毫秒和 16 MiB。达到输出或时间限制时，标题栏显示 `(showing first N bytes decompressed)`。一条提示说明发生了什么：
 
 - `decompression stopped after 3 s`（自动预览中为 100 ms）
 - `compressed data truncated or corrupt`（压缩数据被截断或已损坏）
