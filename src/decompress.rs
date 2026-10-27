@@ -52,7 +52,7 @@ pub fn sniff(head: &[u8]) -> Option<Compression> {
 }
 
 pub const CHUNK: usize = 64 << 10;
-pub const VIEW_DICT: u32 = 64 << 20;
+pub(crate) const VIEW_DICT: u32 = 64 << 20;
 pub const AUTOVIEW_DICT: u32 = 16 << 20;
 pub const VIEW_TIME: Duration = Duration::from_secs(3);
 pub const AUTOVIEW_TIME: Duration = Duration::from_millis(100);
@@ -88,12 +88,12 @@ fn truncated() -> Decompressed {
 }
 
 /// xz reader that refuses blocks whose dictionary needs more than `dict` bytes.
-pub fn xz_reader<R: Read>(r: R, dict: u32) -> lzma_rust2::XzReader<R> {
+pub(crate) fn xz_reader<R: Read>(r: R, dict: u32) -> lzma_rust2::XzReader<R> {
     lzma_rust2::XzReader::new_mem_limit(r, true, lzma_rust2::lzma2_get_memory_usage(dict))
 }
 
 /// zstd reader for ONE frame; refuses windows larger than `window` bytes.
-pub fn zstd_reader<R: Read>(
+pub(crate) fn zstd_reader<R: Read>(
     r: R,
     window: u32,
 ) -> io::Result<ruzstd::decoding::StreamingDecoder<R, ruzstd::decoding::FrameDecoder>> {
