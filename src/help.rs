@@ -6,8 +6,150 @@
 //! The Markdown is a small subset: `#` headings, paragraphs, `-` lists,
 //! tables, code blocks, and inline `code`, **bold** and `[links](topic.md)`.
 
+use std::borrow::Cow;
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::crossterm;
+
+include!(concat!(env!("OUT_DIR"), "/manual_translations.rs"));
+
+/// Known ISO 639-1 language codes and their native names, in display order.
+pub const KNOWN_LANGS: &[(&str, &str)] = &[
+    ("en", "English"),
+    ("pt", "Português"),
+    ("es", "Español"),
+    ("fr", "Français"),
+    ("de", "Deutsch"),
+    ("it", "Italiano"),
+    ("ru", "Русский"),
+    ("zh", "中文"),
+    ("ja", "日本語"),
+];
+
+/// Display width of `s` in terminal columns (handles wide CJK characters).
+fn str_width(s: &str) -> usize {
+    ratatui::text::Span::raw(s).width()
+}
+
+/// Splits `s` into `(head, rest)` where `head` fits in `max_cols` columns
+/// (at least one character when `s` is non-empty).
+fn split_at_width(s: &str, max_cols: usize) -> (String, String) {
+    let mut head = String::new();
+    let mut cols = 0;
+    let mut chars = s.chars();
+    for ch in chars.by_ref() {
+        let mut buf = [0u8; 4];
+        let w = str_width(ch.encode_utf8(&mut buf));
+        if !head.is_empty() && cols + w > max_cols {
+            let mut rest = String::from(ch);
+            rest.extend(chars);
+            return (head, rest);
+        }
+        head.push(ch);
+        cols += w;
+        if cols >= max_cols {
+            break;
+        }
+    }
+    (head, chars.collect())
+}
+
+/// Human-readable native name for a language code (`"pt"` -> `"Português"`).
+pub fn language_label(code: &str) -> &str {
+    if code.is_empty() || code.eq_ignore_ascii_case("auto") {
+        return "auto";
+    }
+    KNOWN_LANGS
+        .iter()
+        .find(|(c, _)| c.eq_ignore_ascii_case(code))
+        .map(|(_, label)| *label)
+        .unwrap_or(code)
+}
+
+/// Normalizes a locale or language tag (`"pt_BR.UTF-8"`, `"pt-BR"`) to its
+/// primary lowercase language code (`"pt"`).
+pub fn normalize_lang(raw: &str) -> String {
+    raw.trim()
+        .split(['_', '-', '.', '@'])
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase()
+}
+
+/// Languages available for the help manual: `"en"`, any embedded language in
+/// `docs/manual/<lang>/`, and any user directory in `~/.config/xylem/manual/<lang>/`.
+pub fn available_languages() -> Vec<String> {
+    let mut codes: Vec<String> = vec!["en".into()];
+    for (lang, topics) in EMBEDDED_TRANSLATIONS {
+        if !topics.is_empty() && !codes.iter().any(|c| c == lang) {
+            codes.push((*lang).to_string());
+        }
+    }
+    if let Some(dir) = crate::platform::config_dir().map(|d| d.join("manual"))
+        && let Ok(entries) = std::fs::read_dir(dir)
+    {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir()
+                && let Some(name) = path.file_name().and_then(|s| s.to_str())
+                && !name.starts_with('.')
+            {
+                let code = normalize_lang(name);
+                if !code.is_empty() && !codes.iter().any(|c| c == &code) {
+                    codes.push(code);
+                }
+            }
+        }
+    }
+    codes.sort_by_key(|c| {
+        let rank = KNOWN_LANGS
+            .iter()
+            .position(|(k, _)| *k == c.as_str())
+            .unwrap_or(KNOWN_LANGS.len());
+        (rank, c.clone())
+    });
+    codes
+}
+
+/// Detects the preferred language from `$LC_ALL`, `$LC_MESSAGES` or `$LANG`,
+/// falling back to `"en"` if not available.
+pub fn detect_system_language() -> String {
+    for var in ["LC_ALL", "LC_MESSAGES", "LANG"] {
+        if let Ok(val) = std::env::var(var) {
+            let trimmed = val.trim();
+            if trimmed.is_empty()
+                || trimmed.eq_ignore_ascii_case("c")
+                || trimmed.to_ascii_lowercase().starts_with("c.")
+                || trimmed.eq_ignore_ascii_case("posix")
+            {
+                continue;
+            }
+            let code = normalize_lang(trimmed);
+            if !code.is_empty() {
+                if available_languages().iter().any(|l| l == &code) {
+                    return code;
+                }
+                return "en".into();
+            }
+        }
+    }
+    "en".into()
+}
+
+/// Resolves the configured `help_language` (`"auto"` or an ISO code) to an
+/// available language code (`"en"`, `"pt"`, `"es"`, ...).
+pub fn resolve_language(configured: &str) -> String {
+    let trimmed = configured.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("auto") {
+        return detect_system_language();
+    }
+    let code = normalize_lang(trimmed);
+    if available_languages().iter().any(|l| l == &code) {
+        code
+    } else {
+        "en".into()
+    }
+}
 
 /// The topics, by name (the file name without `.md`), in the man page's order.
 pub const TOPICS: &[(&str, &str)] = &[
@@ -51,6 +193,34 @@ pub fn topic(name: &str) -> Option<&'static str> {
         .iter()
         .find(|(n, _)| *n == name)
         .map(|(_, text)| *text)
+}
+
+/// Looks up topic `name` in language `lang`:
+/// 1. `~/.config/xylem/manual/<lang>/<name>.md` on disk (so translators can
+///    preview changes live without recompiling),
+/// 2. embedded translations from `docs/manual/<lang>/<name>.md`,
+/// 3. fallback to the canonical English topic (`docs/manual/<name>.md`).
+pub fn topic_in(lang: &str, name: &str) -> Option<Cow<'static, str>> {
+    // Only known topic names are valid, preventing path traversal.
+    let en_text = topic(name)?;
+    let code = normalize_lang(lang);
+    if !code.is_empty()
+        && let Some(base) = crate::platform::config_dir()
+    {
+        let custom = base.join("manual").join(&code).join(format!("{name}.md"));
+        if let Ok(disk_md) = std::fs::read_to_string(custom)
+            && disk_md.starts_with("# ")
+        {
+            return Some(Cow::Owned(disk_md));
+        }
+    }
+    if code != "en"
+        && let Some((_, topics)) = EMBEDDED_TRANSLATIONS.iter().find(|(l, _)| *l == code)
+        && let Some((_, text)) = topics.iter().find(|(n, _)| *n == name)
+    {
+        return Some(Cow::Borrowed(*text));
+    }
+    Some(Cow::Borrowed(en_text))
 }
 
 /// The topic's title: its first `#` heading.
@@ -292,7 +462,7 @@ fn wrap(spans: &[Span], width: usize, first: &str, indent: usize) -> Vec<Vec<Pie
         text: first.to_string(),
         kind: Kind::Text,
     }]];
-    let mut col = first.chars().count();
+    let mut col = str_width(first);
     let mut start = true; // at the start of a line: no space before a word
     let mut pending = false; // a space comes before the next word
     for span in spans {
@@ -311,7 +481,7 @@ fn wrap(spans: &[Span], width: usize, first: &str, indent: usize) -> Vec<Vec<Pie
             }
             let mut word = word.to_string();
             loop {
-                let len = word.chars().count();
+                let len = str_width(&word);
                 let gap = usize::from(pending && !start);
                 if col + gap + len <= width {
                     let line = lines.last_mut().unwrap();
@@ -336,11 +506,12 @@ fn wrap(spans: &[Span], width: usize, first: &str, indent: usize) -> Vec<Vec<Pie
                 }
                 // A word longer than the line: cut it.
                 let room = width.saturating_sub(col).max(1);
+                let (head, tail) = split_at_width(&word, room);
                 lines.last_mut().unwrap().push(Piece {
-                    text: word.chars().take(room).collect(),
+                    text: head,
                     kind: span.kind,
                 });
-                word = word.chars().skip(room).collect();
+                word = tail;
                 new_line(&mut lines);
                 col = indent;
             }
@@ -357,7 +528,7 @@ fn column_widths(rows: &[Vec<String>], width: usize) -> Vec<usize> {
     let mut natural = vec![0; n];
     for row in rows {
         for (i, cell) in row.iter().enumerate() {
-            natural[i] = natural[i].max(plain(cell).chars().count());
+            natural[i] = natural[i].max(str_width(&plain(cell)));
         }
     }
     let gaps = 2 * n.saturating_sub(1);
@@ -399,14 +570,14 @@ pub fn layout(md: &str, width: usize) -> Page {
             Block::Item(level, t) => {
                 let spans = inline(&t, Kind::Text, &mut names);
                 let lead = format!("{}• ", "  ".repeat(level));
-                let indent = lead.chars().count();
+                let indent = str_width(&lead);
                 push(&mut page, wrap(&spans, width, &lead, indent));
             }
             Block::Code(code) => {
                 let lines = code
                     .into_iter()
                     .map(|l| {
-                        let text: String = format!("  {l}").chars().take(width).collect();
+                        let (text, _) = split_at_width(&format!("  {l}"), width);
                         vec![Piece {
                             text,
                             kind: Kind::Code,
@@ -444,7 +615,7 @@ pub fn layout(md: &str, width: usize) -> Page {
                         let mut line = Vec::new();
                         for (i, cell) in cells.iter().enumerate() {
                             let pieces = cell.get(k).cloned().unwrap_or_default();
-                            let len: usize = pieces.iter().map(|p| p.text.chars().count()).sum();
+                            let len: usize = pieces.iter().map(|p| str_width(&p.text)).sum();
                             line.extend(pieces);
                             if i + 1 < cells.len() {
                                 line.push(Piece {
@@ -494,6 +665,7 @@ pub fn layout(md: &str, width: usize) -> Page {
 /// the way back.
 pub struct Help {
     pub topic: String,
+    pub lang: String,
     pub scroll: usize,
     pub selected: Option<usize>,
     back: Vec<(String, usize, Option<usize>)>,
@@ -506,13 +678,19 @@ pub struct Help {
 }
 
 impl Help {
+    #[cfg(test)]
     pub fn new(topic: &str, keys: String) -> Self {
+        Self::with_lang(topic, keys, "auto")
+    }
+
+    pub fn with_lang(topic: &str, keys: String, configured_lang: &str) -> Self {
         Help {
             topic: if self::topic(topic).is_some() {
                 topic.to_string()
             } else {
                 "index".into()
             },
+            lang: resolve_language(configured_lang),
             scroll: 0,
             selected: None,
             back: Vec::new(),
@@ -522,29 +700,38 @@ impl Help {
         }
     }
 
-    pub fn title(&self) -> &str {
-        title(topic(&self.topic).unwrap_or(""))
+    pub fn title(&self) -> String {
+        let raw = topic_in(&self.lang, &self.topic).unwrap_or_default();
+        title(&raw).to_string()
+    }
+
+    /// Switches to the next available help language (`L` in the help screen).
+    pub fn cycle_language(&mut self) {
+        let langs = available_languages();
+        if langs.len() <= 1 {
+            return;
+        }
+        let next = match langs.iter().position(|l| l == &self.lang) {
+            Some(i) => (i + 1) % langs.len(),
+            None => 0,
+        };
+        self.lang = langs[next].clone();
+        self.selected = None;
+        self.page = None;
     }
 
     /// The Markdown of the current topic ("keys" is generated).
     fn markdown(&self) -> String {
+        let raw = topic_in(&self.lang, &self.topic).unwrap_or_default();
         if self.topic == "keys" {
-            let mut md = String::from("# Keys in effect\n\n");
-            md.push_str(
-                topic("keys")
-                    .unwrap_or("")
-                    .lines()
-                    .skip(1)
-                    .collect::<Vec<_>>()
-                    .join("\n")
-                    .trim(),
-            );
+            let mut md = format!("# {}\n\n", title(&raw));
+            md.push_str(raw.lines().skip(1).collect::<Vec<_>>().join("\n").trim());
             md.push_str("\n\n```\n");
             md.push_str(&self.keys);
             md.push_str("```\n");
             md
         } else {
-            topic(&self.topic).unwrap_or("").to_string()
+            raw.into_owned()
         }
     }
 
@@ -637,6 +824,7 @@ impl Help {
             }
             KeyCode::Char('i' | 'I') => self.go("index"),
             KeyCode::Char('k' | 'K') => self.go("keys"),
+            KeyCode::Char('l' | 'L') => self.cycle_language(),
             _ => {}
         }
         true
@@ -732,8 +920,8 @@ fn roff_blocks(md: &str, out: &mut String) {
     }
 }
 
-/// The man page, `xy(1)`, from the topics.
-pub fn man_page() -> String {
+/// The man page, `xy(1)`, in language `lang` (falling back to English per topic).
+pub fn man_page_in(lang: &str) -> String {
     let version = env!("CARGO_PKG_VERSION");
     let mut out = format!(
         ".TH XY 1 \"\" \"Xylem {version}\" \"User Commands\"\n\
@@ -755,7 +943,8 @@ pub fn man_page() -> String {
     );
     // The index's opening paragraphs describe Xylem; its link lists are for
     // the help screen.
-    for block in blocks(topic("index").unwrap_or("")) {
+    let index_text = topic_in(lang, "index").unwrap_or_default();
+    for block in blocks(&index_text) {
         if let Block::Heading(_) = block {
             break;
         }
@@ -763,15 +952,16 @@ pub fn man_page() -> String {
             out.push_str(&format!(".PP\n{}\n", roff_inline(&t)));
         }
     }
-    for (name, text) in TOPICS {
+    for (name, _) in TOPICS {
         if matches!(*name, "index" | "keys") {
             continue;
         }
+        let text = topic_in(lang, name).unwrap_or_default();
         out.push_str(&format!(
             ".SH {}\n",
-            roff_escape(&title(text).to_uppercase())
+            roff_escape(&title(&text).to_uppercase())
         ));
-        roff_blocks(text, &mut out);
+        roff_blocks(&text, &mut out);
     }
     out.push_str(
         ".SH FILES\n\
@@ -796,8 +986,22 @@ mod tests {
 
     #[test]
     fn every_link_points_to_a_topic() {
-        for (name, md) in TOPICS {
-            assert!(md.starts_with("# "), "{name}: starts with its title");
+        let mut all: Vec<(&str, &str, &str)> =
+            TOPICS.iter().map(|(n, md)| ("en", *n, *md)).collect();
+        for (lang, topics) in EMBEDDED_TRANSLATIONS {
+            for (name, md) in *topics {
+                assert!(
+                    topic(name).is_some(),
+                    "{lang}/{name}.md: unknown topic name (not in English TOPICS)"
+                );
+                all.push((lang, name, md));
+            }
+        }
+        for (lang, name, md) in all {
+            assert!(
+                md.starts_with("# "),
+                "{lang}/{name}: starts with its `# ` title"
+            );
             let mut links = Vec::new();
             for block in blocks(md) {
                 let t = match block {
@@ -810,7 +1014,7 @@ mod tests {
             for target in links {
                 assert!(
                     topic(&target).is_some(),
-                    "{name}: link to unknown topic {target}"
+                    "{lang}/{name}: link to unknown topic {target}"
                 );
             }
         }
@@ -818,15 +1022,24 @@ mod tests {
 
     #[test]
     fn index_links_to_every_topic() {
-        let mut links = Vec::new();
-        for block in blocks(topic("index").unwrap()) {
-            if let Block::Item(_, t) | Block::Para(t) = block {
-                inline(&t, Kind::Text, &mut links);
+        let mut indices = vec![("en", topic("index").unwrap())];
+        for (lang, topics) in EMBEDDED_TRANSLATIONS {
+            if let Some((_, md)) = topics.iter().find(|(n, _)| *n == "index") {
+                indices.push((lang, *md));
             }
         }
-        for (name, _) in TOPICS {
-            let reached = *name == "index" || *name == "keys" || links.iter().any(|l| l == name);
-            assert!(reached, "the index does not link to {name}");
+        for (lang, index_md) in indices {
+            let mut links = Vec::new();
+            for block in blocks(index_md) {
+                if let Block::Item(_, t) | Block::Para(t) = block {
+                    inline(&t, Kind::Text, &mut links);
+                }
+            }
+            for (name, _) in TOPICS {
+                let reached =
+                    *name == "index" || *name == "keys" || links.iter().any(|l| l == name);
+                assert!(reached, "{lang}/index.md does not link to {name}");
+            }
         }
     }
 
@@ -842,7 +1055,7 @@ mod tests {
             lines[0].starts_with("Some code and bold text"),
             "{lines:#?}"
         );
-        assert!(lines.iter().all(|l| l.chars().count() <= 30), "{lines:#?}");
+        assert!(lines.iter().all(|l| str_width(l) <= 30), "{lines:#?}");
         assert!(
             lines.iter().any(|l| l.starts_with("• an item")),
             "{lines:#?}"
@@ -877,13 +1090,20 @@ mod tests {
 
     #[test]
     fn every_topic_lays_out_at_any_width() {
-        for (name, md) in TOPICS {
+        let mut all: Vec<(&str, &str, &str)> =
+            TOPICS.iter().map(|(n, md)| ("en", *n, *md)).collect();
+        for (lang, topics) in EMBEDDED_TRANSLATIONS {
+            for (name, md) in *topics {
+                all.push((lang, name, md));
+            }
+        }
+        for (lang, name, md) in all {
             for width in [20, 40, 80, 200] {
                 let page = layout(md, width);
                 for line in text(&page) {
                     assert!(
-                        line.chars().count() <= width.max(20),
-                        "{name} at {width}: {line:?}"
+                        str_width(&line) <= width.max(20),
+                        "{lang}/{name} at {width}: {line:?}"
                     );
                 }
             }
@@ -893,7 +1113,7 @@ mod tests {
     #[test]
     fn navigation_follows_links_and_goes_back() {
         let key = |c| KeyEvent::new(c, KeyModifiers::NONE);
-        let mut help = Help::new("index", "F1  help\n".into());
+        let mut help = Help::with_lang("index", "F1  help\n".into(), "en");
         help.height = 10;
         help.page(80);
         assert!(help.handle_key(key(KeyCode::Tab)));
@@ -913,22 +1133,52 @@ mod tests {
 
     #[test]
     fn man_page_has_every_topic() {
-        let man = man_page();
-        assert!(man.starts_with(".TH XY 1"));
-        for (name, md) in TOPICS {
-            if !matches!(*name, "index" | "keys") {
-                assert!(man.contains(&format!(".SH {}", roff_escape(&title(md).to_uppercase()))));
-            }
-        }
-        // No text line starts with a dot: those would be read as requests.
         let requests = [
             "TH", "SH", "SS", "PP", "IP", "TP", "RS", "RE", "nf", "fi", "B",
         ];
-        for line in man.lines() {
-            if let Some(rest) = line.strip_prefix('.') {
-                let name = rest.split_whitespace().next().unwrap_or("");
-                assert!(requests.contains(&name), "{line}");
+        for lang in available_languages() {
+            let man = man_page_in(&lang);
+            assert!(man.starts_with(".TH XY 1"));
+            for (name, _) in TOPICS {
+                if !matches!(*name, "index" | "keys") {
+                    let md = topic_in(&lang, name).unwrap();
+                    assert!(
+                        man.contains(&format!(".SH {}", roff_escape(&title(&md).to_uppercase()))),
+                        "{lang}/{name} missing in man page"
+                    );
+                }
+            }
+            // No text line starts with a dot: those would be read as requests.
+            for line in man.lines() {
+                if let Some(rest) = line.strip_prefix('.') {
+                    let name = rest.split_whitespace().next().unwrap_or("");
+                    assert!(requests.contains(&name), "{lang}: {line}");
+                }
             }
         }
+    }
+
+    #[test]
+    fn cycles_languages_with_l_and_falls_back_to_english() {
+        let langs = available_languages();
+        for expected in ["en", "pt", "es", "fr", "de", "zh"] {
+            assert!(
+                langs.iter().any(|l| l == expected),
+                "missing language {expected} in {langs:?}"
+            );
+        }
+        let mut help = Help::with_lang("index", "F1  help\n".into(), "en");
+        let en_title = help.title();
+        assert_eq!(help.lang, "en");
+        help.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
+        assert_eq!(help.lang, "pt");
+        assert_ne!(help.title(), en_title);
+
+        // Unknown language code falls back to English.
+        assert_eq!(resolve_language("xx_YY"), "en");
+        assert_eq!(
+            topic_in("xx", "index").unwrap().as_ref(),
+            topic("index").unwrap()
+        );
     }
 }

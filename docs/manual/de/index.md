@@ -1,0 +1,53 @@
+# Xylem-Handbuch
+
+Xylem ist ein textbasierter Dateimanager, inspiriert von XTree und ZTreeWin:
+oben ein Verzeichnisbaum, darunter die Dateien des aktuellen Verzeichnisses
+und rechts die Statistiken. Er liest (loggt) Verzeichnisse in den Speicher ein,
+sodass Sie Dateien über einen gesamten Zweig hinweg markieren und in einem
+Schritt kopieren, verschieben, löschen, vergleichen oder umbenennen können.
+
+**F1** (oder **Alt+H** in Terminals, die F1 selbst belegen) öffnet die Hilfe zu
+dem, was Sie gerade tun: in einer Eingabezeile die Hilfe zu dieser Eingabe; im
+Baum- oder Dateifenster die Hilfe zu diesem Fenster. In der Hilfe wählen
+**Tab** und **Shift+Tab** einen Link aus, **Enter** folgt ihm, **Backspace**
+geht zurück, **I** zeigt diesen Index, **K** die aktiven Tasten, **L** wechselt
+die Sprache und **Esc** schließt die Hilfe.
+
+## Fenster und Ansichten
+
+- [Das Baumfenster](tree.md): Navigation, Einlesen, Branch und Showall
+- [Das Dateifenster](files.md): Anzeigemodi, Autoview, Dateien öffnen
+- [Geteilter Bildschirm](split.md): zwei Fenster nebeneinander
+- [Der Betrachter](viewer.md): Text und Hex, Suche, Syntaxfarben
+- [Markierte Dateien durchsuchen](search.md): Ctrl+S und Ctrl+V
+- [Informationen](info.md): Info, Avail, Statistiken und Verzeichnisgrößen
+- [Speicherplatzbelegung](usage.md): wohin der Platz geht (Alt+W)
+
+## Arbeiten mit Dateien
+
+- [Markierungen und Gruppenoperationen](tagging.md)
+- [Kopieren und Verschieben](copy-move.md), [Ordner auswählen](picker.md)
+- [Löschen, Papierkorb und Prune](delete.md)
+- [Umbenennen und Stapelumbenennung](rename.md)
+- [Berechtigungen und Datum](attributes.md)
+- [Filespec: der Dateifilter](filespec.md)
+- [Treespec und Log](treespec.md)
+- [Vergleichen](compare.md) und [Sortieren](sort.md)
+- [Bearbeiten, Ausführen und Batch](execute.md)
+- [Archive](archives.md): ZIP, 7z und TAR
+
+## Über XTree hinaus
+
+- [Das integrierte Terminal](terminal.md)
+- [Entfernte Rechner (SSH)](remote.md): anderen Rechner durchsuchen, sein Terminal
+- [Cloud-Speicher (rclone)](cloud.md): Google Drive, S3 und andere
+- [Git](git.md)
+- [Lesezeichen](bookmarks.md)
+
+## Einrichtung
+
+- [Konfiguration](configuration.md): der F12-Bildschirm, Themen, Tasten
+- [Beenden und Verzeichnis der Shell wechseln](quit.md)
+- [Windows](windows.md)
+- [Vergleich mit ZTreeWin](ztreewin.md)
+- Aktive Tastenbelegung: drücken Sie **K** in der Hilfe.

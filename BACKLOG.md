@@ -5,12 +5,6 @@ machine. The user-facing summary is under "For later" in the
 [README](README.md#for-later); detailed plans are in [docs/plans/](docs/plans/)
 (in Portuguese).
 
-## Before the next release
-
-- **crates.io homepage**: branch `homepage-site` (commit 8b34966) points
-  `homepage` in `Cargo.toml` to the website. Merge it before tagging, so
-  crates.io links to the site; `repository` stays on GitHub.
-
 ## Security
 
 Leftovers of the security pass that came from an external audit

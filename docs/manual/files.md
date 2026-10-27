@@ -36,8 +36,9 @@ is `file_display` in the [configuration](configuration.md).
 
 Splits the screen between the list and the contents of the selected file,
 which follows the cursor. The file window's keys keep working (`T` tags, for
-example); Shift+↑ ↓ PgUp PgDn Home End scroll the contents; F7, Esc or Enter
-leave. It shows the first 1 MiB of each file (`V` shows up to 16 MiB).
+example); Shift+↑ ↓ PgUp PgDn Home End scroll the contents; `W` toggles soft
+wrap, `#` toggles line numbers; F7, Esc or Enter leave. It shows the first
+1 MiB of each file (`V` shows up to 16 MiB).
 
 ## Opening files
 

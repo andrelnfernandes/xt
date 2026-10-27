@@ -21,6 +21,10 @@ impl App {
         if key.kind == KeyEventKind::Release {
             return;
         }
+        if let Some(ed) = &mut self.editor_pty {
+            ed.term.send_key(key);
+            return;
+        }
         if let Some(help) = &mut self.help {
             if !help.handle_key(key) {
                 self.help = None;

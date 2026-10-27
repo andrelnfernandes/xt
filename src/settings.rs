@@ -10,12 +10,17 @@ use crate::input::{LineEvent, LineInput};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Opt {
     Editor,
+    EditorInFrame,
+    EditorTheme,
+    HelpLanguage,
     Opener,
     DateFormat,
     NumberFormat,
     ShowHidden,
     FileDisplay,
     SyntaxColors,
+    ViewerWrap,
+    ViewerLineNumbers,
     Sort,
     SortDescending,
     EnterViews,
@@ -56,6 +61,21 @@ pub const PAGES: &[Page] = &[
                 "Git commands (Ctrl+G) and status in the file list",
                 Opt::Git,
             ),
+            (
+                'F',
+                "Open the editor (E) inside Xylem's frame",
+                Opt::EditorInFrame,
+            ),
+            (
+                'G',
+                "Editor uses Xylem's color theme (vi/vim/nvim and frame)",
+                Opt::EditorTheme,
+            ),
+            (
+                'H',
+                "Help language (F1, L switches while open)",
+                Opt::HelpLanguage,
+            ),
         ],
     ),
     (
@@ -67,7 +87,13 @@ pub const PAGES: &[Page] = &[
             ('D', "Enter in the file window", Opt::EnterViews),
             ('E', "Initial file display (Alt+F)", Opt::FileDisplay),
             ('F', "Syntax colors in the viewer", Opt::SyntaxColors),
-            ('G', "Built-in terminal colors (Alt+X)", Opt::TerminalTheme),
+            ('G', "Soft wrap in the viewer (W)", Opt::ViewerWrap),
+            (
+                'H',
+                "Line numbers in the text viewer (#)",
+                Opt::ViewerLineNumbers,
+            ),
+            ('I', "Built-in terminal colors (Alt+X)", Opt::TerminalTheme),
         ],
     ),
     (
@@ -121,12 +147,26 @@ impl Opt {
         match self {
             Opt::Editor if o.editor.is_empty() => "(default)".into(),
             Opt::Editor => o.editor.clone(),
+            Opt::EditorInFrame => yes_no(o.editor_in_frame),
+            Opt::EditorTheme => yes_no(o.editor_theme),
+            Opt::HelpLanguage => {
+                let raw = o.help_language.trim();
+                if raw.is_empty() || raw.eq_ignore_ascii_case("auto") {
+                    let det = crate::help::detect_system_language();
+                    format!("Auto ({det} · {})", crate::help::language_label(&det))
+                } else {
+                    let code = crate::help::normalize_lang(raw);
+                    format!("{code} ({})", crate::help::language_label(&code))
+                }
+            }
             Opt::Opener if o.opener.is_empty() => "(default)".into(),
             Opt::Opener => o.opener.clone(),
             Opt::DateFormat => o.date_format.as_str().into(),
             Opt::NumberFormat => o.number_format.as_str().into(),
             Opt::ShowHidden => yes_no(o.show_hidden),
             Opt::SyntaxColors => yes_no(o.syntax_highlight),
+            Opt::ViewerWrap => yes_no(o.viewer_wrap),
+            Opt::ViewerLineNumbers => yes_no(o.viewer_line_numbers),
             Opt::FileDisplay => match o.file_display.as_str() {
                 "names" => "Names in columns".into(),
                 "names_size" => "Names and sizes in columns".into(),
@@ -187,10 +227,30 @@ impl Opt {
         let o = &mut c.options;
         match self {
             Opt::Editor | Opt::Opener => return false,
+            Opt::EditorInFrame => o.editor_in_frame = !o.editor_in_frame,
+            Opt::EditorTheme => o.editor_theme = !o.editor_theme,
+            Opt::HelpLanguage => {
+                let mut choices = vec![String::from("auto")];
+                choices.extend(crate::help::available_languages());
+                let cur = if o.help_language.trim().is_empty()
+                    || o.help_language.eq_ignore_ascii_case("auto")
+                {
+                    "auto".to_string()
+                } else {
+                    crate::help::normalize_lang(&o.help_language)
+                };
+                let next = match choices.iter().position(|c| c == &cur) {
+                    Some(i) => (i + 1) % choices.len(),
+                    None => 0,
+                };
+                o.help_language = choices[next].clone();
+            }
             Opt::DateFormat => o.date_format = o.date_format.next(),
             Opt::NumberFormat => o.number_format = o.number_format.next(),
             Opt::ShowHidden => o.show_hidden = !o.show_hidden,
             Opt::SyntaxColors => o.syntax_highlight = !o.syntax_highlight,
+            Opt::ViewerWrap => o.viewer_wrap = !o.viewer_wrap,
+            Opt::ViewerLineNumbers => o.viewer_line_numbers = !o.viewer_line_numbers,
             Opt::FileDisplay => o.file_display = o.file_display.next(),
             Opt::Sort => o.sort = o.sort.next(),
             Opt::SortDescending => o.sort_descending = !o.sort_descending,
