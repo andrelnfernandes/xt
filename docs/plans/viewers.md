@@ -119,16 +119,13 @@ es, de, fr e zh) e precisa acompanhar cada mudança.
 ## Como retomar (para quem continuar o trabalho)
 
 - **Onde estamos:** subprojeto 1. O spec
-  ([viewer-encoding.md](viewer-encoding.md)) foi aprovado pelo autor. O
+  ([viewer-encoding.md](viewer-encoding.md)) foi aprovado pelo autor e o
   plano de implementação ([viewer-encoding-plan.md](viewer-encoding-plan.md))
-  está escrito e aguarda a revisão do autor e a escolha do modo de
-  execução.
-  - **Subagentes:** um subagente por tarefa e um revisor por tarefa.
-  - **Nativo:** o agente da sessão implementa tudo e um revisor confere o
-    branch no fim.
-- **Próximo passo:** executar o plano tarefa por tarefa, a partir do PR 1
-  (bidi). Marque os checkboxes no plano e atualize este status ao fim de
-  cada PR.
+  está em execução.
+  - **PR 1 (guarda bidi, Tarefas 1 a 4): implementado** no branch
+    `bidi-guard`, ainda sem push nem PR.
+  - **Próximo passo:** PR 2 (Tarefa 5 em diante). Marque os checkboxes no
+    plano e atualize este status ao fim de cada PR.
 - **Correções feitas no spec ao escrever o plano** (já incorporadas):
   - o `ruzstd` 0.9.1 já limita a janela a 128 MiB por padrão
     (`new_with_max_window_size`);
