@@ -6,7 +6,7 @@
 //! active, the outermost hook (installed last in `main`) skips them.
 
 use std::cell::Cell;
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
 thread_local! {
     static ACTIVE: Cell<bool> = const { Cell::new(false) };
