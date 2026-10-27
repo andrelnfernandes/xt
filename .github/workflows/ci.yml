@@ -4,9 +4,14 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  # New advisories come out without any push: the audit runs weekly too.
+  schedule:
+    - cron: "0 6 * * 1"
 
 jobs:
   test:
+    # The weekly run is for the audit only.
+    if: github.event_name != 'schedule'
     strategy:
       fail-fast: false
       matrix:
@@ -44,5 +49,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       # Installed from crates.io on purpose: no third-party audit action.
+      # Pinned, so that the tool that checks the dependencies is fixed too.
       - name: Audit dependencies
-        run: cargo install cargo-audit --locked && cargo audit
+        run: cargo install cargo-audit --locked --version 0.22.2 && cargo audit
