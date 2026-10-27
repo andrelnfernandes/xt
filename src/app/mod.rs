@@ -55,12 +55,31 @@ pub(crate) use actions::*;
 pub(crate) use prompts::*;
 
 pub use prompts::{Confirm, Prompt};
+pub use terminal::write_vim_theme;
 pub use view::TaggedView;
 
 /// Directory bookmarks manager state (F11).
 #[derive(Debug, Clone, Default)]
 pub struct BookmarksView {
     pub selected: usize,
+}
+
+/// An editor running inside Xylem's frame (`editor_in_frame = true`).
+pub struct EditorPty {
+    pub path: PathBuf,
+    pub term: Terminal,
+    pub theme_dir: Option<PathBuf>,
+}
+
+impl Drop for EditorPty {
+    fn drop(&mut self) {
+        if let Some(dir) = &self.theme_dir {
+            let _ = fs::remove_dir_all(dir);
+            if let Some(run) = dir.parent() {
+                let _ = fs::remove_dir(run);
+            }
+        }
+    }
 }
 
 /// Ongoing read and what to do when it finishes.
@@ -187,6 +206,8 @@ pub struct App {
     /// The remote machine of the terminal on screen: keeps its connection
     /// (which the terminal's ssh shares) and maps its paths.
     terminal_remote: Option<std::sync::Arc<crate::remote::Remote>>,
+    /// Editor running inside Xylem's frame (`editor_in_frame = true`).
+    pub editor_pty: Option<EditorPty>,
 }
 
 /// The active window.
@@ -254,6 +275,7 @@ impl App {
             terminal_host: None,
             parked_terminals: Vec::new(),
             terminal_remote: None,
+            editor_pty: None,
         }
     }
 

@@ -209,6 +209,17 @@ impl App {
     }
 
     pub fn after_external(&mut self, result: std::io::Result<std::process::ExitStatus>) {
+        self.message = match result {
+            Ok(status) if status.success() => None,
+            Ok(status) => Some(format!("Command finished with {status}")),
+            Err(e) => Some(format!("Cannot run command: {e}")),
+        };
+        self.reload_after_edit();
+    }
+
+    /// Rescans watched directories and reloads the open viewer (or diff) after
+    /// an external or framed editor finishes.
+    pub(crate) fn reload_after_edit(&mut self) {
         let dirs: Vec<PathBuf> = self.watched_dirs().into_iter().collect();
         self.rescan_everywhere(&dirs);
         // Back from the editor (E in the viewer): shows the new contents
@@ -235,11 +246,48 @@ impl App {
                 self.toggle_diff();
             }
         }
-        self.message = match result {
-            Ok(status) if status.success() => None,
-            Ok(status) => Some(format!("Command finished with {status}")),
-            Err(e) => Some(format!("Cannot run command: {e}")),
+    }
+
+    /// Starts the editor inside Xylem's frame (`editor_in_frame = true`).
+    pub fn start_framed_editor(&mut self, ext: External) -> anyhow::Result<()> {
+        let path = ext.file.clone().unwrap_or_default();
+        let theme = self
+            .options
+            .editor_theme
+            .then(|| write_vim_theme(true))
+            .flatten();
+        let script = theme.as_ref().map(|(_, s)| s.as_path());
+        match Terminal::spawn_external(&ext, script) {
+            Ok(term) => {
+                self.editor_pty = Some(EditorPty {
+                    path,
+                    term,
+                    theme_dir: theme.map(|(d, _)| d),
+                });
+                Ok(())
+            }
+            Err(e) => {
+                if let Some((dir, _)) = theme {
+                    let _ = std::fs::remove_dir_all(dir);
+                }
+                Err(e)
+            }
+        }
+    }
+
+    /// Called by the main loop while a framed editor is open: notices when it
+    /// exits (returning to the file list or viewer) and returns whether the
+    /// screen must be redrawn.
+    pub fn editor_tick(&mut self) -> bool {
+        let Some(ed) = &mut self.editor_pty else {
+            return false;
         };
+        if ed.term.exited() {
+            self.editor_pty = None;
+            self.reload_after_edit();
+            return true;
+        }
+        ed.term.take_dirty()
     }
 
     /// A program running in the built-in terminal (not just the shell at its
@@ -260,6 +308,20 @@ impl App {
             .iter_mut()
             .find_map(|(host, t, _)| describe(host, t))
     }
+}
+
+/// Writes a temporary Vim/Neovim highlight script matching the active Xylem
+/// theme into a private directory (`0700`). Returns `(dir, script_path)` so
+/// the caller can delete `dir` when the editor finishes.
+pub fn write_vim_theme(in_frame: bool) -> Option<(PathBuf, PathBuf)> {
+    let dir = crate::term::private_dir().ok()?;
+    let script = dir.join("theme.vim");
+    let contents = config::theme().vim_script(in_frame);
+    if std::fs::write(&script, contents).is_err() {
+        let _ = std::fs::remove_dir_all(&dir);
+        return None;
+    }
+    Some((dir, script))
 }
 
 /// How Alt+O types `path` in a shell at `cwd`: relative when it is inside.
@@ -294,5 +356,31 @@ mod tests {
             typed_path(PathBuf::from("-x"), Path::new("")),
             Path::new("-x")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn framed_editor_runs_in_pty_and_reloads_when_done() {
+        let tmp = crate::testing::tempdir();
+        let file = tmp.path().join("note.txt");
+        std::fs::write(&file, "before\n").unwrap();
+
+        let mut app = App::new(tmp.path().to_path_buf());
+        app.apply(Command::SwitchWindow);
+        app.apply(Command::View);
+        assert!(app.viewer.is_some());
+
+        let ext = shell::editor_command("printf 'after\\n' > %f", &file, tmp.path());
+        app.start_framed_editor(ext).unwrap();
+        assert!(app.editor_pty.is_some());
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while app.editor_pty.is_some() && std::time::Instant::now() < deadline {
+            app.editor_tick();
+            std::thread::sleep(Duration::from_millis(15));
+        }
+        assert!(app.editor_pty.is_none(), "framed editor did not exit");
+        let lines = app.viewer.as_mut().unwrap().styled(5);
+        assert_eq!(lines[0].segments[0].0, "after");
     }
 }

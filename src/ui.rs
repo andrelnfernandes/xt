@@ -48,6 +48,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         draw_help(frame, help);
         return;
     }
+    if app.editor_pty.is_some() {
+        draw_editor(frame, app);
+        return;
+    }
     if app.viewer.is_some() {
         draw_viewer(frame, app);
         return;
@@ -1859,9 +1863,10 @@ fn draw_help(frame: &mut Frame, help: &mut Help) {
     frame.render_widget(
         Line::from(vec![
             Span::styled("Help: ", Style::new().fg(theme().key)),
+            Span::styled(help.title(), Style::new().add_modifier(Modifier::BOLD)),
             Span::styled(
-                help.title().to_string(),
-                Style::new().add_modifier(Modifier::BOLD),
+                format!("  [{} · {}]", help.lang, help::language_label(&help.lang)),
+                Style::new().fg(theme().dim),
             ),
         ]),
         header,
@@ -1917,6 +1922,7 @@ fn draw_help(frame: &mut Frame, help: &mut Help) {
                     ("Backspace", "back"),
                     ("I", "index"),
                     ("K", "keys"),
+                    ("L", "lang"),
                     ("Esc", "close"),
                 ]);
                 first.spans[0] = Span::styled(
@@ -2042,9 +2048,55 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
     frame.render_widget(Paragraph::new(lines), menu);
 }
 
-/// The viewer contents in a frame (also used by Autoview).
+fn draw_editor(frame: &mut Frame, app: &mut App) {
+    let colors = if app.options.editor_theme {
+        TerminalTheme::Xylem
+    } else {
+        TerminalTheme::Native
+    };
+    let Some(ed) = &mut app.editor_pty else {
+        return;
+    };
+    let [header, body, menu] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(1),
+        Constraint::Length(2),
+    ])
+    .areas(frame.area());
+
+    let title = vec![
+        Span::styled("Edit: ", Style::new().fg(theme().key)),
+        Span::raw(ed.path.to_string_lossy().into_owned()),
+    ];
+    frame.render_widget(Line::from(title), header);
+
+    draw_terminal_panel(frame, &mut ed.term, colors, " EDIT ", body);
+
+    let first = Line::from(vec![
+        Span::styled(
+            format!("{:<9}", "EDIT"),
+            Style::new().add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "Quit the editor to return to Xylem",
+            Style::new().fg(theme().dim),
+        ),
+    ]);
+    frame.render_widget(Paragraph::new(vec![first]), menu);
+}
+
 fn draw_terminal(frame: &mut Frame, term: &mut Terminal, colors: TerminalTheme, area: Rect) {
-    let block = panel(" Terminal ", true);
+    draw_terminal_panel(frame, term, colors, " Terminal ", area);
+}
+
+fn draw_terminal_panel(
+    frame: &mut Frame,
+    term: &mut Terminal,
+    colors: TerminalTheme,
+    title: &'static str,
+    area: Rect,
+) {
+    let block = panel(title, true);
     let inner = block.inner(area);
     term.resize(inner.height, inner.width);
     // Starts from the terminal's own colors, so that `apply_theme` sees the

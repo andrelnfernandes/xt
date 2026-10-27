@@ -21,18 +21,96 @@ pub struct External {
 
 impl External {
     /// The process that runs the line, in `cwd`.
+    #[cfg(test)]
     pub fn command(&self) -> Command {
-        let mut cmd = shell(&self.line);
+        self.command_with_theme(None)
+    }
+
+    /// Like [`Self::command`], passing `vim_theme` (`-S`) when the editor is
+    /// `vi`, `vim` or `nvim`.
+    pub fn command_with_theme(&self, vim_theme: Option<&Path>) -> Command {
+        let line = match vim_theme {
+            Some(_) => line_with_vim_theme(&self.line),
+            None => self.line.clone(),
+        };
+        let mut cmd = shell(&line);
         cmd.current_dir(&self.cwd);
         if let Some(file) = &self.file {
             cmd.env(FILE_VAR, file);
+        }
+        if let Some(theme) = vim_theme {
+            cmd.env(VIM_THEME_VAR, theme);
         }
         cmd
     }
 }
 
 /// Environment variable with the file of the editor and opener lines.
-const FILE_VAR: &str = "XY_FILE";
+pub const FILE_VAR: &str = "XY_FILE";
+/// Environment variable with the generated Vim theme script (`-S`).
+pub const VIM_THEME_VAR: &str = "XY_VIM_THEME";
+
+/// Whether the command line starts with `vi`, `vim` or `nvim` (including
+/// symlinks such as `/usr/bin/editor -> /usr/bin/vim.basic`).
+pub fn is_vim_line(line: &OsStr) -> bool {
+    let text = line.to_string_lossy();
+    let Some(first) = text.split_whitespace().next() else {
+        return false;
+    };
+    let is_vim_name = |name: &str| {
+        let lower = name.to_ascii_lowercase();
+        let stem = Path::new(&lower)
+            .file_stem()
+            .and_then(OsStr::to_str)
+            .unwrap_or(&lower);
+        matches!(
+            stem,
+            "vi" | "vim" | "nvim" | "gvim" | "rvim" | "view" | "vimdiff" | "nvim-qt"
+        ) || lower.starts_with("vim.")
+    };
+    let bin_path = {
+        let p = Path::new(first);
+        if p.components().count() > 1 {
+            Some(p.to_path_buf())
+        } else {
+            std::env::var_os("PATH").and_then(|paths| {
+                std::env::split_paths(&paths)
+                    .map(|dir| dir.join(first))
+                    .find(|cand| cand.is_file())
+            })
+        }
+    };
+    if let Some(resolved) = bin_path.and_then(|p| std::fs::canonicalize(p).ok())
+        && let Some(real_name) = resolved.file_name().and_then(OsStr::to_str)
+    {
+        let lower = real_name.to_ascii_lowercase();
+        if matches!(lower.as_str(), "busybox" | "nvi" | "elvis") {
+            return false;
+        }
+        if is_vim_name(real_name) {
+            return true;
+        }
+    }
+    let name = Path::new(first)
+        .file_name()
+        .and_then(OsStr::to_str)
+        .unwrap_or(first);
+    is_vim_name(name)
+}
+
+/// Appends `-S "$XY_VIM_THEME"` (`-S "%XY_VIM_THEME%"` on Windows) when `line`
+/// runs `vi`, `vim` or `nvim`.
+pub fn line_with_vim_theme(line: &OsStr) -> OsString {
+    if !is_vim_line(line) {
+        return line.to_os_string();
+    }
+    let mut out = line.to_os_string();
+    #[cfg(unix)]
+    out.push(" -S \"$XY_VIM_THEME\"");
+    #[cfg(windows)]
+    out.push(" -S \"%XY_VIM_THEME%\"");
+    out
+}
 
 /// How the editor and opener lines name the file. On Windows, `cmd`
 /// expands `%VAR%` even inside quotes, so a name with `%PATH%` in it would
@@ -421,6 +499,24 @@ mod tests {
         let cmd = ext.command();
         let envs: Vec<_> = cmd.get_envs().collect();
         assert!(envs.contains(&(OsStr::new("XY_FILE"), Some(OsStr::new("/x")))));
+    }
+
+    #[test]
+    fn vim_lines_receive_theme_script() {
+        for cmd in [
+            "vi '/tmp/a.rs'",
+            "vim -u NONE '/tmp/a.rs'",
+            "/usr/bin/nvim '/tmp/a.rs'",
+        ] {
+            let themed = line_with_vim_theme(OsStr::new(cmd));
+            assert!(
+                themed.to_string_lossy().contains(" -S "),
+                "expected -S in {themed:?}"
+            );
+        }
+        for cmd in ["nano '/tmp/a.rs'", "hx '/tmp/a.rs'", "micro '/tmp/a.rs'"] {
+            assert_eq!(line_with_vim_theme(OsStr::new(cmd)), OsStr::new(cmd));
+        }
     }
 }
 

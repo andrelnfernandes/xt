@@ -30,7 +30,7 @@ screen (Alt+F10).
 | Log | several logged drives, Global, drive switching | one root per window; `L` opens another directory |
 | eXecute | batch parameters `%1`–`%8`, new window (NTW) | `sh` with `%f`, `%t` and `%d`; always in Xylem's terminal; also a built-in terminal (Alt+X) |
 | History | history window with bookmarks | ↑/↓ at the prompt, one history per type, saved between runs |
-| Configuration | 7 pages, per-element color editor (F4), Alt-Export | 4 pages with the options that make sense on Linux; F4 chooses among 8 ready-made themes; individual colors in `config.toml` |
+| Configuration | 7 pages, per-element color editor (F4), Alt-Export | 4 pages with the options that make sense on Linux; F4 chooses among 12 ready-made themes; individual colors in `config.toml` |
 | Archives | any format with an external archiver, create (F5), extract (Alt-F5) | ZIP/JAR/WAR/APK, 7z, TAR (plain, gzip, xz, bzip2, zstd): open (Alt+F5), extract with Copy, create with F5 (ZIP, TAR and TAR.GZ) |
 | Split screen | optional statistics panels per side | no statistics panel |
 | Menus | Ctrl/Alt menu when holding the key | same in terminals with the kitty protocol; F9 in any terminal |
