@@ -1998,6 +1998,12 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
             Style::new().fg(theme().error),
         ));
     }
+    if let Some(problem) = v.problem() {
+        title.push(Span::styled(
+            format!("  ({problem})"),
+            Style::new().fg(theme().error),
+        ));
+    }
     if v.bidi_count() > 0 {
         title.push(Span::styled(
             format!(
@@ -2436,6 +2442,38 @@ mod tests {
             "{row0}"
         );
         assert!(row0.contains("gzip → 1"), "{row0}");
+    }
+
+    /// The note goes away at the first key; the header keeps saying that
+    /// the compressed file was damaged, so it never looks complete.
+    #[test]
+    fn viewer_header_keeps_a_decompression_failure() {
+        use crate::viewer::{LoadOptions, Viewer};
+        let tmp = crate::testing::tempdir();
+        let mut app = App::new(tmp.path().to_path_buf());
+        let load = LoadOptions::view(1 << 20);
+        let down = ratatui::crossterm::event::KeyEvent::new(
+            ratatui::crossterm::event::KeyCode::Down,
+            ratatui::crossterm::event::KeyModifiers::NONE,
+        );
+        let mut gz = crate::decompress::test_util::gz(&b"line of text\n".repeat(10_000));
+        gz.truncate(gz.len() / 2);
+        for (raw, shown) in [
+            (gz, "(truncated or corrupt)"),
+            (
+                b"\x1F\x8B".to_vec(),
+                "(not decompressed: truncated or corrupt)",
+            ),
+        ] {
+            let n = raw.len() as u64;
+            let mut v = Viewer::from_file("x.txt.gz".into(), n, raw, load);
+            assert!(v.note.is_some());
+            v.handle_key(down);
+            assert_eq!(v.note, None);
+            app.viewer = Some(v);
+            let row0 = draw_row0(&mut app);
+            assert!(row0.contains(shown), "{row0}");
+        }
     }
 
     #[test]

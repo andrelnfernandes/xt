@@ -153,6 +153,9 @@ pub struct Viewer {
     pub compression: Option<(Compression, u64)>,
     /// Not all of the file (or of its decompressed contents) is shown.
     cut: bool,
+    /// What went wrong decompressing, for the header: the note says it
+    /// too, but any key clears the note.
+    problem: Option<String>,
 }
 
 /// A piece of a displayed line: text, its color and whether it is part of
@@ -193,6 +196,7 @@ impl Viewer {
         let mut cut = size > raw.len() as u64;
         let mut compression = None;
         let mut note = None;
+        let mut problem = None;
         let mut failed = false;
         let mut data = raw;
         if let Some(kind) = load.decompress.then(|| decompress::sniff(&data)).flatten() {
@@ -210,7 +214,12 @@ impl Viewer {
             if cut && !failed && note.as_deref() == Some(decompress::TRUNCATED) {
                 note = None;
             }
+            problem = note.as_deref().and_then(|n| problem_text(n, failed, d.cut));
+            // V helps only if its own limit is enough. xz does not say what
+            // it needs, so V is suggested and may refuse too.
+            let v_can = d.needed.is_none_or(|n| n <= u64::from(VIEW_DICT));
             if load.limits.dict == AUTOVIEW_DICT
+                && v_can
                 && note.as_deref() == Some(decompress::memory_note(AUTOVIEW_DICT).as_str())
             {
                 note = note.map(|n| format!("{n} (V to view)"));
@@ -238,6 +247,7 @@ impl Viewer {
         v.compression = compression;
         v.cut = cut;
         v.note = note;
+        v.problem = problem;
         v
     }
 
@@ -411,6 +421,7 @@ impl Viewer {
             load: LoadOptions::view(MAX_BYTES),
             compression: None,
             cut: size > data_len,
+            problem: None,
         }
     }
 
@@ -431,6 +442,12 @@ impl Viewer {
 
     pub fn truncated(&self) -> bool {
         self.cut
+    }
+
+    /// The decompression failed or stopped on damaged data (the header
+    /// keeps saying so).
+    pub fn problem(&self) -> Option<&str> {
+        self.problem.as_deref()
     }
 
     pub fn line_count(&self) -> usize {
@@ -937,6 +954,27 @@ pub fn wrap_line_ranges(text: &str, width: usize) -> Vec<std::ops::Range<usize>>
     ranges
 }
 
+/// The header's lasting word on a decompression `note`: `failed` when
+/// nothing came out (the raw bytes are shown), `cut` when the decoder
+/// stopped on the time limit, which the cut notice already tells.
+fn problem_text(note: &str, failed: bool, cut: bool) -> Option<String> {
+    let truncated = note == decompress::TRUNCATED;
+    let reason = if truncated {
+        "truncated or corrupt"
+    } else {
+        note
+    };
+    if failed {
+        Some(format!("not decompressed: {reason}"))
+    } else if truncated {
+        Some(reason.to_string())
+    } else if cut {
+        None
+    } else {
+        Some(format!("incomplete: {reason}"))
+    }
+}
+
 /// How far `looks_binary` looks.
 pub const BINARY_PROBE: usize = 8192;
 
@@ -1109,6 +1147,44 @@ mod tests {
         let v = from_gz("a.gz", b"\x1F\x8B".to_vec(), LOAD);
         assert_eq!(v.mode, ViewMode::Hex);
         assert_eq!(v.note.as_deref(), Some(crate::decompress::TRUNCATED));
+    }
+
+    #[test]
+    fn header_problem_by_case() {
+        let mem = decompress::memory_note(VIEW_DICT);
+        let truncated = decompress::TRUNCATED;
+        assert_eq!(
+            problem_text(truncated, false, false).as_deref(),
+            Some("truncated or corrupt")
+        );
+        assert_eq!(
+            problem_text(truncated, true, false).as_deref(),
+            Some("not decompressed: truncated or corrupt")
+        );
+        assert_eq!(
+            problem_text(&mem, false, false),
+            Some(format!("incomplete: {mem}"))
+        );
+        // A time cut is already in the cut notice.
+        assert_eq!(
+            problem_text("decompression stopped after 3 s", false, true),
+            None
+        );
+    }
+
+    /// "(V to view)" only when V's own 64 MiB limit is enough.
+    #[test]
+    fn autoview_suggests_v_only_when_v_can_do_it() {
+        let note = |raw: &[u8]| from_gz("a.zst", raw.to_vec(), LoadOptions::autoview()).note;
+        let refused = decompress::memory_note(AUTOVIEW_DICT);
+        // zstd frame headers asking for a 32 MiB and a 128 MiB window.
+        let v_can = [0x28, 0xB5, 0x2F, 0xFD, 0x00, 0x78];
+        let v_cannot = [0x28, 0xB5, 0x2F, 0xFD, 0x00, 0x88];
+        assert_eq!(note(&v_can), Some(format!("{refused} (V to view)")));
+        assert_eq!(note(&v_cannot), Some(refused.clone()));
+        // xz does not say how much it needs: V may work, so it is suggested.
+        let xz = crate::decompress::test_util::xz_header_with_dict_props(40);
+        assert_eq!(note(&xz), Some(format!("{refused} (V to view)")));
     }
 
     #[test]

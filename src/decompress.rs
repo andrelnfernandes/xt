@@ -66,6 +66,9 @@ pub struct Decompressed {
     pub data: Vec<u8>,
     pub cut: bool,
     pub note: Option<String>,
+    /// The memory a refused stream asked for, when the format says (the
+    /// zstd window; xz does not say).
+    pub needed: Option<u64>,
 }
 
 fn duration_text(t: Duration) -> String {
@@ -81,6 +84,7 @@ fn truncated() -> Decompressed {
         data: Vec::new(),
         cut: false,
         note: Some(TRUNCATED.to_string()),
+        needed: None,
     }
 }
 
@@ -103,6 +107,15 @@ fn frame_error(e: ruzstd::decoding::errors::FrameDecoderError) -> io::Error {
     match e {
         E::WindowSizeTooBig { .. } => io::Error::new(io::ErrorKind::OutOfMemory, e),
         e => io::Error::new(io::ErrorKind::InvalidData, e),
+    }
+}
+
+/// The window a refused zstd frame asked for.
+fn window_asked(e: &io::Error) -> Option<u64> {
+    use ruzstd::decoding::errors::FrameDecoderError as E;
+    match e.get_ref()?.downcast_ref::<E>()? {
+        E::WindowSizeTooBig { requested, .. } => Some(*requested),
+        _ => None,
     }
 }
 
@@ -304,16 +317,7 @@ fn read_all(mut decoder: impl Read, limits: Limits, clock: &Clock) -> Decompress
     let mut buf = vec![0u8; CHUNK];
     let mut cut = false;
     let mut note = None;
-    // The time running out comes back as an error from inside the decoder,
-    // whatever it wraps it in: a cut, keeping what was decoded so far.
-    let stopped = |e: &io::Error, cut: &mut bool| {
-        if clock.fired.get() || e.kind() == io::ErrorKind::TimedOut {
-            *cut = true;
-            time_note(limits)
-        } else {
-            error_note(e, limits)
-        }
-    };
+    let mut error = None;
     loop {
         let room = limits.output - data.len();
         if room == 0 {
@@ -323,7 +327,7 @@ fn read_all(mut decoder: impl Read, limits: Limits, clock: &Clock) -> Decompress
                 Ok(0) => {}
                 Ok(_) => cut = true,
                 Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
-                Err(e) => note = Some(stopped(&e, &mut cut)),
+                Err(e) => error = Some(e),
             }
             break;
         }
@@ -333,7 +337,7 @@ fn read_all(mut decoder: impl Read, limits: Limits, clock: &Clock) -> Decompress
             Ok(n) => data.extend_from_slice(&buf[..n]),
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
             Err(e) => {
-                note = Some(stopped(&e, &mut cut));
+                error = Some(e);
                 break;
             }
         }
@@ -343,8 +347,25 @@ fn read_all(mut decoder: impl Read, limits: Limits, clock: &Clock) -> Decompress
             break;
         }
     }
+    let mut needed = None;
+    if let Some(e) = error {
+        // The time running out comes back as an error from inside the
+        // decoder, whatever it wraps it in: a cut, keeping what was decoded.
+        if clock.fired.get() || e.kind() == io::ErrorKind::TimedOut {
+            cut = true;
+            note = Some(time_note(limits));
+        } else {
+            needed = window_asked(&e);
+            note = Some(error_note(&e, limits));
+        }
+    }
     data.shrink_to_fit();
-    Decompressed { data, cut, note }
+    Decompressed {
+        data,
+        cut,
+        note,
+        needed,
+    }
 }
 
 #[cfg(test)]
@@ -452,10 +473,12 @@ mod tests {
         );
         // Magic, descriptor 0x00, window descriptor 0x88 = 2^(10+17) = 128 MiB.
         let big_window = [0x28, 0xB5, 0x2F, 0xFD, 0x00, 0x88];
-        assert_eq!(
-            decompress(&big_window, Compression::Zstd, limits(MIB)).note,
-            Some(memory_note(VIEW_DICT))
-        );
+        let d = decompress(&big_window, Compression::Zstd, limits(MIB));
+        assert_eq!(d.note, Some(memory_note(VIEW_DICT)));
+        assert_eq!(d.needed, Some(128 << 20));
+        // xz does not say how much it needs.
+        let huge = xz_header_with_dict_props(40);
+        assert_eq!(decompress(&huge, Compression::Xz, limits(MIB)).needed, None);
     }
 
     #[test]
