@@ -234,6 +234,19 @@ tópicos: [a janela da árvore](docs/manual/tree.md),
   Talvez macOS
 - os itens de "Not implemented" da
   [comparação com o ZTreeWin](docs/manual/ztreewin.md)
+- **O Xylem numa janela própria**, mais para frente: a mesma tela desenhada
+  numa janela própria em vez de um terminal (um backend do ratatui que
+  desenha numa janela, por exemplo com wgpu), com fonte e ícone próprios.
+  Dispensaria o terminal, o que pesa mais no Windows e no macOS; veria
+  sempre Ctrl e Alt apertados e soltos, e os menus os acompanhariam em
+  qualquer sistema; e abriria espaço para o mouse. O trabalho: um laço de
+  eventos e um mapeamento de teclas novos (o resto do Xylem só recebe teclas
+  e desenha num frame do ratatui), o E e o eXecute rodando no terminal
+  embutido, e o empacotamento. Uma interface gráfica completa (egui,
+  GTK...) não é o plano: seria outro programa, sem o visual do XTree.
+
+A lista completa do que falta, com as notas de desenvolvimento, está em
+[BACKLOG.md](BACKLOG.md) (em inglês).
 
 ## Licença
 
