@@ -38,8 +38,9 @@ shell, C, JavaScript, SQL, YAML, Markdown...), reconocidos por extensión, por
 nombre (`Makefile`) o por la primera línea (`#!/bin/bash`). El valor
 predeterminado es `syntax_highlight` (página 2 de la
 [configuración](configuration.md)). Los colores se mantienen legibles sobre el
-fondo del tema actual, y solo se colorean las primeras 20.000 líneas, para que
-los archivos enormes nunca ralenticen el visor.
+fondo del tema actual, y solo se colorean las primeras 20.000 líneas, y ninguna
+línea de más de 10.000 caracteres, para que los archivos enormes nunca
+ralenticen el visor.
 
 ## Caracteres de control de dirección
 
@@ -58,6 +59,8 @@ Para usar siempre una sola codificación en los textos antiguos, en lugar de la 
 El visor lee solo el principio de un archivo grande, y el encabezado dice `(showing first N MiB)`. Cuánto lee lo decide la opción `viewer_max_size` (**L** en la página 2 de la [configuración](configuration.md)): `auto`, `16`, `64`, `256` o `1024` (MiB). Con `auto`, el valor por defecto, el límite es 1/32 de la RAM de la máquina, nunca menos de 16 MiB ni más de 256 MiB (son 16 MiB si no se puede leer la RAM). La pantalla de configuración muestra el valor en uso, por ejemplo `auto (256 MiB)`.
 
 Dos casos no siguen esta regla. Autoview siempre lee 1 MiB. Un archivo en una máquina remota (SFTP) se lee como máximo hasta 16 MiB, porque Esc no puede cancelar esa lectura.
+
+Un límite mayor cuesta memoria y tiempo: con `1024`, un archivo de texto normal de ese tamaño ocupa unos 2,5 GiB de RAM y tarda unos 5 s en abrirse. Las líneas muy cortas cuestan más que sus bytes, porque cada línea tiene su propia gestión, y lo mismo pasa con los tabuladores y los caracteres de control de dirección ocultos: el visor guarda líneas hasta cerca del doble del límite de tamaño en memoria y, pasado eso, el encabezado dice `(showing first N lines)`. Un log de líneas normales (unos 100 bytes) nunca se corta por esto.
 
 ## Archivos comprimidos
 

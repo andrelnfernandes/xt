@@ -36,7 +36,8 @@ shell, C, JavaScript, SQL, YAML, Markdown...), recognized by extension, by name
 (`Makefile`) or by the first line (`#!/bin/bash`). The default is
 `syntax_highlight` (page 2 of the [configuration](configuration.md)). Colors
 stay readable on the current theme's background, and only the first 20,000
-lines are colored, so huge files never slow the viewer down.
+lines are colored, and no line longer than 10,000 characters, so huge files
+never slow the viewer down.
 
 ## Text direction controls
 
@@ -55,6 +56,8 @@ To always use one encoding for old text files instead of the guess, set `legacy_
 The viewer reads only the beginning of a big file, and the header says `(showing first N MiB)`. How much it reads is the `viewer_max_size` option (**L** on page 2 of the [configuration](configuration.md)): `auto`, `16`, `64`, `256` or `1024` (MiB). With `auto`, the default, the limit is 1/32 of the machine's RAM, never less than 16 MiB and never more than 256 MiB (it is 16 MiB when the RAM cannot be read). The configuration screen shows the value in use, for example `auto (256 MiB)`.
 
 Two cases do not follow it. Autoview always reads 1 MiB. A file on a remote machine (SFTP) is read at most up to 16 MiB, because Esc cannot cancel that read.
+
+A bigger limit costs memory and time: with `1024`, an ordinary text file that big takes roughly 2.5 GiB of RAM and about 5 s to open. Very short lines cost more than their bytes, because each line has its own bookkeeping, and so do tabs and hidden direction controls: the viewer keeps lines up to about twice the size limit in memory, and past that the header says `(showing first N lines)`. A log of ordinary lines (about 100 bytes) is never cut by this.
 
 ## Compressed files
 

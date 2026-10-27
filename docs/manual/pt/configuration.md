@@ -12,6 +12,8 @@ janela e nunca chega ao Xylem) abre quatro páginas:
 | 3. Confirmações e histórico | confirmar ao sair, excluir para a lixeira, confirmação do Prune, entradas com `@` não salvas, histórico próprio do terminal integrado |
 | 4. Copiar, comparar e atualizar | ignorar 2 s, ignorar 1 h, atualização automática, onde começam os caminhos de Alt+C/Alt+M |
 
+O limite de tamanho do visualizador (**L** na página 2) custa memória e tempo: com `1024` MiB, abrir um arquivo de texto comum desse tamanho ocupa cerca de 2,5 GiB de RAM e leva uns 5 s, e arquivos de linhas muito curtas custam mais por byte (veja [o visualizador](viewer.md)).
+
 A letra da opção (ou Enter) altera o valor, PgUp/PgDn ou 1–4 trocam de página,
 **F4** escolhe o tema em uma lista (com pré-visualização instantânea), **F3**
 salva e aplica, **Esc** cancela (pergunta se houver alterações).
