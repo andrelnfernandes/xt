@@ -197,7 +197,7 @@ impl Viewer {
         let mut data = raw;
         if let Some(kind) = load.decompress.then(|| decompress::sniff(&data)).flatten() {
             let d = decompress::decompress(&data, kind, load.limits);
-            if d.data.is_empty() {
+            if d.data.is_empty() && d.note.is_some() {
                 failed = true;
             } else {
                 data = d.data;
@@ -205,13 +205,18 @@ impl Viewer {
                 compression = Some((kind, size));
             }
             note = d.note;
+            // The decoder running out of input is expected when the read
+            // limit cut the compressed file.
+            if cut && !failed && note.as_deref() == Some(decompress::TRUNCATED) {
+                note = None;
+            }
             if load.limits.dict == AUTOVIEW_DICT
                 && note.as_deref() == Some(decompress::memory_note(AUTOVIEW_DICT).as_str())
             {
                 note = note.map(|n| format!("{n} (V to view)"));
             }
         }
-        if data.get(257..262) == Some(b"ustar") {
+        if note.is_none() && data.get(257..262) == Some(b"ustar") {
             note = Some("TAR archive: Alt+F5 opens it as a folder".into());
         }
         // The colors follow the name inside the compressed file.
@@ -1049,6 +1054,47 @@ mod tests {
         );
         assert!(v.truncated());
         assert!(n < v.data.len() as u64);
+    }
+
+    #[test]
+    fn truncated_tar_gz_keeps_the_truncated_note() {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("a.tar.gz");
+        crate::archive::tests::make_tar(&path, true);
+        let mut raw = std::fs::read(&path).unwrap();
+        raw.truncate(raw.len() / 2);
+        let v = Viewer::from_file(path, raw.len() as u64, raw, LOAD);
+        assert_eq!(v.note.as_deref(), Some(crate::decompress::TRUNCATED));
+    }
+
+    #[test]
+    fn input_cut_by_the_read_limit_is_not_corrupt() {
+        let mut x: u32 = 12345;
+        let noise: Vec<u8> = (0..2 << 20)
+            .map(|_| {
+                x = x.wrapping_mul(1664525).wrapping_add(1013904223);
+                (x >> 24) as u8
+            })
+            .collect();
+        let mut raw = gz(&noise);
+        let size = raw.len() as u64;
+        raw.truncate(1 << 20);
+        let v = Viewer::from_file(
+            PathBuf::from("n.bin.gz"),
+            size,
+            raw,
+            LoadOptions::view(1 << 20),
+        );
+        assert!(v.truncated());
+        assert_eq!(v.note, None);
+    }
+
+    #[test]
+    fn empty_gz_is_an_empty_text() {
+        let v = from_gz("e.txt.gz", gz(b""), LOAD);
+        assert_eq!(v.mode, ViewMode::Text);
+        assert!(v.compression.is_some());
+        assert_eq!(v.note, None);
     }
 
     #[test]

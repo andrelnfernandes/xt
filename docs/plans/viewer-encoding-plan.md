@@ -584,8 +584,19 @@ fn xz_header_with_dict_props(props: u8) -> Vec<u8> {
   - `reload` usa `Self::open(path, self.load)`.
 - Cabeçalho:
   - `format!("  {} → {} bytes", kind.name(), fmt_num(data_len))`;
-  - corte: `format!("  (showing first {} MiB)", limit >> 20)` ou
-    `"... MiB decompressed)"` quando há compressão.
+  - corte, arquivo comum: `format!("  (showing first {} MiB)", limit >> 20)`;
+  - corte, arquivo comprimido (o corte pode vir do tempo ou da entrada, então
+    o limite não diz o que aparece): `format!("  (showing first {} bytes
+    decompressed)", fmt_num(data_len))`, com os bytes que o viewer tem.
+- Decisões da revisão (rulings 12 e 13):
+  - o Autoview não desenha `v.note`: o título vira
+    ` Autoview: {name} — {note} ` quando há nota;
+  - a nota do TAR só vale se `note` ainda é `None` (não apaga a nota de
+    descompressão);
+  - se o limite de leitura cortou a entrada comprimida
+    (`size > raw.len()`), a nota `TRUNCATED` é descartada (`cut` fica);
+  - sem dados e sem nota é um fluxo vazio de verdade: texto vazio com
+    `compression = Some(..)`; sem dados e com nota é falha (hex cru + nota).
 
 - [ ] **Passo 1: escrever os testes em `viewer.rs`, que devem falhar.** Use
   os helpers da tarefa 5 (`gz`) e um `LOAD = LoadOptions::view(MAX_BYTES)`.

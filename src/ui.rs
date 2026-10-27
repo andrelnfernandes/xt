@@ -118,7 +118,11 @@ fn draw_screen(frame: &mut Frame, app: &mut App) {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .into_owned();
-            draw_viewer_body(frame, v, format!(" Autoview: {name} "), view);
+            let title = match &v.note {
+                Some(note) => format!(" Autoview: {name} — {note} "),
+                None => format!(" Autoview: {name} "),
+            };
+            draw_viewer_body(frame, v, title, view);
         }
     } else if app.is_split() {
         // Two windows side by side; the statistics panel goes away to make room.
@@ -1984,13 +1988,13 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
         ));
     }
     if v.truncated() {
-        let what = if v.compression.is_some() {
-            "MiB decompressed"
+        let shown = if v.compression.is_some() {
+            format!("{} bytes decompressed", fmt_num(v.data_len()))
         } else {
-            "MiB"
+            format!("{} MiB", v.limit() >> 20)
         };
         title.push(Span::styled(
-            format!("  (showing first {} {what})", v.limit() >> 20),
+            format!("  (showing first {shown})"),
             Style::new().fg(theme().error),
         ));
     }
@@ -2383,6 +2387,72 @@ mod tests {
         assert!(footer(&mut app).starts_with("ALT "));
         // Alt+W has no letter of its own in a word: it says so.
         assert!(footer(&mut app).contains("usage (W)"));
+    }
+
+    fn draw_row0(app: &mut App) -> String {
+        use ratatui::{Terminal, backend::TestBackend};
+        let mut term = Terminal::new(TestBackend::new(120, 20)).unwrap();
+        term.draw(|f| draw(f, app)).unwrap();
+        let buf = term.backend().buffer();
+        (0..120).map(|x| buf[(x, 0)].symbol()).collect()
+    }
+
+    fn draw_text(app: &mut App) -> String {
+        use ratatui::{Terminal, backend::TestBackend};
+        let mut term = Terminal::new(TestBackend::new(140, 20)).unwrap();
+        term.draw(|f| draw(f, app)).unwrap();
+        let buf = term.backend().buffer();
+        (0..20)
+            .flat_map(|y| (0..140).map(move |x| (x, y)))
+            .map(|(x, y)| buf[(x, y)].symbol())
+            .collect()
+    }
+
+    #[test]
+    fn viewer_header_tells_what_was_cut() {
+        use crate::viewer::{LoadOptions, Viewer};
+        let tmp = crate::testing::tempdir();
+        let mut app = App::new(tmp.path().to_path_buf());
+        let load = LoadOptions::view(1 << 20);
+        let text = "0123456789abcdef\n".repeat(1 << 17);
+        let raw = text.as_bytes()[..1 << 20].to_vec();
+        app.viewer = Some(Viewer::from_file(
+            "x.txt".into(),
+            text.len() as u64,
+            raw,
+            load,
+        ));
+        let row0 = draw_row0(&mut app);
+        assert!(row0.contains("(showing first 1 MiB)"), "{row0}");
+        let gz = crate::decompress::test_util::gz(text.as_bytes());
+        let n = gz.len() as u64;
+        app.viewer = Some(Viewer::from_file("x.txt.gz".into(), n, gz, load));
+        let row0 = draw_row0(&mut app);
+        assert!(
+            row0.contains(&format!(
+                "(showing first {} bytes decompressed)",
+                fmt_num(1 << 20)
+            )),
+            "{row0}"
+        );
+        assert!(row0.contains("gzip → 1"), "{row0}");
+    }
+
+    #[test]
+    fn autoview_title_shows_the_note() {
+        let tmp = crate::testing::tempdir();
+        std::fs::write(
+            tmp.path().join("big.xz"),
+            crate::decompress::test_util::xz_header_with_dict_props(40),
+        )
+        .unwrap();
+        let mut app = App::new(tmp.path().to_path_buf());
+        app.handle_key(ratatui::crossterm::event::KeyEvent::new(
+            ratatui::crossterm::event::KeyCode::F(7),
+            ratatui::crossterm::event::KeyModifiers::NONE,
+        ));
+        let text = draw_text(&mut app);
+        assert!(text.contains("(V to view)"), "{text}");
     }
 
     #[test]
