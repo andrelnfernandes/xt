@@ -2021,6 +2021,22 @@ fn autoview_shows_a_gz_decompressed() {
 }
 
 #[test]
+fn v_on_a_gz_shows_hex_when_viewer_decompress_is_off() {
+    let tmp = crate::testing::tempdir();
+    std::fs::write(
+        tmp.path().join("app.log.gz"),
+        crate::decompress::test_util::gz(b"hello log\n"),
+    )
+    .unwrap();
+    let mut app = App::new(tmp.path().to_path_buf());
+    app.options.viewer_decompress = false;
+    press(&mut app, KeyCode::Enter);
+    press(&mut app, KeyCode::Char('v'));
+    let v = app.viewer.as_ref().unwrap();
+    assert_eq!(v.mode, crate::viewer::ViewMode::Hex);
+}
+
+#[test]
 fn n_sets_new_dates() {
     use chrono::{Datelike, Timelike};
     let (tmp, mut app) = sample();

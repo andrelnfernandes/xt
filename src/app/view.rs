@@ -61,7 +61,7 @@ impl App {
         let (wrap, line_numbers) = (current.wrap, current.line_numbers);
         let size = self.file(f).size;
         let mut v = self
-            .load_viewer_with(path.clone(), size, LoadOptions::autoview())
+            .load_viewer_with(path.clone(), size, self.autoview_load_options())
             .unwrap_or_else(|e| {
                 Viewer::from_bytes(path, 0, format!("Cannot view file: {e}").into_bytes())
             });
@@ -84,7 +84,15 @@ impl App {
 
     /// Opens `path` in the viewer (from inside the ZIP/TAR, if applicable).
     pub(crate) fn load_viewer(&self, path: PathBuf, size: u64) -> std::io::Result<Viewer> {
-        self.load_viewer_with(path, size, LoadOptions::view(viewer::MAX_BYTES))
+        let mut load = LoadOptions::view(viewer::MAX_BYTES);
+        load.decompress = self.options.viewer_decompress;
+        self.load_viewer_with(path, size, load)
+    }
+
+    fn autoview_load_options(&self) -> LoadOptions {
+        let mut load = LoadOptions::autoview();
+        load.decompress = self.options.viewer_decompress;
+        load
     }
 
     pub(crate) fn load_viewer_with(
