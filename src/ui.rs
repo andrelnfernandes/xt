@@ -41,6 +41,13 @@ const SMALL_FILE_WINDOW: u16 = 8;
 const MIN_TREE_WITH_FILES: u16 = 2 * SMALL_FILE_WINDOW;
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
+    draw_screen(frame, app);
+    // Last step, after every early return: no bidi or control character
+    // may reach the terminal, whatever drew it.
+    crate::bidi::sanitize(frame.buffer_mut(), Style::new().fg(theme().error));
+}
+
+fn draw_screen(frame: &mut Frame, app: &mut App) {
     let base = Style::new().fg(theme().text).bg(theme().background);
     frame.render_widget(Block::new().style(base), frame.area());
 
@@ -2351,6 +2358,21 @@ mod tests {
         assert!(footer(&mut app).starts_with("ALT "));
         // Alt+W has no letter of its own in a word: it says so.
         assert!(footer(&mut app).contains("usage (W)"));
+    }
+
+    #[test]
+    fn bidi_in_names_never_reaches_the_terminal() {
+        use ratatui::{Terminal, backend::TestBackend};
+        let tmp = crate::testing::tempdir();
+        std::fs::write(tmp.path().join("fatura\u{202E}fdp.sh"), "").unwrap();
+        let mut app = App::new(tmp.path().to_path_buf());
+        app.apply(crate::input::Command::SwitchWindow);
+        let mut term = Terminal::new(TestBackend::new(80, 20)).unwrap();
+        term.draw(|f| draw(f, &mut app)).unwrap();
+        let buf = term.backend().buffer();
+        assert!(buf.content.iter().all(|c| !crate::bidi::has_bidi(c.symbol())));
+        let screen: String = buf.content.iter().map(|c| c.symbol()).collect();
+        assert!(screen.contains("faturafdp.sh"), "{screen}");
     }
 
     #[test]
