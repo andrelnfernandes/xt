@@ -48,11 +48,13 @@ Manche unsichtbaren Zeichen ändern die Schreibrichtung des Textes und können C
 
 Dateien mit der Endung `.gz`, `.xz`, `.zst` oder `.bz2` werden entpackt als Text geöffnet. Xylem prüft die ersten Bytes der Datei, nicht den Namen, und öffnet nur eine Ebene: Eine `.gz`-Datei in einer `.gz`-Datei bleibt komprimiert. Die Kopfzeile zeigt `gzip → N bytes` (das Format und die Größe nach dem Entpacken).
 
-Das Entpacken hat Grenzen. Der Betrachter liest bis zu 16 MiB, braucht höchstens 3 s und nutzt höchstens 64 MiB Speicher für das xz-Wörterbuch oder das zstd-Fenster. In Autoview gelten 1 MiB, 100 ms und 16 MiB. Wird eine Grenze erreicht, steht in der Kopfzeile `(showing first N bytes decompressed)`, und ein Hinweis nennt den Grund:
+Das Entpacken hat Grenzen. Der Betrachter liest bis zu 16 MiB, braucht höchstens 3 s und nutzt höchstens 64 MiB Speicher für das xz-Wörterbuch oder das zstd-Fenster. In Autoview gelten 1 MiB, 100 ms und 16 MiB. Wird die Ausgabe- oder die Zeitgrenze erreicht, steht in der Kopfzeile `(showing first N bytes decompressed)`. Ein Hinweis sagt, was passiert ist:
 
-- `compressed data truncated or corrupt` (komprimierte Daten abgeschnitten oder beschädigt)
 - `decompression stopped after 3 s` (100 ms in Autoview)
-- `needs more than 64 MiB of memory to decompress` (16 MiB in Autoview, mit ` (V to view)`)
+- `compressed data truncated or corrupt` (komprimierte Daten abgeschnitten oder beschädigt)
+- `needs more than 64 MiB of memory to decompress` (16 MiB in Autoview, mit ` (V to view)`, wenn die 64 MiB von V reichen können)
+
+Der Hinweis verschwindet beim ersten Tastendruck, die Kopfzeile behält das Problem aber: `(truncated or corrupt)`, `(incomplete: …)`, wenn die Speichergrenze das Entpacken mittendrin gestoppt hat, oder `(not decompressed: …)`, wenn nichts entpackt werden konnte (dann erscheinen die Rohbytes in Hex).
 
 Autoview zeigt den Hinweis in seinem Titel. Im Hex-Modus (`H`) sehen Sie die entpackten Bytes. Die Farben richten sich nach dem Namen ohne die Kompressionsendung: `app.rs.gz` wird wie Rust gefärbt.
 

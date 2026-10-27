@@ -33,11 +33,13 @@
 
 以 `.gz`、`.xz`、`.zst` 或 `.bz2` 结尾的文件会解压后以文本打开。Xylem 看的是文件的前几个字节，而不是文件名，并且只解一层：`.gz` 里面的 `.gz` 仍保持压缩。标题栏显示 `gzip → N bytes`（格式和解压后的大小）。
 
-解压有限制。查看器最多读取 16 MiB，最多用时 3 秒，xz 字典或 zstd 窗口最多占用 64 MiB 内存。自动预览（Autoview）的限制是 1 MiB、100 毫秒和 16 MiB。达到限制时，标题栏显示 `(showing first N bytes decompressed)`，并用一条提示说明原因：
+解压有限制。查看器最多读取 16 MiB，最多用时 3 秒，xz 字典或 zstd 窗口最多占用 64 MiB 内存。自动预览（Autoview）的限制是 1 MiB、100 毫秒和 16 MiB。达到输出或时间限制时，标题栏显示 `(showing first N bytes decompressed)`。一条提示说明发生了什么：
 
-- `compressed data truncated or corrupt`（压缩数据被截断或已损坏）
 - `decompression stopped after 3 s`（自动预览中为 100 ms）
-- `needs more than 64 MiB of memory to decompress`（自动预览中为 16 MiB，并带有 ` (V to view)`）
+- `compressed data truncated or corrupt`（压缩数据被截断或已损坏）
+- `needs more than 64 MiB of memory to decompress`（自动预览中为 16 MiB；当 V 的 64 MiB 可能够用时，带有 ` (V to view)`）
+
+提示在按下第一个键后消失，但标题栏会保留问题：`(truncated or corrupt)`；内存限制使解压中途停止时显示 `(incomplete: …)`；完全无法解压时显示 `(not decompressed: …)`（此时以十六进制显示原始字节）。
 
 自动预览会在标题中显示这条提示。在十六进制模式（`H`）下看到的是解压后的字节。颜色按去掉压缩扩展名后的文件名决定：`app.rs.gz` 按 Rust 着色。
 
