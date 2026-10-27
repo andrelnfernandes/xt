@@ -131,7 +131,9 @@ es, de, fr e zh) e precisa acompanhar cada mudança.
     PR.
   - **PR 4 (codificações e a tecla `O`, Tarefas 10 e 11): implementado** no
     branch `viewer-charset`, ainda sem push nem PR.
-  - **Próximo passo:** PR 5 (Tarefa 12 em diante). Marque os checkboxes no
+  - **PR 5 (`viewer_max_size` e a RAM, Tarefa 12): implementado** no branch
+    `viewer-max-size`, ainda sem push nem PR.
+  - **Próximo passo:** PR 6 (Tarefa 13 em diante). Marque os checkboxes no
     plano e atualize este status ao fim de cada PR.
 - **Correções feitas no spec ao escrever o plano** (já incorporadas):
   - o `ruzstd` 0.9.1 já limita a janela a 128 MiB por padrão
