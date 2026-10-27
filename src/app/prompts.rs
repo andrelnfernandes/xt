@@ -288,9 +288,9 @@ pub(crate) enum ConfirmKind {
     Sort(Sort),
     /// Alt+K being chosen (All/Tagged and Branch/Directory change the copy).
     Kbyte(Kbyte),
-    /// `O` on a name with hidden bidi controls: open anyway?
+    /// `O` on a name with hidden bidi controls: open these anyway?
     OpenHidden {
-        tagged: bool,
+        sources: Vec<Source>,
     },
 }
 
@@ -807,7 +807,7 @@ impl App {
                     ConfirmKind::DeleteFiles { .. } | ConfirmKind::DeleteDir { .. }
                 ) => {}
             ConfirmKind::Quit => self.should_quit = true,
-            ConfirmKind::OpenHidden { tagged } => self.open_sources(tagged),
+            ConfirmKind::OpenHidden { sources } => self.open_sources(sources),
             ConfirmKind::QuitChangeDir(dir) => {
                 self.quit_dir = Some(dir);
                 self.should_quit = true;
