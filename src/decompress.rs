@@ -255,6 +255,16 @@ pub fn memory_note(limit: u32) -> String {
     )
 }
 
+/// A decoder's memory error (the xz one only says "needed memory too big
+/// for mem_limit_kb") as `memory_note(limit)`; other errors pass as they are.
+pub(crate) fn clear_memory_error(e: io::Error, limit: u32) -> io::Error {
+    if is_memory_error(&e) {
+        io::Error::new(io::ErrorKind::OutOfMemory, memory_note(limit))
+    } else {
+        e
+    }
+}
+
 fn time_note(limits: Limits) -> String {
     format!("decompression stopped after {}", duration_text(limits.time))
 }

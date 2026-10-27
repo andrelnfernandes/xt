@@ -308,6 +308,15 @@ impl Reader {
     /// contents; `f` returns `false` to stop.
     fn each_tar_entry(
         &self,
+        f: impl FnMut(Entry, &mut dyn Read) -> io::Result<bool>,
+    ) -> io::Result<()> {
+        // An xz dictionary or zstd window over the limit gets a clear message.
+        self.walk_tar(f)
+            .map_err(|e| crate::decompress::clear_memory_error(e, crate::decompress::VIEW_DICT))
+    }
+
+    fn walk_tar(
+        &self,
         mut f: impl FnMut(Entry, &mut dyn Read) -> io::Result<bool>,
     ) -> io::Result<()> {
         let file = BufReader::new(File::open(&self.path)?);
@@ -938,7 +947,11 @@ pub mod tests {
         .unwrap();
         let mut r = Reader::open(&path).unwrap();
         let err = r.list().unwrap_err();
-        assert!(err.to_string().contains("mem_limit"), "{err}");
+        // A clear error, not the crate's "needed memory too big for mem_limit_kb".
+        assert_eq!(
+            err.to_string(),
+            crate::decompress::memory_note(crate::decompress::VIEW_DICT)
+        );
     }
 
     #[test]
