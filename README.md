@@ -227,6 +227,19 @@ and the man page (`xy --man`). Some topics:
   Maybe macOS
 - the items under "Not implemented" in the
   [comparison with ZTreeWin](docs/manual/ztreewin.md)
+- **Xylem in its own window**, further ahead: the same screen drawn in a
+  window of its own instead of a terminal (a ratatui backend that renders
+  to a window, e.g. on wgpu), with its own font and icon. It would need no
+  terminal, which matters most on Windows and macOS; it would always see
+  Ctrl and Alt pressed and released, so the menus would follow them in any
+  system; and it would make room for the mouse. The work: a new event loop
+  and key mapping (the rest of Xylem only receives keys and draws on a
+  ratatui frame), E and eXecute running in the built-in terminal, and the
+  packaging. A full graphical interface (egui, GTK...) is not the plan: it
+  would be another program, without the XTree look.
+
+The full list of what is left, including the developers' notes, is in
+[BACKLOG.md](BACKLOG.md).
 
 ## License
 

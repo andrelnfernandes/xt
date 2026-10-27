@@ -38,7 +38,15 @@ As in ZTree, the footer shows only the one-key commands. **F9** switches to the
 Ctrl menu, then the Alt menu, and back. With one of these menus open, the next
 letter counts as Ctrl+letter or Alt+letter (`F9` `M` = Ctrl+M); `Esc` cancels.
 In terminals with the kitty keyboard protocol, just **holding Ctrl or Alt**
-shows the corresponding menu.
+shows the corresponding menu, and letting go brings the usual one back, as
+in ZTree.
+
+The terminal has to report Ctrl and Alt pressed and released on their own,
+which only the kitty keyboard protocol does: kitty, Ghostty, WezTerm, foot
+(Wayland) and recent Alacritty support it, and on Ubuntu or Debian most of
+them are a package away (`sudo apt install kitty`, or `ghostty`,
+`alacritty`, `foot`). Terminals built on VTE (GNOME Terminal, Ptyxis,
+Terminator, Tilix) do not support it yet, so there the menus stay on F9.
 
 **Ctrl+M:** in most terminals, Ctrl+M arrives the same as Enter. Xylem enables
 the kitty keyboard protocol when the terminal supports it (kitty, WezTerm,
