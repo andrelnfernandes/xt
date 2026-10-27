@@ -364,6 +364,32 @@ impl App {
     /// temporary folder (deleted when Xylem exits), in steps like any copy
     /// (Esc stops it), and opens them at the end.
     pub(crate) fn open_with(&mut self, tagged: bool) {
+        // A name with hidden bidi controls may not be what it looks like.
+        let Some(sources) = self.sources_or_warn(tagged) else {
+            return;
+        };
+        let hidden = sources.iter().find_map(|s| {
+            let name = s.path.file_name()?.to_string_lossy().into_owned();
+            crate::bidi::has_bidi(&name).then_some(name)
+        });
+        if let Some(name) = hidden {
+            let q = format!(
+                "Hidden bidirectional characters in {}. Open anyway?",
+                crate::bidi::escape(&name)
+            );
+            self.ask(ConfirmKind::OpenHidden { tagged }, q);
+        } else {
+            self.open_sources(tagged);
+        }
+    }
+
+    /// The selected file's name has bidi controls (the footer warns).
+    pub(crate) fn selected_name_has_bidi(&self) -> bool {
+        self.selected_file()
+            .is_some_and(|f| crate::bidi::has_bidi(&self.file(f).name.to_string_lossy()))
+    }
+
+    pub(crate) fn open_sources(&mut self, tagged: bool) {
         let Some(sources) = self.sources_or_warn(tagged) else {
             return;
         };

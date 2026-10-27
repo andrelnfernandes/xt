@@ -2676,3 +2676,17 @@ fn autoview_supports_wrap_and_line_number_keys() {
     press(&mut app, KeyCode::Char('#'));
     assert!(app.autoview.as_ref().unwrap().line_numbers);
 }
+
+#[test]
+fn o_asks_before_opening_a_name_with_hidden_bidi() {
+    let tmp = crate::testing::tempdir();
+    std::fs::write(tmp.path().join("fatura\u{202E}fdp.sh"), "").unwrap();
+    let mut app = App::new(tmp.path().to_path_buf());
+    press(&mut app, KeyCode::Enter);
+    assert!(app.selected_name_has_bidi());
+    press(&mut app, KeyCode::Char('o'));
+    let c = app.confirm.as_ref().expect("asks first");
+    assert!(c.question.contains("fatura\\u{202E}fdp.sh"), "{}", c.question);
+    press(&mut app, KeyCode::Char('n'));
+    assert!(app.confirm.is_none());
+}

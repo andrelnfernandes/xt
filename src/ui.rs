@@ -1173,6 +1173,10 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
                     .fg(theme().message)
                     .add_modifier(Modifier::BOLD),
             )),
+            None if app.selected_name_has_bidi() => Line::from(Span::styled(
+                "Name has hidden bidirectional characters: it may not be what it looks like",
+                Style::new().fg(theme().error),
+            )),
             None => first,
         };
         vec![first, second]
@@ -1982,8 +1986,9 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
     if v.bidi_count() > 0 {
         title.push(Span::styled(
             format!(
-                "  {} bidirectional control characters (shown as ·)",
-                v.bidi_count()
+                "  {} bidirectional control character{} (shown as ·)",
+                v.bidi_count(),
+                if v.bidi_count() == 1 { "" } else { "s" }
             ),
             Style::new().fg(theme().error),
         ));
@@ -2387,6 +2392,18 @@ mod tests {
             row0.contains("2 bidirectional control characters (shown as ·)"),
             "{row0}"
         );
+        app.viewer = Some(crate::viewer::Viewer::from_bytes(
+            "x.txt".into(),
+            3,
+            "a\u{202E}b".as_bytes().to_vec(),
+        ));
+        term.draw(|f| draw(f, &mut app)).unwrap();
+        let buf = term.backend().buffer();
+        let row0: String = (0..100).map(|x| buf[(x, 0)].symbol()).collect();
+        assert!(
+            row0.contains("1 bidirectional control character (shown as ·)"),
+            "{row0}"
+        );
     }
 
     #[test]
@@ -2406,6 +2423,23 @@ mod tests {
         );
         let screen: String = buf.content.iter().map(|c| c.symbol()).collect();
         assert!(screen.contains("faturafdp.sh"), "{screen}");
+    }
+
+    #[test]
+    fn footer_warns_about_a_name_with_hidden_bidi() {
+        use ratatui::{Terminal, backend::TestBackend};
+        let tmp = crate::testing::tempdir();
+        std::fs::write(tmp.path().join("fatura\u{202E}fdp.sh"), "").unwrap();
+        let mut app = App::new(tmp.path().to_path_buf());
+        app.apply(crate::input::Command::SwitchWindow);
+        let mut term = Terminal::new(TestBackend::new(100, 20)).unwrap();
+        term.draw(|f| draw(f, &mut app)).unwrap();
+        let buf = term.backend().buffer();
+        let row: String = (0..100).map(|x| buf[(x, 18)].symbol()).collect();
+        assert!(
+            row.contains("Name has hidden bidirectional characters"),
+            "{row}"
+        );
     }
 
     #[test]

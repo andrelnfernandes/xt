@@ -22,6 +22,7 @@ impl App {
                 ConfirmKind::Compare { .. } => "compare",
                 ConfirmKind::Sort(_) => "sort",
                 ConfirmKind::Kbyte(_) => "info",
+                ConfirmKind::OpenHidden { .. } => "files",
             };
         }
         if self.settings.is_some() {
