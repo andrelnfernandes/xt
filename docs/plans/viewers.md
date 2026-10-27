@@ -119,13 +119,24 @@ es, de, fr e zh) e precisa acompanhar cada mudança.
 ## Como retomar (para quem continuar o trabalho)
 
 - **Onde estamos:** subprojeto 1. O spec
-  ([viewer-encoding.md](viewer-encoding.md)) tem todas as seções aprovadas
-  e a revisão final feita. Está aguardando o autor revisar o arquivo
-  escrito.
-- **Próximo passo:** com a revisão do autor aprovada, escrever o plano de
-  implementação (por exemplo, `docs/plans/viewer-encoding-plan.md`),
-  seguindo a "Ordem dos PRs" do fim do spec. O primeiro PR é o reforço bidi
-  da seção 2b.
+  ([viewer-encoding.md](viewer-encoding.md)) foi aprovado pelo autor. O
+  plano de implementação ([viewer-encoding-plan.md](viewer-encoding-plan.md))
+  está escrito e aguarda a revisão do autor e a escolha do modo de
+  execução.
+  - **Subagentes:** um subagente por tarefa e um revisor por tarefa.
+  - **Nativo:** o agente da sessão implementa tudo e um revisor confere o
+    branch no fim.
+- **Próximo passo:** executar o plano tarefa por tarefa, a partir do PR 1
+  (bidi). Marque os checkboxes no plano e atualize este status ao fim de
+  cada PR.
+- **Correções feitas no spec ao escrever o plano** (já incorporadas):
+  - o `ruzstd` 0.9.1 já limita a janela a 128 MiB por padrão
+    (`new_with_max_window_size`);
+  - o limite do xz se calcula com `lzma_rust2::lzma2_get_memory_usage`
+    (40 + 64 + dict/1024 KiB);
+  - o `catch_unwind` precisa de um hook que não restaure o terminal dentro
+    da área protegida (`src/panic_guard.rs`);
+  - as letras do F12 seguem a ordem dos PRs (J, K, L).
 - **Medições:** ficam em `~/.cache/xt-dev/viewer-mem/`:
   - `data/app.log`: log de 16 MiB;
   - `scripts/gen.py`: gera o log;
