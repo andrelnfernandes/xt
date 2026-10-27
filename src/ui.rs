@@ -21,6 +21,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Clear, List, ListItem, ListState, Paragraph};
 
 use crate::app::{self, App, BookmarksView, FileView, Focus, KbyteShow, MenuMode, Pane};
+use crate::charset::Charset;
 use crate::config::TerminalTheme;
 use crate::config::{self, formats, theme};
 use crate::filetype;
@@ -2004,6 +2005,12 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
             Style::new().fg(theme().error),
         ));
     }
+    if v.charset() != Charset::Utf8 {
+        title.push(Span::styled(
+            format!("  {}", v.charset().name()),
+            Style::new().fg(theme().dim),
+        ));
+    }
     if v.bidi_count() > 0 {
         title.push(Span::styled(
             format!(
@@ -2043,7 +2050,7 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
         prompt_lines(frame, prompt, menu)
     } else {
         let mut words = vec![
-            "Find", "Backward", "Hex", "Colors", "Wrap", "#Num", "Goto", "Edit",
+            "Find", "Backward", "Hex", "Colors", "Wrap", "#Num", "Goto", "Edit", "cOdepage",
         ];
         if diff {
             words.push("Diff");

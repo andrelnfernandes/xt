@@ -11,6 +11,7 @@ use std::sync::RwLock;
 use ratatui::style::Color;
 use serde::Deserialize;
 
+use crate::charset::Charset;
 use crate::keymap::Keymap;
 use crate::model::sort::{Sort, SortKey};
 use crate::pane::FileDisplay;
@@ -57,6 +58,9 @@ viewer_wrap = false
 viewer_line_numbers = false
 # Show .gz/.xz/.zst/.bz2 files decompressed in the viewer.
 viewer_decompress = true
+# Charset of files that are not UTF-8 or UTF-16 (O cycles it in the viewer):
+# "auto" (guess CP850 or Windows-1252), "cp850", "cp1252" or "cp437".
+legacy_charset = "auto"
 # Initial mode of the files window (Alt+F changes it while running): "names"
 # (several columns), "names_size" (columns with size), "details" (one
 # column with size, date and permissions), "owner" (size, owner and group,
@@ -194,6 +198,8 @@ pub struct Options {
     /// Show .gz/.xz/.zst/.bz2 files decompressed in the viewer and in
     /// Autoview (F12, J); off shows their raw bytes.
     pub viewer_decompress: bool,
+    /// Charset of viewer files that are not UTF-8 or UTF-16.
+    pub legacy_charset: LegacyCharset,
     /// Initial mode of the files window (Alt+F changes it while running).
     pub file_display: FileDisplay,
     /// Initial file sort order.
@@ -234,6 +240,7 @@ impl Default for Options {
             viewer_wrap: false,
             viewer_line_numbers: false,
             viewer_decompress: true,
+            legacy_charset: LegacyCharset::Auto,
             file_display: FileDisplay::Details,
             sort: SortKey::Name,
             sort_descending: false,
@@ -279,6 +286,7 @@ impl Options {
             ("viewer_wrap", Value::from(self.viewer_wrap)),
             ("viewer_line_numbers", Value::from(self.viewer_line_numbers)),
             ("viewer_decompress", Value::from(self.viewer_decompress)),
+            ("legacy_charset", s(self.legacy_charset.as_str())),
             ("file_display", s(self.file_display.as_str())),
             ("sort", s(self.sort.as_str())),
             ("sort_descending", Value::from(self.sort_descending)),
@@ -485,6 +493,46 @@ impl Choice for PruneConfirm {
             PruneConfirm::Prune => "prune",
             PruneConfirm::Name => "name",
             PruneConfirm::Y => "y",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LegacyCharset {
+    /// Guess between CP850 and Windows-1252.
+    #[default]
+    Auto,
+    Cp850,
+    Cp1252,
+    Cp437,
+}
+
+impl LegacyCharset {
+    /// The fixed charset, or `None` to guess.
+    pub fn fallback(self) -> Option<Charset> {
+        match self {
+            LegacyCharset::Auto => None,
+            LegacyCharset::Cp850 => Some(Charset::Cp850),
+            LegacyCharset::Cp1252 => Some(Charset::Cp1252),
+            LegacyCharset::Cp437 => Some(Charset::Cp437),
+        }
+    }
+}
+
+impl Choice for LegacyCharset {
+    const ALL: &'static [Self] = &[
+        LegacyCharset::Auto,
+        LegacyCharset::Cp850,
+        LegacyCharset::Cp1252,
+        LegacyCharset::Cp437,
+    ];
+    fn as_str(self) -> &'static str {
+        match self {
+            LegacyCharset::Auto => "auto",
+            LegacyCharset::Cp850 => "cp850",
+            LegacyCharset::Cp1252 => "cp1252",
+            LegacyCharset::Cp437 => "cp437",
         }
     }
 }
@@ -1225,6 +1273,19 @@ mod tests {
         assert_eq!(NumberFormat::Comma.next(), NumberFormat::Dot);
         assert_eq!(SortKey::Size.next(), SortKey::Name);
         assert_eq!(PruneConfirm::Y.next().as_str(), "prune");
+    }
+
+    #[test]
+    fn legacy_charset_is_read() {
+        assert_eq!(Options::default().legacy_charset, LegacyCharset::Auto);
+        let c = Config::parse("[options]\nlegacy_charset = \"cp850\"").unwrap();
+        assert_eq!(c.options.legacy_charset, LegacyCharset::Cp850);
+        assert_eq!(
+            c.options.legacy_charset.fallback(),
+            Some(crate::charset::Charset::Cp850)
+        );
+        assert_eq!(LegacyCharset::Auto.fallback(), None);
+        assert!(Config::parse("[options]\nlegacy_charset = \"latin1\"").is_err());
     }
 
     #[test]
