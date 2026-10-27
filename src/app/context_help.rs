@@ -60,7 +60,7 @@ impl App {
                 PromptKind::Chmod(_) | PromptKind::NewDate(_) => "attributes",
                 PromptKind::Prune { .. } => "delete",
                 PromptKind::SearchTagged { .. } => "search",
-                PromptKind::ViewerSearch { .. } => "viewer",
+                PromptKind::ViewerSearch { .. } | PromptKind::ViewerGoto => "viewer",
                 PromptKind::CreateArchive(_) => "archives",
                 PromptKind::BookmarkJump | PromptKind::BookmarkSet => "bookmarks",
                 PromptKind::MakeDir(_) => "tree",
@@ -90,6 +90,10 @@ impl App {
     }
 
     pub(crate) fn open_help(&mut self) {
-        self.help = Some(Help::new(self.help_topic(), self.keymap.help_text()));
+        self.help = Some(Help::with_lang(
+            self.help_topic(),
+            self.keymap.help_text(),
+            &self.options.help_language,
+        ));
     }
 }

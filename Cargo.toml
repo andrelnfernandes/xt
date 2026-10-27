@@ -5,7 +5,7 @@ version = "0.4.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/andrelnfernandes/xylem"
-homepage = "https://github.com/andrelnfernandes/xylem"
+homepage = "https://andrelnfernandes.github.io/xylem/"
 description = "Text-mode file manager inspired by XTree and ZTreeWin"
 readme = "README.md"
 keywords = ["file-manager", "xtree", "ztree", "tui", "terminal"]
@@ -13,7 +13,7 @@ categories = ["command-line-utilities", "filesystem"]
 # What goes to crates.io: the code, the Windows icon (build.rs), the
 # license and the READMEs (the screenshots stay on GitHub, where the
 # READMEs' images point).
-include = ["/src/**/*.rs", "/build.rs", "/docs/icons/xylem.ico", "/docs/manual/*.md", "/Cargo.toml", "/Cargo.lock", "/LICENSE", "/README.md", "/README.pt-BR.md"]
+include = ["/src/**/*.rs", "/build.rs", "/docs/icons/xylem.ico", "/docs/manual/**/*.md", "/Cargo.toml", "/Cargo.lock", "/LICENSE", "/README.md", "/README.pt-BR.md"]
 
 [[bin]]
 name = "xy"
