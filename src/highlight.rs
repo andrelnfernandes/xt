@@ -3,9 +3,10 @@
 //!
 //! Lines are highlighted lazily, only up to the last one shown, and the
 //! result is cached; files longer than `MAX_LINES` are colored only up to
-//! there, so huge files never slow the viewer down. Colors are adjusted to
-//! keep enough contrast with the background of the current Xylem theme (the
-//! classic blue one included).
+//! there, and lines longer than `MAX_LINE_CHARS` are not colored, so huge
+//! files never slow the viewer down. Colors are adjusted to keep enough
+//! contrast with the background of the current Xylem theme (the classic
+//! blue one included).
 
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -18,6 +19,10 @@ use syntect::parsing::{SyntaxReference, SyntaxSet};
 
 /// Lines past this one are shown without colors.
 pub const MAX_LINES: usize = 20_000;
+
+/// Longer lines are shown without colors: syntect takes ~9 ms per 10,000
+/// characters of one JSON line (60 ms of Rust), and 11 s for a 16 MiB one.
+pub const MAX_LINE_CHARS: usize = 10_000;
 
 /// Name that `for_name` colors like `git status` does in a terminal.
 pub const GIT_STATUS: &str = "git status";
@@ -190,7 +195,14 @@ impl Highlighter {
             let Some(highlight) = &mut self.lines else {
                 break;
             };
-            let text = format!("{}\n", lines[self.done.len()]);
+            let line = &lines[self.done.len()];
+            // Skipped, not fed to syntect: the lines after it start from
+            // the state before it.
+            if line.len() > MAX_LINE_CHARS && line.chars().count() > MAX_LINE_CHARS {
+                self.done.push(Vec::new());
+                continue;
+            }
+            let text = format!("{line}\n");
             match highlight.highlight_line(&text, syntaxes()) {
                 Ok(ranges) => {
                     let segments = ranges
@@ -284,6 +296,17 @@ mod tests {
         assert_ne!(color_of("let"), color_of("x"));
         assert!(h.line(MAX_LINES, &text).is_none());
         assert!(h.line(99, &text).is_none());
+    }
+
+    /// syntect takes ~11 s on a 16 MiB JSON line (~9 ms per 10,000
+    /// characters): such lines are shown plain, and the next ones still
+    /// get their colors.
+    #[test]
+    fn very_long_lines_are_not_colored() {
+        let text = vec!["let x = 1; ".repeat(1_000), "    let y = 2;".to_string()];
+        let mut h = Highlighter::for_file(Path::new("a.rs"), "").unwrap();
+        assert_eq!(h.line(0, &text), Some(&[][..]));
+        assert!(h.line(1, &text).is_some_and(|segs| segs.len() > 1));
     }
 
     #[test]

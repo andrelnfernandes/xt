@@ -323,6 +323,19 @@ tamanho. No remoto, também controla as respostas do servidor.
   - Medido depois (release, `lines` do harness da revisão, com orçamento
     de 2× a entrada): 16 MiB de `\n` → 50 MiB de pico (×3,1); 64 MiB → 194
     MiB (×3,0).
+- **Custo de redesenho (revisão final, I1):** cada quadro custava o
+  comprimento inteiro da linha visível (`Vec<char>` da linha toda e cores
+  para todos os caracteres): 68 ms por quadro numa linha de 16 MiB, 254 ms
+  numa de 64 MiB. Agora:
+  - sem quebra, só os caracteres de `left` até preencher a largura;
+  - com quebra (`W`), só as linhas visuais necessárias, por um iterador
+    preguiçoso (`WrapRows`), que também serve ao `↓` e à busca;
+  - as cores, só para esse trecho;
+  - linhas com mais de 10.000 caracteres não são coloridas (o syntect
+    levou 11 s numa linha JSON de 16 MiB, e 9 ms a cada 10.000 caracteres).
+
+  Medido depois: ~1 µs por quadro sem quebra e ~50 µs com quebra, nas
+  duas linhas.
 - **Arquivo truncado ou corrompido:** mostra o que conseguiu descomprimir e
   o aviso `compressed data truncated or corrupt`.
 - **Defesa extra:** a chamada aos descompressores roda dentro de
