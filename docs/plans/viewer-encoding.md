@@ -9,7 +9,17 @@ implementado no branch `viewer-decompress`; PR 4 (Tarefas 10 e 11,
 `charset` e a tecla `O`) implementado no branch `viewer-charset`; PR 5
 (Tarefa 12, `viewer_max_size`) implementado no branch `viewer-max-size`;
 PR 6 (Tarefa 13, `cargo audit` no CI) implementado no branch `ci-audit`.
-Subprojeto 1 implementado, nada enviado; falta a revisão do branch inteiro.
+Subprojeto 1 implementado, nada enviado. A revisão do branch inteiro foi
+feita, e a onda de correções dela foi aplicada (achados em
+[viewer-encoding-final-review.md](viewer-encoding-final-review.md)):
+C1 (tempo do lado da entrada) em `decompress`; C2 (orçamento de memória das
+linhas) e I1 (redesenho pelo que cabe na tela, linhas de mais de 10.000
+caracteres sem cor) em `viewer-max-size`; os menores T4 e o francês em
+`bidi-guard`, M5 em `decompress`, M1, M6, M8 e M2 em `viewer-decompress`,
+M3 e M9 em `viewer-max-size` e M7 em `ci-audit`. Próximo passo: uma
+re-revisão só das correções. Decisão em aberto para o autor:
+RUSTSEC-2025-0141 (`bincode` sem manutenção, via `syntect`; só lê os dumps
+embutidos do próprio `syntect`, nunca arquivos do usuário).
 Spec aprovado pelo autor. O plano de implementação
 está em [viewer-encoding-plan.md](viewer-encoding-plan.md). Ao escrevê-lo,
 quatro pontos foram corrigidos aqui: a janela do zstd, a conta do xz, o
