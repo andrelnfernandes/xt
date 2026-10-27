@@ -2,9 +2,10 @@
 
 Subprojeto 1 do [plano de visualizadores](viewers.md).
 
-**Status (2026-10-27):** todas as seções aprovadas (1, 2, 2b e 3) e
-revisão final feita. Falta o autor revisar o arquivo escrito; só depois
-disso vem o plano de implementação.
+**Status (2026-10-27):** spec aprovado pelo autor. O plano de implementação
+está em [viewer-encoding-plan.md](viewer-encoding-plan.md). Ao escrevê-lo,
+quatro pontos foram corrigidos aqui: a janela do zstd, a conta do xz, o
+panic hook e as letras do F12.
 
 O autor pediu cuidado especial com o CVE-2021-42574.
 
@@ -23,8 +24,9 @@ Entra:
 - **Limite de tamanho do viewer configurável** (`viewer_max_size`), no lugar
   dos 16 MiB fixos.
 - **Correção da brecha atual:** `archive.rs` passa a usar os leitores de xz e
-  zstd com limite de memória (hoje o `.tar.xz` usa `XzReader::new`, sem
-  limite).
+  zstd com limite de memória. Hoje o `.tar.xz` usa `XzReader::new`, sem
+  limite. O zstd já tinha o teto padrão do `ruzstd`, de 128 MiB, que desce
+  para 64 MiB.
 - **Trojan Source (CVE-2021-42574) na tela inteira:** os 12 caracteres bidi
   nunca chegam ao terminal, e o viewer e os nomes de arquivo os mostram
   marcados e com aviso (seção 2b). Isso vale para o Xylem todo, não só para
@@ -234,14 +236,23 @@ tamanho. No remoto, também controla as respostas do servidor.
 | janela do zstd | 64 MiB | 16 MiB | 64 MiB |
 
 - **xz:** `XzReader::new_mem_limit(r, true, kib)`, com
-  `kib = dicionário / 1024 + 64`. A fórmula do crate é
-  `40 + dict / 1024` KiB, então 64 MiB aceitam `xz -9` e `-9e`. No
+  `kib = lzma_rust2::lzma2_get_memory_usage(limite do dicionário)`. Essa é
+  a mesma conta que o `XzReader` faz em cada cabeçalho de bloco:
+  `40 + 64 + dict / 1024` KiB, em que os 64 são o buffer de entrada
+  (`COMPRESSED_SIZE_MAX`). Com um limite de 64 MiB, `xz -9` e `-9e` são
+  aceitos. No
   Autoview, 16 MiB aceitam até `xz -7`; `-8` e `-9` mostram
   `large dictionary: V to view`.
-- **zstd:** o tamanho da janela é lido do cabeçalho de cada frame antes de
-  descomprimir, e o frame é recusado se passar do limite. O `ruzstd` aceita
-  até ~3,75 TB. `zstd --long` e `--ultra -22` (128 MiB) são recusados no V,
-  com aviso.
+- **zstd:** usa `StreamingDecoder::new_with_max_window_size(r, limite)`. O
+  `ruzstd` 0.9.1 já recusa janelas acima do limite antes de alocar
+  (`FrameDecoder::set_max_window_size`; o padrão, `DEFAULT_MAX_WINDOW_SIZE`,
+  é 128 MiB). O máximo do formato, ~3,75 TB (`MAX_WINDOW_SIZE`), não é o
+  teto do decoder. Arquivos `zstd --long` e `--ultra -22` (128 MiB) são
+  recusados no V, com aviso.
+  - O `StreamingDecoder` lê um frame só. Para arquivos com vários frames
+    (`pzstd`, `zstd -T`), cria-se um decoder novo para cada frame até a
+    entrada acabar. O erro `ReadFrameHeaderError::SkipFrame` pula `length`
+    bytes (frames "skippable").
 - **gzip e bzip2:** memória fixa (janela de 32 KiB; blocos de no máximo
   900 KB). Usam `MultiGzDecoder` e `MultiBzDecoder`, por causa de logs
   concatenados.
@@ -258,8 +269,18 @@ tamanho. No remoto, também controla as respostas do servidor.
 - **Defesa extra:** a chamada aos descompressores roda dentro de
   `std::panic::catch_unwind`. Um bug de crate que cause `panic` vira
   "arquivo corrompido" em vez de derrubar o Xylem. O projeto usa `unwind`
-  (não há `panic = "abort"` no `Cargo.toml`), e o hook de `main.rs` já
-  restaura o terminal se algo escapar.
+  (não há `panic = "abort"` no `Cargo.toml`).
+  - **Cuidado (encontrado ao escrever o plano):** o hook instalado pelo
+    `ratatui::init` restaura o terminal, e o hook roda **antes** de o
+    `catch_unwind` capturar o panic. Sem tratamento, o Xylem se recuperaria
+    com a tela fora do modo raw.
+  - **Correção:** um módulo `src/panic_guard.rs` com uma flag
+    `thread_local`. `panic_guard::catch(f)` liga a flag, roda `f` dentro do
+    `catch_unwind` e desliga a flag. Um hook instalado por último no
+    `main.rs` (depois de `Keyboard::detect`) não chama os hooks anteriores
+    quando a flag está ligada.
+  - Um panic fora da área protegida continua restaurando o terminal, como
+    hoje.
 - **Sem recursão:** um nível só de descompressão.
 - **Nada no disco:** nenhum arquivo temporário. Tudo acontece em memória.
 - **Remoto que mente o tamanho:** `remote.read(path, limite)` já corta pelo
@@ -337,7 +358,8 @@ desenho em produção (`main.rs:379`), e os testes de UI também passam por
 - o `Viewer` guarda as posições deles (normalmente nenhuma) para o
   `styled()` colorir;
 - o cabeçalho avisa, como o GitHub faz:
-  `⚠ 3 bidirectional control characters (shown as ·)`;
+  `3 bidirectional control characters (shown as ·)`, na cor de erro (sem
+  o `⚠`, que tem largura ambígua em alguns terminais);
 - o hex mostra os bytes (`E2 80 AE`).
 
 **Camada 3 — nomes de arquivo:**
@@ -373,10 +395,12 @@ independente e corrige um problema que já existe hoje.
 ## Seção 3 — F12, documentação e testes (aprovada)
 
 **Opções novas no F12, página 2, depois de `I`:**
-- `J` — `legacy_charset`: `auto`, `cp850`, `cp1252` ou `cp437`. Rótulo
-  `Charset of non-UTF-8 files (O in the viewer)`.
-- `K` — `viewer_decompress`: `true` ou `false`. Rótulo
+- `J` — `viewer_decompress`: `true` ou `false`. Rótulo
   `Show .gz/.xz/.zst/.bz2 decompressed in the viewer`.
+- `K` — `legacy_charset`: `auto`, `cp850`, `cp1252` ou `cp437`. Rótulo
+  `Charset of non-UTF-8 files (O in the viewer)`.
+
+As letras seguem a ordem dos PRs: o 3 traz o `J`, o 4 o `K` e o 5 o `L`.
 - `L` — `viewer_max_size`: `auto`, 16, 64, 256 ou 1024. Rótulo
   `Largest part of a file the viewer reads`.
 
@@ -407,7 +431,9 @@ comentários.
   - entrada truncada mostra o parcial e o aviso;
   - bomba (muitos MiB de zeros) para no limite de saída;
   - xz com dicionário acima do limite é recusado sem alocar;
-  - zstd com cabeçalho de janela gigante é recusado;
+  - zstd com janela acima do limite (criado com `windowLog` alto) é
+    recusado com aviso;
+  - zstd com dois frames seguidos mostra os dois;
   - gzip com vários membros;
   - um nível só: `.gz` dentro de `.gz` mostra o `.gz` interno em hex.
 - **proptest:** bytes aleatórios em `detect`, `decode`, `sniff` e
