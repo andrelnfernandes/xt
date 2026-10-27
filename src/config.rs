@@ -55,6 +55,8 @@ syntax_highlight = true
 viewer_wrap = false
 # Show line numbers in the text viewer (# or L toggles them while viewing).
 viewer_line_numbers = false
+# Show .gz/.xz/.zst/.bz2 files decompressed in the viewer.
+viewer_decompress = true
 # Initial mode of the files window (Alt+F changes it while running): "names"
 # (several columns), "names_size" (columns with size), "details" (one
 # column with size, date and permissions), "owner" (size, owner and group,
@@ -189,6 +191,7 @@ pub struct Options {
     pub viewer_wrap: bool,
     /// Line numbers in the text viewer (# / L toggles while viewing).
     pub viewer_line_numbers: bool,
+    pub viewer_decompress: bool,
     /// Initial mode of the files window (Alt+F changes it while running).
     pub file_display: FileDisplay,
     /// Initial file sort order.
@@ -228,6 +231,7 @@ impl Default for Options {
             syntax_highlight: true,
             viewer_wrap: false,
             viewer_line_numbers: false,
+            viewer_decompress: true,
             file_display: FileDisplay::Details,
             sort: SortKey::Name,
             sort_descending: false,
@@ -272,6 +276,7 @@ impl Options {
             ("syntax_highlight", Value::from(self.syntax_highlight)),
             ("viewer_wrap", Value::from(self.viewer_wrap)),
             ("viewer_line_numbers", Value::from(self.viewer_line_numbers)),
+            ("viewer_decompress", Value::from(self.viewer_decompress)),
             ("file_display", s(self.file_display.as_str())),
             ("sort", s(self.sort.as_str())),
             ("sort_descending", Value::from(self.sort_descending)),
