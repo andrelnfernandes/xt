@@ -40,4 +40,8 @@ Standardeinstellung ist `syntax_highlight` (Seite 2 der
 aktuellen Themas gut lesbar, und es werden nur die ersten 20.000 Zeilen
 eingefärbt, sodass auch riesige Dateien den Betrachter niemals ausbremsen.
 
+## Steuerzeichen für die Schreibrichtung
+
+Manche unsichtbaren Zeichen ändern die Schreibrichtung des Textes und können Code anders aussehen lassen, als er wirklich lautet (Trojan Source, CVE-2021-42574). Der Viewer versteckt sie nie: Jedes erscheint als rotes `·`, und die Kopfzeile nennt ihre Anzahl.
+
 Siehe auch: [markierte Dateien durchsuchen](search.md).

@@ -40,4 +40,8 @@ permanecem legíveis sobre o fundo do tema atual, e apenas as primeiras 20.000
 linhas são coloridas, para que arquivos enormes nunca deixem o visualizador
 lento.
 
+## Caracteres de controle de direção
+
+Alguns caracteres invisíveis mudam a direção do texto e podem fazer um código parecer diferente do que ele realmente diz (Trojan Source, CVE-2021-42574). O visualizador nunca os esconde: cada um aparece como um `·` vermelho, e o cabeçalho informa quantos são.
+
 Veja também: [busca nos arquivos marcados](search.md).
