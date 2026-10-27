@@ -23,6 +23,7 @@ pub enum Opt {
     ViewerLineNumbers,
     ViewerDecompress,
     LegacyCharset,
+    ViewerMaxSize,
     Sort,
     SortDescending,
     EnterViews,
@@ -106,6 +107,11 @@ pub const PAGES: &[Page] = &[
                 "Charset of non-UTF-8 files (O in the viewer)",
                 Opt::LegacyCharset,
             ),
+            (
+                'L',
+                "Largest part of a file the viewer reads",
+                Opt::ViewerMaxSize,
+            ),
         ],
     ),
     (
@@ -181,6 +187,16 @@ impl Opt {
             Opt::ViewerLineNumbers => yes_no(o.viewer_line_numbers),
             Opt::ViewerDecompress => yes_no(o.viewer_decompress),
             Opt::LegacyCharset => o.legacy_charset.as_str().into(),
+            Opt::ViewerMaxSize => {
+                let bytes = o
+                    .viewer_max_size
+                    .bytes(crate::platform::memory().map(|m| m.total));
+                let size = format!("{} MiB", bytes >> 20);
+                match o.viewer_max_size {
+                    crate::config::ViewerMaxSize::Auto => format!("auto ({size})"),
+                    _ => size,
+                }
+            }
             Opt::FileDisplay => match o.file_display.as_str() {
                 "names" => "Names in columns".into(),
                 "names_size" => "Names and sizes in columns".into(),
@@ -267,6 +283,7 @@ impl Opt {
             Opt::ViewerLineNumbers => o.viewer_line_numbers = !o.viewer_line_numbers,
             Opt::ViewerDecompress => o.viewer_decompress = !o.viewer_decompress,
             Opt::LegacyCharset => o.legacy_charset = o.legacy_charset.next(),
+            Opt::ViewerMaxSize => o.viewer_max_size = o.viewer_max_size.next(),
             Opt::FileDisplay => o.file_display = o.file_display.next(),
             Opt::Sort => o.sort = o.sort.next(),
             Opt::SortDescending => o.sort_descending = !o.sort_descending,
@@ -511,6 +528,19 @@ mod tests {
             seen.push(s.config.options.legacy_charset);
         }
         assert_eq!(seen, [Auto, Cp850, Cp1252, Cp437, Auto]);
+    }
+
+    #[test]
+    fn l_on_page_2_cycles_viewer_max_size() {
+        use crate::config::ViewerMaxSize::*;
+        let mut s = Settings::new(Config::default(), None);
+        press(&mut s, KeyCode::PageDown);
+        let mut seen = vec![s.config.options.viewer_max_size];
+        for _ in 0..5 {
+            press(&mut s, KeyCode::Char('l'));
+            seen.push(s.config.options.viewer_max_size);
+        }
+        assert_eq!(seen, [Auto, Mib16, Mib64, Mib256, Mib1024, Auto]);
     }
 
     #[test]

@@ -15,7 +15,9 @@ use std::time::Duration;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, ModifierKeyCode};
 
 use crate::archive::{self, ArchiveItem, ArchiveJob};
-use crate::config::{self, Choice, Config, CopyPaths, DateFormat, Options, PruneConfirm, Theme};
+use crate::config::{
+    self, Choice, Config, CopyPaths, DateFormat, Options, PruneConfirm, Theme, ViewerMaxSize,
+};
 use crate::editors::Editors;
 use crate::git;
 use crate::highlight;
@@ -160,6 +162,8 @@ pub struct App {
     pub external: Option<External>,
     /// Options from the configuration file.
     pub options: Options,
+    /// Largest part of a file the viewer reads (from `viewer_max_size` and the RAM).
+    pub viewer_limit: u64,
     /// The configuration in effect (the config screen starts from it).
     pub config: Config,
     /// Where to save the configuration (no file in tests).
@@ -253,6 +257,7 @@ impl App {
             history_file: None,
             external: None,
             options: Options::default(),
+            viewer_limit: ViewerMaxSize::default().bytes(platform::memory().map(|m| m.total)),
             config: Config::default(),
             config_file: None,
             config_error: None,
@@ -301,6 +306,10 @@ impl App {
         config::set_theme(theme);
         config::set_formats(config.options.formats());
         self.options = config.options.clone();
+        self.viewer_limit = config
+            .options
+            .viewer_max_size
+            .bytes(platform::memory().map(|m| m.total));
         self.config = config.clone();
         for pane in &mut self.panes {
             let hidden_changed = pane.tree.show_hidden != config.options.show_hidden;

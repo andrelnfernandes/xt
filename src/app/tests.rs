@@ -2037,6 +2037,19 @@ fn v_on_a_gz_shows_hex_when_viewer_decompress_is_off() {
 }
 
 #[test]
+fn v_reads_at_most_viewer_limit() {
+    let tmp = crate::testing::tempdir();
+    std::fs::write(tmp.path().join("big.txt"), "a".repeat(2 << 20)).unwrap();
+    let mut app = App::new(tmp.path().to_path_buf());
+    app.viewer_limit = 1 << 20;
+    press(&mut app, KeyCode::Enter);
+    press(&mut app, KeyCode::Char('v'));
+    let v = app.viewer.as_ref().unwrap();
+    assert!(v.truncated());
+    assert_eq!(v.limit(), 1 << 20);
+}
+
+#[test]
 fn n_sets_new_dates() {
     use chrono::{Datelike, Timelike};
     let (tmp, mut app) = sample();
