@@ -58,7 +58,7 @@ viewer_wrap = false
 viewer_line_numbers = false
 # Show .gz/.xz/.zst/.bz2 files decompressed in the viewer.
 viewer_decompress = true
-# Charset of files that are not UTF-8 or UTF-16 (O cycles it in the viewer):
+# Charset of files that are not UTF-8 or UTF-16 (O in the viewer changes the current file's codepage):
 # "auto" (guess CP850 or Windows-1252), "cp850", "cp1252" or "cp437".
 legacy_charset = "auto"
 # Initial mode of the files window (Alt+F changes it while running): "names"
