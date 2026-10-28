@@ -308,16 +308,29 @@ impl Reader {
     /// contents; `f` returns `false` to stop.
     fn each_tar_entry(
         &self,
+        f: impl FnMut(Entry, &mut dyn Read) -> io::Result<bool>,
+    ) -> io::Result<()> {
+        // An xz dictionary or zstd window over the limit gets a clear message.
+        self.walk_tar(f)
+            .map_err(|e| crate::decompress::clear_memory_error(e, crate::decompress::VIEW_DICT))
+    }
+
+    fn walk_tar(
+        &self,
         mut f: impl FnMut(Entry, &mut dyn Read) -> io::Result<bool>,
     ) -> io::Result<()> {
         let file = BufReader::new(File::open(&self.path)?);
         let reader: Box<dyn Read> = match self.kind {
             Kind::TarGz => Box::new(flate2::read::GzDecoder::new(file)),
-            Kind::TarXz => Box::new(lzma_rust2::XzReader::new(file, true)),
+            Kind::TarXz => Box::new(crate::decompress::xz_reader(
+                file,
+                crate::decompress::VIEW_DICT,
+            )),
             Kind::TarBz2 => Box::new(bzip2::read::MultiBzDecoder::new(file)),
-            Kind::TarZst => {
-                Box::new(ruzstd::decoding::StreamingDecoder::new(file).map_err(io::Error::other)?)
-            }
+            Kind::TarZst => Box::new(crate::decompress::zstd_reader(
+                file,
+                crate::decompress::VIEW_DICT,
+            )?),
             _ => Box::new(file),
         };
         let mut archive = tar::Archive::new(reader);
@@ -920,6 +933,24 @@ pub mod tests {
         assert!(
             r.extract(Path::new("../evil"), &mut Vec::new(), 10)
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn tar_xz_with_huge_dictionary_is_refused_not_allocated() {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("big.tar.xz");
+        std::fs::write(
+            &path,
+            crate::decompress::test_util::xz_header_with_dict_props(40),
+        )
+        .unwrap();
+        let mut r = Reader::open(&path).unwrap();
+        let err = r.list().unwrap_err();
+        // A clear error, not the crate's "needed memory too big for mem_limit_kb".
+        assert_eq!(
+            err.to_string(),
+            crate::decompress::memory_note(crate::decompress::VIEW_DICT)
         );
     }
 
