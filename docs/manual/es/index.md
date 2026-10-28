@@ -6,6 +6,12 @@ estadísticas a la derecha. Lee (registra) los directorios en memoria, de modo
 que puedes marcar archivos en toda una rama y copiarlos, moverlos, eliminarlos,
 compararlos o renombrarlos de una sola vez.
 
+Xylem trata los archivos no confiables como hostiles: nunca debe fallar,
+colgarse, ejecutar código, escribir fuera del destino ni agotar la memoria
+debido al contenido o al nombre de un archivo. Aun así, pueden ocurrir errores.
+Consulte la declaración de seguridad en el README para ver la lista completa de
+protecciones y recomendaciones.
+
 **F1** (o **Alt+H**, para terminales que se reservan F1) abre la ayuda sobre lo
 que estás haciendo: dentro de una entrada de datos, la ayuda de esa entrada; en
 el árbol o en la ventana de archivos, la ayuda de esa ventana. En la ayuda,
