@@ -26,6 +26,45 @@ will probably get a Windows version too.
 Xylem follows ZTreeWin's keys and way of working whenever possible; the
 differences are listed in [Comparison with ZTreeWin](docs/manual/ztreewin.md).
 
+## Security: hostile files
+
+Xylem should never crash, hang, run code, write outside the destination or
+exhaust memory because of what a file contains or how it is named, even when
+the file was crafted to do so. Files you download, archives you open, names a
+remote server sends and repositories you clone are all treated as hostile. Any
+such malfunction is a serious bug, and it will be fixed promptly once reported.
+
+Nevertheless, bugs happen. Here is what Xylem does to keep the risk small:
+
+- Everything Xylem reads on its own (text, hex, encodings, compressed files,
+  archives) goes through memory-safe Rust parsers. No external program runs on
+  a file unless you ask for it with E, O or X.
+- Everything has a limit: how much is read, how much is decompressed, how long
+  it takes and how much memory a decompressor may use. Only one level of
+  compression is undone, and nothing is written to disk to show a file.
+- Control characters and bidirectional controls (Trojan Source) never reach
+  the terminal. Names with hidden bidi characters are marked, and O asks
+  before opening them.
+- When extracting archives or copying from a remote machine, paths with `..` or
+  absolute paths are refused, symbolic links in archives are not extracted,
+  setuid bits are dropped and names sent by an SFTP server are checked.
+- The automatic Git status ignores a repository's `core.fsmonitor` and skips
+  repositories that define their own filters.
+- The dependencies are checked against the RustSec database in CI.
+
+You can make the attack surface smaller still:
+
+- Turn off decompression in the viewer (`viewer_decompress = false`, F12)
+  if you browse untrusted folders with Autoview, or keep Autoview (F7) closed
+  there.
+- Leave Git integration off (`git = false`, the default) for repositories you
+  did not create.
+- Do not run Xylem as root.
+- Open untrusted files with O only when you trust the program that will open
+  them: Xylem hands the file over to it.
+
+Found a problem? Please report it privately [via GitHub Security Advisories](https://github.com/andrelnfernandes/xylem/security/advisories/new), not in a public issue.
+
 ## Disclaimer
 
 Xylem is an independent project, written from scratch. It is not affiliated
