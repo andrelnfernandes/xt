@@ -325,6 +325,19 @@ pub(super) fn fish_data_dir() -> Option<PathBuf> {
     None
 }
 
+/// The machine's RAM, from `GlobalMemoryStatusEx`.
+pub fn memory() -> Option<Memory> {
+    let mut status = MEMORYSTATUSEX {
+        dwLength: size_of::<MEMORYSTATUSEX>() as u32,
+        ..Default::default()
+    };
+    // SAFETY: `status` is a valid MEMORYSTATUSEX with its size filled in.
+    (unsafe { GlobalMemoryStatusEx(&mut status) } != 0).then_some(Memory {
+        total: status.ullTotalPhys,
+        available: status.ullAvailPhys,
+    })
+}
+
 /// The machine, from the registry and the memory and process APIs.
 pub fn system() -> System {
     const VERSION: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion";
@@ -346,15 +359,6 @@ pub fn system() -> System {
         Some(ubr) => format!("Windows NT build {b}.{ubr}"),
         None => format!("Windows NT build {b}"),
     });
-    let mut status = MEMORYSTATUSEX {
-        dwLength: size_of::<MEMORYSTATUSEX>() as u32,
-        ..Default::default()
-    };
-    // SAFETY: `status` is a valid MEMORYSTATUSEX with its size filled in.
-    let memory = (unsafe { GlobalMemoryStatusEx(&mut status) } != 0).then_some(Memory {
-        total: status.ullTotalPhys,
-        available: status.ullAvailPhys,
-    });
     let mut counters = PROCESS_MEMORY_COUNTERS::default();
     let size = size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
     // SAFETY: the pseudo handle of the current process and a buffer of `size` bytes.
@@ -370,7 +374,7 @@ pub fn system() -> System {
         // SAFETY: no arguments.
         uptime: Some(Duration::from_millis(unsafe { GetTickCount64() })),
         load: None,
-        memory,
+        memory: memory(),
         // The page file is not swap in the Unix sense; left out.
         swap: None,
         xt_memory: ok.then_some(counters.WorkingSetSize as u64),

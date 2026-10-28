@@ -9,10 +9,15 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use ratatui::style::Color;
 
+use crate::charset::{self, Charset};
+use crate::decompress::{
+    self, AUTOVIEW_DICT, AUTOVIEW_TIME, Compression, Limits, VIEW_DICT, VIEW_TIME,
+};
 use crate::highlight::Highlighter;
 use crate::search::Pattern;
 
-/// Larger files are displayed only up to this limit.
+/// The default viewer limit, the floor of `auto` and the cap for remote
+/// files (16 MiB).
 pub const MAX_BYTES: u64 = 16 * 1024 * 1024;
 pub const HEX_WIDTH: usize = 16;
 const TAB_WIDTH: usize = 8;
@@ -64,6 +69,44 @@ pub enum Action {
     GotoLine,
 }
 
+/// How a file is read: how much of it, and whether a compressed file is
+/// shown decompressed.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LoadOptions {
+    pub decompress: bool,
+    pub limits: Limits,
+    /// Fixed charset for files that are not UTF-8 or UTF-16 (`None`: guess).
+    pub fallback: Option<Charset>,
+}
+
+impl LoadOptions {
+    /// The V key: up to `limit` bytes read, and as many decompressed.
+    pub fn view(limit: u64) -> Self {
+        LoadOptions {
+            decompress: true,
+            limits: Limits {
+                output: limit as usize,
+                dict: VIEW_DICT,
+                time: VIEW_TIME,
+            },
+            fallback: None,
+        }
+    }
+
+    /// Autoview: 1 MiB and tighter memory and time limits.
+    pub fn autoview() -> Self {
+        LoadOptions {
+            decompress: true,
+            limits: Limits {
+                output: 1 << 20,
+                dict: AUTOVIEW_DICT,
+                time: AUTOVIEW_TIME,
+            },
+            fallback: None,
+        }
+    }
+}
+
 /// Match found: in text mode, line and columns (in characters); in
 /// hex, `line` is the 16-byte row and `start..end` the bytes in the file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,6 +123,8 @@ pub struct Viewer {
     pub mode: ViewMode,
     data: Vec<u8>,
     lines: Vec<String>,
+    /// Where a bidi control was swapped for `·`: (line, character column).
+    bidi: Vec<(usize, usize)>,
     /// First visible line.
     pub top: usize,
     /// Horizontal offset (text mode).
@@ -108,6 +153,23 @@ pub struct Viewer {
     pub line_numbers: bool,
     /// First visible wrapped sub-row within `lines[top]` when `wrap` is active.
     pub sub_top: usize,
+    /// How the file was read (kept by `reload`).
+    pub load: LoadOptions,
+    /// How `data` is decoded into `lines`.
+    charset: Charset,
+    /// The charset was picked with O: kept by `reload`.
+    charset_manual: bool,
+    /// The name the colors follow, when it is not `path` (see `colored_as`).
+    color_name: Option<PathBuf>,
+    /// The compression the file was shown through, and the file's size.
+    pub compression: Option<(Compression, u64)>,
+    /// Not all of the file (or of its decompressed contents) is shown.
+    cut: bool,
+    /// The line budget stopped `lines` before the end of the text.
+    lines_cut: bool,
+    /// What went wrong decompressing, for the header: the note says it
+    /// too, but any key clears the note.
+    problem: Option<String>,
 }
 
 /// A piece of a displayed line: text, its color and whether it is part of
@@ -130,24 +192,99 @@ impl std::ops::Deref for StyledRow {
 }
 
 impl Viewer {
-    /// Reads only the start of the file (Autoview uses a smaller limit, to
-    /// move quickly through large files).
-    pub fn open_limited(path: PathBuf, limit: u64) -> io::Result<Self> {
+    /// Reads up to `load.limits.output` bytes of the file on disk.
+    pub fn open(path: PathBuf, load: LoadOptions) -> io::Result<Self> {
         let file = File::open(&path)?;
         let size = file.metadata()?.len();
-        let mut data = Vec::new();
-        file.take(limit).read_to_end(&mut data)?;
+        let mut raw = Vec::new();
+        file.take(load.limits.output as u64).read_to_end(&mut raw)?;
         Ok(Viewer {
             on_disk: true,
-            ..Self::from_bytes(path, size, data)
+            ..Self::from_file(path, size, raw, load)
         })
+    }
+
+    /// Views the start of a file (`raw`, of `size` bytes in all), decompressed
+    /// when it is a .gz/.xz/.zst/.bz2 and `load` says so.
+    pub fn from_file(path: PathBuf, size: u64, raw: Vec<u8>, load: LoadOptions) -> Self {
+        let mut cut = size > raw.len() as u64;
+        let mut compression = None;
+        let mut note = None;
+        let mut problem = None;
+        let mut failed = false;
+        let mut data = raw;
+        if let Some(kind) = load.decompress.then(|| decompress::sniff(&data)).flatten() {
+            let d = decompress::decompress(&data, kind, load.limits);
+            if d.data.is_empty() && d.note.is_some() {
+                failed = true;
+            } else {
+                data = d.data;
+                cut |= d.cut;
+                compression = Some((kind, size));
+            }
+            note = d.note;
+            // The decoder running out of input is expected when the read
+            // limit cut the compressed file.
+            if cut && !failed && note.as_deref() == Some(decompress::TRUNCATED) {
+                note = None;
+            }
+            problem = note.as_deref().and_then(|n| problem_text(n, failed, d.cut));
+            // V helps only if its own limit is enough. xz does not say what
+            // it needs, so V is suggested and may refuse too.
+            let v_can = d.needed.is_none_or(|n| n <= u64::from(VIEW_DICT));
+            if load.limits.dict == AUTOVIEW_DICT
+                && v_can
+                && note.as_deref() == Some(decompress::memory_note(AUTOVIEW_DICT).as_str())
+            {
+                note = note.map(|n| format!("{n} (V to view)"));
+            }
+        }
+        if note.is_none() && data.get(257..262) == Some(b"ustar") {
+            note = Some("TAR archive: Alt+F5 opens it as a folder".into());
+        }
+        // The colors follow the name inside the compressed file.
+        let name = compression.and_then(|(kind, _)| {
+            let s = path.to_str()?.strip_suffix(kind.extension())?;
+            Some(PathBuf::from(s.strip_suffix('.')?))
+        });
+        let found = charset::detect(&data, load.fallback);
+        let limit = load.limits.output;
+        let mut v = Self::build(path, size, data, found.charset, found.binary, limit);
+        if let Some(name) = name {
+            v = v.colored_as(&name);
+        }
+        if failed {
+            // The raw bytes of a compressed file that gave nothing.
+            v.mode = ViewMode::Hex;
+            v.colors = None;
+            v.colors_on = false;
+        }
+        v.load = load;
+        v.compression = compression;
+        v.cut = cut;
+        v.note = note;
+        v.problem = problem;
+        v
+    }
+
+    pub fn limit(&self) -> u64 {
+        self.load.limits.output as u64
+    }
+
+    /// Bytes of contents shown (decompressed ones, when it is compressed).
+    pub fn data_len(&self) -> u64 {
+        self.data.len() as u64
     }
 
     /// Reads the file again (after editing), keeping the position, the mode
     /// and whether colors are on.
     pub fn reload(&mut self) -> io::Result<()> {
-        let new = Self::open_limited(self.path.clone(), MAX_BYTES)?;
+        let new = Self::open(self.path.clone(), self.load)?;
         let old = std::mem::replace(self, new);
+        if old.charset_manual {
+            self.set_charset(old.charset);
+            self.charset_manual = true;
+        }
         self.mode = old.mode;
         self.top = old.top.min(self.line_count().saturating_sub(1));
         self.left = old.left;
@@ -191,8 +328,9 @@ impl Viewer {
                 if self.top >= self.lines.len() {
                     break;
                 }
-                let sub_count = wrap_line_ranges(&self.lines[self.top], cw).len();
-                if self.sub_top + 1 < sub_count {
+                // Only as far as the next row: the line can be huge.
+                let next_row = WrapRows::new(&self.lines[self.top], cw).nth(self.sub_top + 1);
+                if next_row.is_some() {
                     self.sub_top += 1;
                 } else if self.top + 1 < self.lines.len() {
                     self.top += 1;
@@ -215,8 +353,8 @@ impl Viewer {
                     self.sub_top -= 1;
                 } else if self.top > 0 {
                     self.top -= 1;
-                    let sub_count = wrap_line_ranges(&self.lines[self.top], cw).len();
-                    self.sub_top = sub_count.saturating_sub(1);
+                    let rows = WrapRows::new(&self.lines[self.top], cw).count();
+                    self.sub_top = rows.saturating_sub(1);
                 } else {
                     break;
                 }
@@ -270,22 +408,40 @@ impl Viewer {
 
     /// Views bytes already read (e.g. an entry of an archive).
     pub fn from_bytes(path: PathBuf, size: u64, data: Vec<u8>) -> Self {
-        let mode = if looks_binary(&data) {
+        let binary = looks_binary(&data);
+        Self::build(path, size, data, Charset::Utf8, binary, MAX_BYTES as usize)
+    }
+
+    /// `data` shown as `charset` text, or as hex when it is `binary`.
+    /// `limit` is the read limit, which sets the lines' memory budget.
+    fn build(
+        path: PathBuf,
+        size: u64,
+        data: Vec<u8>,
+        charset: Charset,
+        binary: bool,
+        limit: usize,
+    ) -> Self {
+        let mode = if binary {
             ViewMode::Hex
         } else {
             ViewMode::Text
         };
-        let lines = text_lines(&data);
-        let colors = (mode == ViewMode::Text)
-            .then(|| Highlighter::for_file(&path, lines.first().map_or("", String::as_str)))
+        let data_len = data.len() as u64;
+        let text = text_lines(&charset::decode(&data, charset), line_budget(limit));
+        let (lines, bidi) = (text.lines, text.bidi);
+        let colors = (!binary)
+            .then(|| text_colors(&path, None, &lines))
             .flatten();
         Viewer {
+            color_name: None,
             colors_on: colors.is_some(),
             colors,
             path,
             size,
             mode,
             lines,
+            bidi,
             data,
             top: 0,
             left: 0,
@@ -299,7 +455,62 @@ impl Viewer {
             wrap: false,
             line_numbers: false,
             sub_top: 0,
+            load: LoadOptions::view(limit as u64),
+            charset,
+            charset_manual: false,
+            compression: None,
+            cut: size > data_len,
+            lines_cut: text.cut,
+            problem: None,
         }
+    }
+
+    pub fn charset(&self) -> Charset {
+        self.charset
+    }
+
+    /// O: the next codepage, decoded again from the bytes.
+    pub fn cycle_charset(&mut self) {
+        let next = self.charset.next();
+        self.set_charset(next);
+        self.charset_manual = true;
+        self.note = Some(format!(
+            "Codepage: {} ({})",
+            next.name(),
+            next.description()
+        ));
+    }
+
+    /// Decodes `data` as `charset` again, keeping the colors' name and
+    /// whether they are on. A UTF-16 pick on a file in hex whose text then
+    /// looks right switches to text mode (at the top), since that is what
+    /// the user asked to see; other picks keep the mode.
+    fn set_charset(&mut self, charset: Charset) {
+        self.charset = charset;
+        let text = charset::decode(&self.data, charset);
+        let readable = !looks_binary(text.as_bytes());
+        if self.mode == ViewMode::Hex
+            && readable
+            && matches!(charset, Charset::Utf16Le | Charset::Utf16Be)
+        {
+            self.mode = ViewMode::Text;
+            self.top = 0;
+            self.left = 0;
+        }
+        let text = text_lines(&text, line_budget(self.load.limits.output));
+        self.lines = text.lines;
+        self.bidi = text.bidi;
+        self.lines_cut = text.cut;
+        let had_colors = self.colors.is_some();
+        self.colors = readable
+            .then(|| text_colors(&self.path, self.color_name.as_deref(), &self.lines))
+            .flatten();
+        self.colors_on = self.colors.is_some() && (self.colors_on || !had_colors);
+        self.hit = None;
+        if self.mode == ViewMode::Text {
+            self.top = self.top.min(self.lines.len().saturating_sub(1));
+        }
+        self.sub_top = 0;
     }
 
     /// Colors as if it were the file `name` (`x.diff` for git's output, or
@@ -308,12 +519,35 @@ impl Viewer {
         if self.mode == ViewMode::Text {
             self.colors = Highlighter::for_name(name, &self.lines);
             self.colors_on = self.colors.is_some();
+            self.color_name = Some(name.to_path_buf());
         }
         self
     }
 
+    /// How many bidi controls were hidden behind a `·`.
+    pub fn bidi_count(&self) -> usize {
+        self.bidi.len()
+    }
+
+    /// Not all of the file is shown: its bytes, or its text's lines.
     pub fn truncated(&self) -> bool {
-        self.size > self.data.len() as u64
+        self.cut || self.lines_cut
+    }
+
+    /// The bytes were cut: by the read limit, or decompression stopped.
+    pub fn bytes_cut(&self) -> bool {
+        self.cut
+    }
+
+    /// The text has more lines than the line budget let in.
+    pub fn lines_cut(&self) -> bool {
+        self.lines_cut
+    }
+
+    /// The decompression failed or stopped on damaged data (the header
+    /// keeps saying so).
+    pub fn problem(&self) -> Option<&str> {
+        self.problem.as_deref()
     }
 
     pub fn line_count(&self) -> usize {
@@ -410,38 +644,27 @@ impl Viewer {
         match self.mode {
             ViewMode::Text if !self.wrap => {
                 let range = self.top..(self.top + height).min(self.lines.len());
-                let (left, colors, lines) = (self.left, &mut self.colors, &self.lines);
+                let width = self.content_width();
+                let (left, colors, lines, bidi) =
+                    (self.left, &mut self.colors, &self.lines, &self.bidi);
                 range
                     .map(|i| {
-                        let line_str = &lines[i];
-                        let line_chars: Vec<char> = line_str.chars().skip(left).collect();
+                        // Only what fits: a line can be megabytes long.
+                        let shown = visible_chars(&lines[i], left, width);
                         let mark = hit.filter(|h| h.line == i).and_then(|h| {
                             let s = h.start.saturating_sub(left);
                             let e = h.end.saturating_sub(left);
                             (e > s).then_some((s, e))
                         });
-                        let per_char: Vec<Color> = colors
+                        let per_char = colors
                             .as_mut()
                             .filter(|_| use_colors)
                             .and_then(|h| h.line(i, lines))
-                            .map(|segs| {
-                                segs.iter()
-                                    .flat_map(|(c, s)| std::iter::repeat_n(*c, s.chars().count()))
-                                    .collect()
-                            })
+                            .map(|segs| colors_in(segs, left..left + shown.len()))
                             .unwrap_or_default();
-                        let mut segments: Vec<Segment> = Vec::new();
-                        for (j, ch) in line_chars.into_iter().enumerate() {
-                            let color = per_char.get(left + j).copied();
-                            let marked = mark.is_some_and(|(s, e)| j >= s && j < e);
-                            match segments.last_mut() {
-                                Some((text, c, m)) if *c == color && *m == marked => text.push(ch),
-                                _ => segments.push((ch.to_string(), color, marked)),
-                            }
-                        }
                         StyledRow {
                             line_num: if self.line_numbers { Some(i + 1) } else { None },
-                            segments,
+                            segments: segments_of(shown, i, left, &per_char, bidi, mark),
                         }
                     })
                     .collect()
@@ -452,51 +675,44 @@ impl Viewer {
                 let mut line_idx = self.top;
                 let mut sub_idx = self.sub_top;
                 while out.len() < height && line_idx < self.lines.len() {
-                    let ranges = wrap_line_ranges(&self.lines[line_idx], cw);
-                    let line_chars: Vec<char> = self.lines[line_idx].chars().collect();
-                    let per_char: Vec<Color> = self
-                        .colors
-                        .as_mut()
-                        .filter(|_| use_colors)
-                        .and_then(|h| h.line(line_idx, &self.lines))
-                        .map(|segs| {
-                            segs.iter()
-                                .flat_map(|(c, s)| std::iter::repeat_n(*c, s.chars().count()))
-                                .collect()
-                        })
-                        .unwrap_or_default();
-
-                    while sub_idx < ranges.len() && out.len() < height {
-                        let r = &ranges[sub_idx];
-                        let mark = hit.filter(|h| h.line == line_idx).and_then(|h| {
-                            let s = h.start.max(r.start);
-                            let e = h.end.min(r.end);
-                            if e > s {
-                                Some((s - r.start, e - r.start))
-                            } else {
-                                None
-                            }
-                        });
-                        let mut segments: Vec<Segment> = Vec::new();
-                        let slice = &line_chars[r.start..r.end];
-                        for (j, &ch) in slice.iter().enumerate() {
-                            let char_idx = r.start + j;
-                            let color = per_char.get(char_idx).copied();
-                            let marked = mark.is_some_and(|(s, e)| j >= s && j < e);
-                            match segments.last_mut() {
-                                Some((text, c, m)) if *c == color && *m == marked => text.push(ch),
-                                _ => segments.push((ch.to_string(), color, marked)),
-                            }
+                    let line = &self.lines[line_idx];
+                    // Only the rows on screen: a line can be megabytes long.
+                    let rows: Vec<WrapRow> = WrapRows::new(line, cw)
+                        .skip(sub_idx)
+                        .take(height - out.len())
+                        .collect();
+                    if let (Some(first), Some(last)) = (rows.first(), rows.last()) {
+                        let shown = first.chars.start..last.chars.end;
+                        let per_char = self
+                            .colors
+                            .as_mut()
+                            .filter(|_| use_colors)
+                            .and_then(|h| h.line(line_idx, &self.lines))
+                            .map(|segs| colors_in(segs, shown.clone()))
+                            .unwrap_or_default();
+                        for (k, r) in rows.iter().enumerate() {
+                            let mark = hit.filter(|h| h.line == line_idx).and_then(|h| {
+                                let s = h.start.max(r.chars.start);
+                                let e = h.end.min(r.chars.end);
+                                (e > s).then(|| (s - r.chars.start, e - r.chars.start))
+                            });
+                            let colors = per_char
+                                .get(r.chars.start - shown.start..)
+                                .unwrap_or_default();
+                            let chars = line[r.bytes.clone()].chars();
+                            out.push(StyledRow {
+                                line_num: (self.line_numbers && sub_idx + k == 0)
+                                    .then_some(line_idx + 1),
+                                segments: segments_of(
+                                    chars,
+                                    line_idx,
+                                    r.chars.start,
+                                    colors,
+                                    &self.bidi,
+                                    mark,
+                                ),
+                            });
                         }
-                        out.push(StyledRow {
-                            line_num: if self.line_numbers && sub_idx == 0 {
-                                Some(line_idx + 1)
-                            } else {
-                                None
-                            },
-                            segments,
-                        });
-                        sub_idx += 1;
                     }
                     line_idx += 1;
                     sub_idx = 0;
@@ -580,6 +796,10 @@ impl Viewer {
             KeyCode::Char(c) => match c.to_ascii_lowercase() {
                 'h' => {
                     self.toggle_mode();
+                    Action::None
+                }
+                'o' => {
+                    self.cycle_charset();
                     Action::None
                 }
                 'c' => {
@@ -747,10 +967,8 @@ impl Viewer {
                 self.top = hit.line.saturating_sub(page / 3);
             }
             let cw = self.content_width();
-            let ranges = wrap_line_ranges(&self.lines[hit.line], cw);
-            self.sub_top = ranges
-                .iter()
-                .position(|r| hit.start >= r.start && hit.start < r.end)
+            self.sub_top = WrapRows::new(&self.lines[hit.line], cw)
+                .position(|r| hit.start >= r.chars.start && hit.start < r.chars.end)
                 .unwrap_or(0);
             self.left = 0;
         } else {
@@ -768,47 +986,210 @@ impl Viewer {
     }
 }
 
-/// Returns the ranges of characters for each wrapped visual row of `text`.
-/// Width must be at least 1.
-#[allow(clippy::single_range_in_vec_init)]
-pub fn wrap_line_ranges(text: &str, width: usize) -> Vec<std::ops::Range<usize>> {
-    let width = width.max(1);
-    let chars: Vec<char> = text.chars().collect();
-    let n = chars.len();
-    if n == 0 {
-        return vec![0..0];
-    }
-    let mut ranges = Vec::new();
-    let mut start = 0;
-    while start < n {
-        let remaining = n - start;
-        if remaining <= width {
-            ranges.push(start..n);
-            break;
+/// One wrapped row of a line: its characters, and the same as bytes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WrapRow {
+    pub chars: std::ops::Range<usize>,
+    pub bytes: std::ops::Range<usize>,
+}
+
+/// The rows a line wraps into at `width` columns: at the last whitespace
+/// that fits, or inside a word too long for a row, skipping the spaces
+/// after a break. One row at a time, so that a huge line costs only the
+/// rows looked at.
+pub struct WrapRows<'a> {
+    text: &'a str,
+    width: usize,
+    rest: std::str::CharIndices<'a>,
+    /// Read but not in a row yet (byte offset, character): the next row
+    /// starts at the first one.
+    ahead: std::collections::VecDeque<(usize, char)>,
+    /// Character index of the first one in `ahead`.
+    start: usize,
+    done: bool,
+    /// A row came out already (an empty line has one, empty, row).
+    any: bool,
+}
+
+impl<'a> WrapRows<'a> {
+    pub fn new(text: &'a str, width: usize) -> Self {
+        WrapRows {
+            text,
+            width: width.max(1),
+            rest: text.char_indices(),
+            ahead: std::collections::VecDeque::new(),
+            start: 0,
+            done: false,
+            any: false,
         }
-        let limit = start + width;
-        let break_at = chars[start..=limit]
+    }
+
+    /// Byte offset of `ahead[k]`, or the end of the text.
+    fn byte_at(&self, k: usize) -> usize {
+        self.ahead.get(k).map_or(self.text.len(), |&(b, _)| b)
+    }
+
+    fn read_one(&mut self) -> bool {
+        self.rest.next().map(|c| self.ahead.push_back(c)).is_some()
+    }
+}
+
+impl Iterator for WrapRows<'_> {
+    type Item = WrapRow;
+
+    fn next(&mut self) -> Option<WrapRow> {
+        if self.done {
+            return None;
+        }
+        // A row looks at up to `width + 1` characters.
+        while self.ahead.len() <= self.width && self.read_one() {}
+        let (start, from) = (self.start, self.byte_at(0));
+        if self.ahead.len() <= self.width {
+            // The rest fits on this row.
+            self.done = true;
+            if self.ahead.is_empty() && self.any {
+                return None;
+            }
+            let n = self.ahead.len();
+            self.ahead.clear();
+            self.any = true;
+            return Some(WrapRow {
+                chars: start..start + n,
+                bytes: from..self.text.len(),
+            });
+        }
+        self.any = true;
+        let space = self
+            .ahead
             .iter()
             .enumerate()
-            .rposition(|(idx, &c)| idx > 0 && c.is_whitespace());
-
-        if let Some(pos) = break_at {
-            let space_pos = start + pos;
-            ranges.push(start..space_pos);
-            let mut next_start = space_pos + 1;
-            while next_start < n && chars[next_start] == ' ' {
-                next_start += 1;
+            .rposition(|(k, &(_, c))| k > 0 && c.is_whitespace());
+        let row = match space {
+            Some(k) => {
+                // Breaks at the space, which goes, and so do the spaces after it.
+                let row = WrapRow {
+                    chars: start..start + k,
+                    bytes: from..self.byte_at(k),
+                };
+                self.ahead.drain(..=k);
+                self.start += k + 1;
+                while (!self.ahead.is_empty() || self.read_one()) && self.ahead[0].1 == ' ' {
+                    self.ahead.pop_front();
+                    self.start += 1;
+                }
+                row
             }
-            start = next_start;
+            None => {
+                let w = self.width;
+                let row = WrapRow {
+                    chars: start..start + w,
+                    bytes: from..self.byte_at(w),
+                };
+                self.ahead.drain(..w);
+                self.start += w;
+                row
+            }
+        };
+        Some(row)
+    }
+}
+
+/// The character ranges of all the rows `text` wraps into (see `WrapRows`).
+#[cfg(test)]
+pub fn wrap_line_ranges(text: &str, width: usize) -> Vec<std::ops::Range<usize>> {
+    WrapRows::new(text, width).map(|r| r.chars).collect()
+}
+
+/// Terminal cells a character takes: 2 for wide ones, 0 for combining marks.
+fn char_cells(c: char) -> usize {
+    let mut buf = [0; 4];
+    ratatui::text::Span::raw(&*c.encode_utf8(&mut buf)).width()
+}
+
+/// The characters of `line` from column `left` on that fill `width` cells.
+/// A line can be megabytes long, and only this much of it is drawn.
+fn visible_chars(line: &str, left: usize, width: usize) -> Vec<char> {
+    // Marks of no width ride along, but not without end.
+    let most = width.saturating_mul(4).saturating_add(16);
+    let mut cells = 0;
+    let mut out = Vec::new();
+    for c in line.chars().skip(left) {
+        let w = char_cells(c);
+        if (cells >= width && w > 0) || out.len() >= most {
+            break;
+        }
+        cells += w;
+        out.push(c);
+    }
+    out
+}
+
+/// The syntax color of each character in `chars` (character indexes in
+/// the line), from the line's colored segments.
+fn colors_in(segs: &[(Color, String)], chars: std::ops::Range<usize>) -> Vec<Color> {
+    let mut out = Vec::with_capacity(chars.len());
+    let mut at = 0;
+    for (color, s) in segs {
+        if at >= chars.end {
+            break;
+        }
+        let n = s.chars().count();
+        let (from, to) = (at.max(chars.start), (at + n).min(chars.end));
+        if to > from {
+            out.extend(std::iter::repeat_n(*color, to - from));
+        }
+        at += n;
+    }
+    out
+}
+
+/// The colored pieces of `chars`, the characters of line `line` from
+/// column `first` on: `colors[k]` is the syntax color of the k-th one,
+/// bidi marks take the error color, and `mark` (columns from `first`) is
+/// the search match.
+fn segments_of(
+    chars: impl IntoIterator<Item = char>,
+    line: usize,
+    first: usize,
+    colors: &[Color],
+    bidi: &[(usize, usize)],
+    mark: Option<(usize, usize)>,
+) -> Vec<Segment> {
+    let mut segments: Vec<Segment> = Vec::new();
+    for (j, ch) in chars.into_iter().enumerate() {
+        let color = if bidi.binary_search(&(line, first + j)).is_ok() {
+            Some(crate::config::theme().error)
         } else {
-            ranges.push(start..limit);
-            start = limit;
+            colors.get(j).copied()
+        };
+        let marked = mark.is_some_and(|(s, e)| j >= s && j < e);
+        match segments.last_mut() {
+            Some((text, c, m)) if *c == color && *m == marked => text.push(ch),
+            _ => segments.push((ch.to_string(), color, marked)),
         }
     }
-    if ranges.is_empty() {
-        ranges.push(0..0);
+    segments
+}
+
+/// The header's lasting word on a decompression `note`: `failed` when
+/// nothing came out (the raw bytes are shown), `cut` when the decoder
+/// stopped on the time limit, which the cut notice already tells.
+fn problem_text(note: &str, failed: bool, cut: bool) -> Option<String> {
+    let truncated = note == decompress::TRUNCATED;
+    let reason = if truncated {
+        "truncated or corrupt"
+    } else {
+        note
+    };
+    if failed {
+        Some(format!("not decompressed: {reason}"))
+    } else if truncated {
+        Some(reason.to_string())
+    } else if cut {
+        None
+    } else {
+        Some(format!("incomplete: {reason}"))
     }
-    ranges
 }
 
 /// How far `looks_binary` looks.
@@ -819,33 +1200,95 @@ pub fn looks_binary(data: &[u8]) -> bool {
     data.iter().take(BINARY_PROBE).any(|&b| b == 0)
 }
 
-/// Splits into lines, expands tabs and replaces control characters with `·`.
-fn text_lines(data: &[u8]) -> Vec<String> {
-    let text = String::from_utf8_lossy(data);
-    let mut lines: Vec<String> = text
-        .split('\n')
-        .map(|line| {
-            let line = line.strip_suffix('\r').unwrap_or(line);
-            let mut out = String::with_capacity(line.len());
-            let mut col = 0;
-            for c in line.chars() {
-                if c == '\t' {
-                    let n = TAB_WIDTH - col % TAB_WIDTH;
-                    out.extend(std::iter::repeat_n(' ', n));
-                    col += n;
-                } else {
-                    out.push(if c.is_control() { '·' } else { c });
-                    col += 1;
-                }
-            }
-            out
-        })
-        .collect();
-    // The final '\n' does not open a new line.
-    if lines.len() > 1 && lines.last().is_some_and(String::is_empty) {
-        lines.pop();
+/// The syntax colors of a text: by the name they follow, else by `path`.
+fn text_colors(path: &Path, name: Option<&Path>, lines: &[String]) -> Option<Highlighter> {
+    match name {
+        Some(n) => Highlighter::for_name(n, lines),
+        None => Highlighter::for_file(path, lines.first().map_or("", String::as_str)),
     }
-    lines
+}
+
+/// The memory the lines of a text may take, by `line_cost`: twice the
+/// read limit. Ordinary text costs about 1.4 × its size (~100-byte lines);
+/// tiny lines, tabs and bidi marks cost many times the bytes they come from.
+fn line_budget(limit: usize) -> usize {
+    limit.saturating_mul(2)
+}
+
+/// What a line costs in memory, roughly: the `String` itself, plus its heap
+/// block when it has one (allocators hand out at least 32 bytes, in steps
+/// of 16).
+fn line_cost(capacity: usize) -> usize {
+    let heap = match capacity {
+        0 => 0,
+        n => n.next_multiple_of(16).max(32),
+    };
+    size_of::<String>() + heap
+}
+
+/// What each bidi position costs in `Viewer::bidi`.
+const MARK_COST: usize = size_of::<(usize, usize)>();
+
+/// A text split by `text_lines`.
+struct TextLines {
+    lines: Vec<String>,
+    /// Where each bidi control was replaced: (line, character column after
+    /// expanding tabs), in order.
+    bidi: Vec<(usize, usize)>,
+    /// The budget ran out before the end of the text.
+    cut: bool,
+}
+
+/// Splits into lines, expands tabs and replaces control characters with `·`,
+/// noting where the bidi controls were. Stops once the lines would cost
+/// more than `budget` bytes: a file of newlines would otherwise take 25
+/// times its size (16 MiB of them, a .bz2 of a few hundred bytes, became
+/// 400 MiB).
+fn text_lines(text: &str, budget: usize) -> TextLines {
+    // The final '\n' does not open a new line.
+    let body = text.strip_suffix('\n').unwrap_or(text);
+    // Room for all the lines the budget allows, so the vector never grows.
+    let count = body.bytes().filter(|&b| b == b'\n').count() + 1;
+    let mut lines = Vec::with_capacity(count.min(budget / size_of::<String>() + 1));
+    let mut bidi = Vec::new();
+    let mut used = 0;
+    let mut cut = false;
+    let mut parts = body.split('\n').peekable();
+    while let Some(line) = parts.next() {
+        let line = line.strip_suffix('\r').unwrap_or(line);
+        let i = lines.len();
+        let mut out = String::with_capacity(line.len());
+        let mut col = 0;
+        let mut chars = line.chars();
+        let mut full = false;
+        for c in chars.by_ref() {
+            if c == '\t' {
+                let n = TAB_WIDTH - col % TAB_WIDTH;
+                out.extend(std::iter::repeat_n(' ', n));
+                col += n;
+            } else {
+                let hidden = crate::bidi::is_bidi(c);
+                if hidden {
+                    bidi.push((i, col));
+                    used += MARK_COST;
+                }
+                out.push(if c.is_control() || hidden { '·' } else { c });
+                col += 1;
+            }
+            // One long line (of tabs or bidi marks) can be over the budget.
+            if used + out.len() > budget {
+                full = true;
+                break;
+            }
+        }
+        used += line_cost(out.capacity());
+        lines.push(out);
+        if full || used > budget {
+            cut = !chars.as_str().is_empty() || parts.peek().is_some();
+            break;
+        }
+    }
+    TextLines { lines, bidi, cut }
 }
 
 /// `00000010  48 65 6C 6C 6F 0A 00 00  00 00 00 00 00 00 00 00  |Hello...........|`
@@ -877,7 +1320,184 @@ fn hex_row(data: &[u8], offset: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::decompress::test_util::gz;
     use crate::search::SearchSpec;
+
+    const LOAD: LoadOptions = LoadOptions {
+        decompress: true,
+        limits: Limits {
+            output: MAX_BYTES as usize,
+            dict: VIEW_DICT,
+            time: VIEW_TIME,
+        },
+        fallback: None,
+    };
+
+    fn from_gz(name: &str, raw: Vec<u8>, load: LoadOptions) -> Viewer {
+        let n = raw.len() as u64;
+        Viewer::from_file(PathBuf::from(name), n, raw, load)
+    }
+
+    #[test]
+    fn gz_shows_text() {
+        let raw = gz(b"one\ntwo\n");
+        let n = raw.len() as u64;
+        let v = Viewer::from_file(PathBuf::from("app.log.gz"), n, raw, LOAD);
+        assert_eq!(v.visible_lines(2), ["one", "two"]);
+        assert_eq!(v.compression, Some((Compression::Gzip, n)));
+        assert!(!v.truncated());
+    }
+
+    #[test]
+    fn cut_counts_the_decompressed_side() {
+        let text = "0123456789abcdef\n".repeat(4 << 16);
+        let raw = gz(text.as_bytes());
+        let n = raw.len() as u64;
+        assert!(n < 1 << 20);
+        let v = Viewer::from_file(
+            PathBuf::from("big.txt.gz"),
+            n,
+            raw,
+            LoadOptions::view(1 << 20),
+        );
+        assert!(v.truncated());
+        assert!(n < v.data.len() as u64);
+    }
+
+    #[test]
+    fn truncated_tar_gz_keeps_the_truncated_note() {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("a.tar.gz");
+        crate::archive::tests::make_tar(&path, true);
+        let mut raw = std::fs::read(&path).unwrap();
+        raw.truncate(raw.len() / 2);
+        let v = Viewer::from_file(path, raw.len() as u64, raw, LOAD);
+        assert_eq!(v.note.as_deref(), Some(crate::decompress::TRUNCATED));
+    }
+
+    #[test]
+    fn input_cut_by_the_read_limit_is_not_corrupt() {
+        let mut x: u32 = 12345;
+        let noise: Vec<u8> = (0..2 << 20)
+            .map(|_| {
+                x = x.wrapping_mul(1664525).wrapping_add(1013904223);
+                (x >> 24) as u8
+            })
+            .collect();
+        let mut raw = gz(&noise);
+        let size = raw.len() as u64;
+        raw.truncate(1 << 20);
+        let v = Viewer::from_file(
+            PathBuf::from("n.bin.gz"),
+            size,
+            raw,
+            LoadOptions::view(1 << 20),
+        );
+        assert!(v.truncated());
+        assert_eq!(v.note, None);
+    }
+
+    #[test]
+    fn empty_gz_is_an_empty_text() {
+        let v = from_gz("e.txt.gz", gz(b""), LOAD);
+        assert_eq!(v.mode, ViewMode::Text);
+        assert!(v.compression.is_some());
+        assert_eq!(v.note, None);
+    }
+
+    #[test]
+    fn plain_text_named_gz_stays_text() {
+        let v = from_gz("notes.txt.gz", b"just text".to_vec(), LOAD);
+        assert_eq!(v.compression, None);
+        assert_eq!(v.visible_lines(1), ["just text"]);
+    }
+
+    #[test]
+    fn signature_only_shows_raw_hex() {
+        let v = from_gz("a.gz", b"\x1F\x8B".to_vec(), LOAD);
+        assert_eq!(v.mode, ViewMode::Hex);
+        assert_eq!(v.note.as_deref(), Some(crate::decompress::TRUNCATED));
+    }
+
+    #[test]
+    fn header_problem_by_case() {
+        let mem = decompress::memory_note(VIEW_DICT);
+        let truncated = decompress::TRUNCATED;
+        assert_eq!(
+            problem_text(truncated, false, false).as_deref(),
+            Some("truncated or corrupt")
+        );
+        assert_eq!(
+            problem_text(truncated, true, false).as_deref(),
+            Some("not decompressed: truncated or corrupt")
+        );
+        assert_eq!(
+            problem_text(&mem, false, false),
+            Some(format!("incomplete: {mem}"))
+        );
+        // A time cut is already in the cut notice.
+        assert_eq!(
+            problem_text("decompression stopped after 3 s", false, true),
+            None
+        );
+    }
+
+    /// "(V to view)" only when V's own 64 MiB limit is enough.
+    #[test]
+    fn autoview_suggests_v_only_when_v_can_do_it() {
+        let note = |raw: &[u8]| from_gz("a.zst", raw.to_vec(), LoadOptions::autoview()).note;
+        let refused = decompress::memory_note(AUTOVIEW_DICT);
+        // zstd frame headers asking for a 32 MiB and a 128 MiB window.
+        let v_can = [0x28, 0xB5, 0x2F, 0xFD, 0x00, 0x78];
+        let v_cannot = [0x28, 0xB5, 0x2F, 0xFD, 0x00, 0x88];
+        assert_eq!(note(&v_can), Some(format!("{refused} (V to view)")));
+        assert_eq!(note(&v_cannot), Some(refused.clone()));
+        // xz does not say how much it needs: V may work, so it is suggested.
+        let xz = crate::decompress::test_util::xz_header_with_dict_props(40);
+        assert_eq!(note(&xz), Some(format!("{refused} (V to view)")));
+    }
+
+    #[test]
+    fn decompressed_source_gets_its_colors() {
+        let v = from_gz("x.rs.gz", gz(b"fn main() {}\n"), LOAD);
+        assert_eq!(v.language(), Some("Rust"));
+    }
+
+    #[test]
+    fn tar_gz_says_alt_f5() {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("a.tar.gz");
+        crate::archive::tests::make_tar(&path, true);
+        let raw = std::fs::read(&path).unwrap();
+        let v = Viewer::from_file(path, raw.len() as u64, raw, LOAD);
+        assert_eq!(
+            v.note.as_deref(),
+            Some("TAR archive: Alt+F5 opens it as a folder")
+        );
+    }
+
+    #[test]
+    fn decompress_off_shows_hex() {
+        let load = LoadOptions {
+            decompress: false,
+            ..LOAD
+        };
+        let v = from_gz("a.txt.gz", gz(b"one\n"), load);
+        assert_eq!(v.mode, ViewMode::Hex);
+        assert_eq!(v.compression, None);
+    }
+
+    #[test]
+    fn reload_keeps_the_load_options() {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("a.txt.gz");
+        std::fs::write(&path, gz(b"one\n")).unwrap();
+        let load = LoadOptions::view(1 << 20);
+        let mut v = Viewer::open(path, load).unwrap();
+        v.reload().unwrap();
+        assert_eq!(v.load, load);
+        assert_eq!(v.visible_lines(1), ["one"]);
+    }
 
     fn viewer(data: &[u8]) -> Viewer {
         Viewer::from_bytes(PathBuf::from("t"), data.len() as u64, data.to_vec())
@@ -894,11 +1514,99 @@ mod tests {
     }
 
     #[test]
+    fn bidi_controls_show_as_marked_dots() {
+        let mut v = Viewer::from_bytes(
+            PathBuf::from("x.txt"),
+            0,
+            b"a\xE2\x80\xAEb\xE2\x80\xACc\n\t\xE2\x81\xA6x".to_vec(),
+        );
+        assert_eq!(v.visible_lines(2), ["a·b·c", "        ·x"]);
+        assert_eq!(v.bidi_count(), 3);
+        let error = crate::config::theme().error;
+        let marked = |row: &StyledRow| {
+            row.iter()
+                .filter(|s| s.1 == Some(error))
+                .map(|s| s.0.clone())
+                .collect::<Vec<_>>()
+        };
+        let rows = v.styled(2);
+        assert_eq!(marked(&rows[0]), ["·", "·"]);
+        assert_eq!(marked(&rows[1]), ["·"]);
+        v.toggle_wrap();
+        assert_eq!(marked(&v.styled(2)[0]), ["·", "·"]);
+    }
+
+    #[test]
     fn splits_text_lines() {
-        assert_eq!(text_lines(b"a\r\nb\n"), ["a", "b"]);
-        assert_eq!(text_lines(b"a\tb"), ["a       b"]);
-        assert_eq!(text_lines(b"x\x07y"), ["x·y"]);
-        assert_eq!(text_lines(b""), [""]);
+        let lines = |t: &str| text_lines(t, usize::MAX).lines;
+        assert_eq!(lines("a\r\nb\n"), ["a", "b"]);
+        assert_eq!(lines("a\tb"), ["a       b"]);
+        assert_eq!(lines("x\x07y"), ["x·y"]);
+        assert_eq!(lines(""), [""]);
+        assert_eq!(lines("\n"), [""]);
+        assert_eq!(lines("a\n\n"), ["a", ""]);
+    }
+
+    /// Each empty line costs a `String` (24 bytes on 64 bits) and no heap
+    /// block: 16 MiB of newlines, from a .gz of a few KiB, would be 16 M of
+    /// them (400 MiB). The line budget, 2 × the read limit, stops it.
+    #[test]
+    fn many_tiny_lines_stop_at_the_line_budget() {
+        let limit = 1 << 20;
+        let budget = 2 * limit;
+        let most = budget / size_of::<String>() + 1;
+        let mut v = from_gz(
+            "nl.txt.gz",
+            gz(&vec![b'\n'; 16 << 20]),
+            LoadOptions::view(limit as u64),
+        );
+        assert!(v.truncated());
+        assert!(v.line_count() <= most, "{} lines", v.line_count());
+        assert!(v.line_count() > most / 2, "{} lines", v.line_count());
+        // O decodes again under the same budget.
+        v.cycle_charset();
+        assert!(v.truncated());
+        assert!(v.line_count() <= most, "{} lines", v.line_count());
+    }
+
+    #[test]
+    fn bidi_marks_and_tabs_count_against_the_line_budget() {
+        let limit = 1 << 20;
+        let budget = 2 * limit;
+        let view = |text: String| {
+            let n = text.len() as u64;
+            Viewer::from_file("t.txt".into(), n, text.into_bytes(), LoadOptions::view(n))
+        };
+        // 16 bytes per mark: 349,525 of them would be 5.3 MiB.
+        let v = view("\u{202E}".repeat(limit / 3));
+        assert!(v.truncated());
+        assert!(v.bidi_count() <= budget / 16 + 1, "{}", v.bidi_count());
+        // A tab grows to 8 spaces: one line of 1 MiB of tabs would be 8 MiB.
+        let v = view("\t".repeat(limit));
+        assert!(v.truncated());
+        assert!(
+            v.lines[0].len() <= budget + TAB_WIDTH,
+            "{}",
+            v.lines[0].len()
+        );
+    }
+
+    /// A log of ~100-byte lines costs ~1.4 × its size: it is not cut.
+    #[test]
+    fn ordinary_lines_fit_the_line_budget() {
+        let limit = 1 << 20;
+        let line =
+            "2026-10-27 12:00:00 INFO an ordinary line of a log file, about a hundred bytes long\n";
+        let text = line.repeat(limit / line.len());
+        let n = text.len() as u64;
+        let v = Viewer::from_file(
+            "app.log".into(),
+            n,
+            text.into_bytes(),
+            LoadOptions::view(limit as u64),
+        );
+        assert!(!v.truncated());
+        assert_eq!(v.line_count(), limit / line.len());
     }
 
     #[test]
@@ -916,7 +1624,7 @@ mod tests {
         let path = tmp.path().join("a.txt");
         let lines = |n: usize| (0..n).map(|i| format!("line {i}\n")).collect::<String>();
         std::fs::write(&path, lines(100)).unwrap();
-        let mut v = Viewer::open_limited(path.clone(), MAX_BYTES).unwrap();
+        let mut v = Viewer::open(path.clone(), LoadOptions::view(MAX_BYTES)).unwrap();
         assert!(v.on_disk);
         v.top = 50;
         std::fs::write(&path, lines(120)).unwrap();
@@ -966,10 +1674,10 @@ mod tests {
         let tmp = crate::testing::tempdir();
         let path = tmp.path().join("f.txt");
         std::fs::write(&path, "abc").unwrap();
-        let v = Viewer::open_limited(path, MAX_BYTES).unwrap();
+        let v = Viewer::open(path, LoadOptions::view(MAX_BYTES)).unwrap();
         assert_eq!(v.size, 3);
         assert!(!v.truncated());
-        assert!(Viewer::open_limited(tmp.path().join("missing"), MAX_BYTES).is_err());
+        assert!(Viewer::open(tmp.path().join("missing"), LoadOptions::view(MAX_BYTES)).is_err());
     }
 
     fn pat(t: &str) -> Pattern {
@@ -1115,6 +1823,103 @@ mod tests {
         assert_eq!(ranges, vec![0..0]);
     }
 
+    /// A frame costs what fits on screen, not the length of the line: an
+    /// 8 MiB single line (a minified file) used to cost a pass over all of
+    /// it, and a `Vec<char>` of it, on every key. The bound is loose, for
+    /// slow CI machines; the old code took seconds here.
+    #[test]
+    fn a_huge_line_draws_only_what_fits() {
+        let line = "{\"k\":1},".repeat(1 << 20);
+        let mut v = viewer(line.as_bytes());
+        v.width = 120;
+        v.page = 40;
+        let start = std::time::Instant::now();
+        for _ in 0..10 {
+            v.styled(40);
+        }
+        v.wrap = true;
+        for _ in 0..10 {
+            v.styled(40);
+            v.scroll_down(1);
+        }
+        let took = start.elapsed();
+        assert!(took < std::time::Duration::from_millis(500), "{took:?}");
+        // And what is drawn is right: a row of the wrapped line, and the
+        // piece of it at `left` without wrap.
+        let text = |row: &StyledRow| row.iter().map(|(t, ..)| t.as_str()).collect::<String>();
+        let rows = v.styled(2);
+        assert_eq!(text(&rows[0]), &line[1200..1320]);
+        v.wrap = false;
+        v.left = 8;
+        assert_eq!(text(&v.styled(1)[0]), &line[8..128]);
+    }
+
+    /// The lazy rows match the whole-line split, on lines that wrap at
+    /// spaces, at other whitespace and inside words.
+    #[test]
+    fn lazy_wrap_rows_match_the_whole_line() {
+        let samples = [
+            "hello world this is a test",
+            "abcdefghij",
+            "",
+            "a  b   c    d",
+            "word\u{3000}wide space and   runs of     spaces at the end     ",
+            "     leading spaces",
+            "ação é só um teste com acentos e   espaços",
+        ];
+        for text in samples {
+            for width in 1..=13 {
+                let lazy: Vec<_> = WrapRows::new(text, width).collect();
+                let chars: Vec<_> = lazy.iter().map(|r| r.chars.clone()).collect();
+                assert_eq!(chars, reference_wrap(text, width), "{text:?} at {width}");
+                for r in &lazy {
+                    let by_bytes: String = text[r.bytes.clone()].to_string();
+                    let by_chars: String = text
+                        .chars()
+                        .skip(r.chars.start)
+                        .take(r.chars.len())
+                        .collect();
+                    assert_eq!(by_bytes, by_chars, "{text:?} at {width}");
+                }
+            }
+        }
+    }
+
+    /// The split as it was (one `Vec<char>` of the whole line), to compare.
+    #[allow(clippy::single_range_in_vec_init)]
+    fn reference_wrap(text: &str, width: usize) -> Vec<std::ops::Range<usize>> {
+        let chars: Vec<char> = text.chars().collect();
+        let n = chars.len();
+        if n == 0 {
+            return vec![0..0];
+        }
+        let mut ranges = Vec::new();
+        let mut start = 0;
+        while start < n {
+            if n - start <= width {
+                ranges.push(start..n);
+                break;
+            }
+            let limit = start + width;
+            let break_at = chars[start..=limit]
+                .iter()
+                .enumerate()
+                .rposition(|(idx, &c)| idx > 0 && c.is_whitespace());
+            if let Some(pos) = break_at {
+                ranges.push(start..start + pos);
+                let mut next = start + pos + 1;
+                while next < n && chars[next] == ' ' {
+                    next += 1;
+                }
+                start = next;
+            } else {
+                ranges.push(start..limit);
+                start = limit;
+            }
+        }
+        ranges
+    }
+
     #[test]
     fn test_wrap_toggle_and_scrolling() {
         let text = b"line 1\nthis is a very long line that should wrap into multiple visual lines when wrap is enabled\nline 3\n";
@@ -1193,5 +1998,124 @@ mod tests {
         // Out of bounds clamp
         v.goto_line(999);
         assert_eq!(v.top, 99);
+    }
+
+    const PT: &str = "ação, coração e informação";
+
+    fn from_raw(raw: Vec<u8>) -> Viewer {
+        let n = raw.len() as u64;
+        Viewer::from_file(PathBuf::from("a.txt"), n, raw, LOAD)
+    }
+
+    #[test]
+    fn cp850_file_reads_as_portuguese() {
+        use crate::charset::{CP850, Charset, test_util::encode};
+        let v = from_raw(encode(PT, &CP850));
+        assert_eq!(v.visible_lines(1), [PT]);
+        assert_eq!(v.charset(), Charset::Cp850);
+    }
+
+    #[test]
+    fn o_cycles_and_says_so() {
+        use crate::charset::Charset;
+        let mut v = from_raw(b"plain".to_vec());
+        assert_eq!(v.charset(), Charset::Utf8);
+        v.handle_key(KeyEvent::from(KeyCode::Char('o')));
+        assert_eq!(v.charset(), Charset::Cp850);
+        assert_eq!(
+            v.note.as_deref(),
+            Some("Codepage: CP850 (DOS, Western Europe)")
+        );
+        for _ in 0..5 {
+            v.handle_key(KeyEvent::from(KeyCode::Char('o')));
+        }
+        assert_eq!(v.charset(), Charset::Utf8);
+    }
+
+    #[test]
+    fn manual_choice_survives_reload() {
+        use crate::charset::Charset;
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("f.txt");
+        std::fs::write(&path, "hello").unwrap();
+        let mut v = Viewer::open(path, LoadOptions::view(MAX_BYTES)).unwrap();
+        v.cycle_charset(); // CP850
+        v.cycle_charset(); // 1252
+        v.cycle_charset(); // CP437
+        assert_eq!(v.charset(), Charset::Cp437);
+        v.reload().unwrap();
+        assert_eq!(v.charset(), Charset::Cp437);
+    }
+
+    #[test]
+    fn search_finds_accented_text_in_cp850() {
+        use crate::charset::{CP850, test_util::encode};
+        let mut v = from_raw(encode(&format!("one\n{PT}\n"), &CP850));
+        assert!(v.search(&pat("ação"), true, SearchFrom::Edge));
+        assert_eq!(v.hit.map(|h| h.line), Some(1));
+    }
+
+    #[test]
+    fn reg_export_first_line_is_clean() {
+        use crate::charset::Charset;
+        let reg = "\u{FEFF}Windows Registry Editor Version 5.00\r\n\r\n[HKEY_CURRENT_USER]\r\n";
+        let bytes: Vec<u8> = reg.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        let v = from_raw(bytes);
+        assert_eq!(v.charset(), Charset::Utf16Le);
+        assert_eq!(v.mode, ViewMode::Text);
+        assert_eq!(v.visible_lines(1), ["Windows Registry Editor Version 5.00"]);
+    }
+
+    #[test]
+    fn cycling_to_utf16_on_binary_looking_data_shows_text() {
+        let bytes: Vec<u8> = "hello there"
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        // Xylem's own bytes are taken as UTF-8, so this one looks binary.
+        let mut v = Viewer::from_bytes(PathBuf::from("a"), bytes.len() as u64, bytes);
+        assert_eq!(v.mode, ViewMode::Hex);
+        for _ in 0..3 {
+            v.cycle_charset(); // CP850, 1252, CP437
+            assert_eq!(v.mode, ViewMode::Hex);
+        }
+        v.cycle_charset(); // UTF-16LE
+        assert_eq!(v.mode, ViewMode::Text);
+        assert_eq!(v.visible_lines(1), ["hello there"]);
+    }
+
+    #[test]
+    fn o_keeps_the_color_overrides() {
+        let mut v = Viewer::from_bytes(PathBuf::from("git diff foo.rs"), 8, b"+a\n-b\n".to_vec())
+            .colored_as(Path::new("x.diff"));
+        let before = v.language().map(String::from);
+        assert!(before.is_some());
+        v.cycle_charset();
+        assert_eq!(v.language().map(String::from), before);
+
+        let raw = gz(b"fn main() {}\n");
+        let mut v = from_gz("x.rs.gz", raw, LOAD);
+        assert_eq!(v.language(), Some("Rust"));
+        v.cycle_charset();
+        assert_eq!(v.language(), Some("Rust"));
+        v.handle_key(KeyEvent::from(KeyCode::Char('c')));
+        assert_eq!(v.language(), None);
+        v.cycle_charset();
+        assert_eq!(v.language(), None);
+    }
+
+    #[test]
+    fn bidi_survives_a_redecode() {
+        let bytes: Vec<u8> = "\u{FEFF}a\u{202E}b\n"
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        let mut v = from_raw(bytes);
+        assert_eq!(v.bidi_count(), 1);
+        for _ in 0..6 {
+            v.cycle_charset();
+        }
+        assert_eq!(v.charset(), crate::charset::Charset::Utf16Le);
+        assert_eq!(v.bidi_count(), 1);
     }
 }

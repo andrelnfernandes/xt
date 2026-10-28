@@ -21,8 +21,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Clear, List, ListItem, ListState, Paragraph};
 
 use crate::app::{self, App, BookmarksView, FileView, Focus, KbyteShow, MenuMode, Pane};
-use crate::config::TerminalTheme;
-use crate::config::{self, formats, theme};
+use crate::charset::Charset;
+use crate::config::{self, IconStyle, TerminalTheme, formats, theme};
 use crate::filetype;
 use crate::git::StatusCache;
 use crate::help::{self, Help};
@@ -41,6 +41,13 @@ const SMALL_FILE_WINDOW: u16 = 8;
 const MIN_TREE_WITH_FILES: u16 = 2 * SMALL_FILE_WINDOW;
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
+    draw_screen(frame, app);
+    // Last step, after every early return: no bidi or control character
+    // may reach the terminal, whatever drew it.
+    crate::bidi::sanitize(frame.buffer_mut(), Style::new().fg(theme().error));
+}
+
+fn draw_screen(frame: &mut Frame, app: &mut App) {
     let base = Style::new().fg(theme().text).bg(theme().background);
     frame.render_widget(Block::new().style(base), frame.area());
 
@@ -103,7 +110,14 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)])
                 .areas(main);
         let active = app.active;
-        draw_files(frame, &mut app.panes[active], true, list, git);
+        draw_files(
+            frame,
+            &mut app.panes[active],
+            true,
+            list,
+            git,
+            app.options.icons,
+        );
         if let Some(v) = &mut app.autoview {
             let name = v
                 .path
@@ -111,7 +125,11 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .into_owned();
-            draw_viewer_body(frame, v, format!(" Autoview: {name} "), view);
+            let title = match &v.note {
+                Some(note) => format!(" Autoview: {name} — {note} "),
+                None => format!(" Autoview: {name} "),
+            };
+            draw_viewer_body(frame, v, title, view);
         }
     } else if app.is_split() {
         // Two windows side by side; the statistics panel goes away to make room.
@@ -120,13 +138,21 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
                 .areas(main);
         let active = app.active;
         for (i, (pane, area)) in app.panes.iter_mut().zip(halves).enumerate() {
-            draw_pane(frame, pane, i == active, true, area, git);
+            draw_pane(frame, pane, i == active, true, area, git, app.options.icons);
         }
     } else {
         let [left, stats] =
             Layout::horizontal([Constraint::Min(20), Constraint::Length(STATS_WIDTH)]).areas(main);
         // The pane first: the Usage view leaves its selected row for the panel.
-        draw_pane(frame, &mut app.panes[0], true, false, left, git);
+        draw_pane(
+            frame,
+            &mut app.panes[0],
+            true,
+            false,
+            left,
+            git,
+            app.options.icons,
+        );
         draw_stats(frame, app, stats);
     }
 }
@@ -265,13 +291,14 @@ fn draw_pane(
     split: bool,
     area: Rect,
     git: Option<&StatusCache>,
+    icons: IconStyle,
 ) {
     if pane.usage.is_some() {
         draw_usage(frame, pane, active, area);
         return;
     }
     if pane.focus == Focus::Files {
-        draw_files(frame, pane, active, area, git);
+        draw_files(frame, pane, active, area, git, icons);
         return;
     }
     let width = area.width.saturating_sub(4) as usize;
@@ -291,13 +318,13 @@ fn draw_pane(
     // Too low for both (e.g. above the terminal's panel): the tree alone,
     // rather than a tree of one or two lines.
     if area.height < MIN_TREE_WITH_FILES {
-        draw_tree(frame, pane, active, title, area);
+        draw_tree(frame, pane, active, title, area, icons);
         return;
     }
     let [tree, files] =
         Layout::vertical([Constraint::Min(3), Constraint::Length(SMALL_FILE_WINDOW)]).areas(area);
-    draw_tree(frame, pane, active, title, tree);
-    draw_files(frame, pane, false, files, git);
+    draw_tree(frame, pane, active, title, tree, icons);
+    draw_files(frame, pane, false, files, git, icons);
 }
 
 fn panel(title: impl Into<Line<'static>>, active: bool) -> Block<'static> {
@@ -340,7 +367,14 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(Line::from(clock), right);
 }
 
-fn draw_tree(frame: &mut Frame, pane: &mut Pane, active: bool, title: String, area: Rect) {
+fn draw_tree(
+    frame: &mut Frame,
+    pane: &mut Pane,
+    active: bool,
+    title: String,
+    area: Rect,
+    icons: IconStyle,
+) {
     pane.tree_page = area.height.saturating_sub(2) as usize;
 
     let (range, mut state) = visible_window(&mut pane.tree_state, pane.rows.len(), pane.tree_page);
@@ -373,13 +407,30 @@ fn draw_tree(frame: &mut Frame, pane: &mut Pane, active: bool, title: String, ar
             } else {
                 Style::new()
             };
-            let mut spans = vec![
-                Span::styled(row.prefix.clone(), Style::new().fg(theme().dim)),
-                Span::styled(name.clone(), name_style),
-            ];
+            let icon = crate::icons::dir_icon(
+                node.expanded,
+                false,
+                pane.archive.is_some() && row.id == crate::model::tree::ROOT,
+                pane.remote.is_some() && row.id == crate::model::tree::ROOT,
+                icons,
+            );
+            let mut spans = vec![Span::styled(
+                row.prefix.clone(),
+                Style::new().fg(theme().dim),
+            )];
+            if let Some(ic) = icon {
+                let ic_style = if node.error.is_some() {
+                    Style::new().fg(theme().error)
+                } else {
+                    Style::new().fg(theme().key)
+                };
+                spans.push(Span::styled(ic, ic_style));
+            }
+            spans.push(Span::styled(name.clone(), name_style));
             if let Some(totals) = &totals {
                 let (count, bytes) = totals[row.id];
-                let used = row.prefix.chars().count() + name.chars().count();
+                let icon_len = if icon.is_some() { 2 } else { 0 };
+                let used = row.prefix.chars().count() + icon_len + name.chars().count();
                 let mut bar = None;
                 let value = match (node.scanned, kbyte.show) {
                     (false, _) => "?".to_string(),
@@ -493,7 +544,14 @@ fn draw_picker(frame: &mut Frame, app: &mut App, main: Rect, menu: Rect) {
         " Folder: {} ",
         fit_tail(&path.to_string_lossy(), width.saturating_sub(10))
     );
-    draw_tree(frame, picker.pane_mut(), true, title, main);
+    draw_tree(
+        frame,
+        picker.pane_mut(),
+        true,
+        title,
+        main,
+        app.options.icons,
+    );
 
     let mut keys = vec![
         ("↑↓", "move"),
@@ -521,6 +579,7 @@ fn draw_files(
     active: bool,
     area: Rect,
     git: Option<&StatusCache>,
+    icons: IconStyle,
 ) {
     let git = git.filter(|g| {
         pane.archive.is_none() && pane.remote.is_none() && g.in_repo(&pane.current_path())
@@ -528,10 +587,13 @@ fn draw_files(
     // Status letters of a file in the repository ("  " if unchanged).
     let marker =
         |pane: &Pane, f: FileRef| git.map(|g| g.marker(&pane.file_path(f)).unwrap_or(*b"  "));
-    let kind = match pane.view {
-        FileView::Dir => "Files",
-        FileView::Branch(_) => "Branch",
-        FileView::Showall => "Showall",
+    let kind = match (pane.view, icons) {
+        (FileView::Dir, IconStyle::NerdFonts) => "\u{f07c} Files",
+        (FileView::Dir, _) => "Files",
+        (FileView::Branch(_), IconStyle::NerdFonts) => "\u{e725} Branch",
+        (FileView::Branch(_), _) => "Branch",
+        (FileView::Showall, IconStyle::NerdFonts) => "\u{f0349} Showall",
+        (FileView::Showall, _) => "Showall",
     };
     let title = format!(
         " {kind}: {} ({}) {} ",
@@ -544,7 +606,7 @@ fn draw_files(
         _ => false,
     };
     if pane.display.multi_column() && !pane.files.is_empty() && !error {
-        draw_file_columns(frame, pane, active, area, title, &marker);
+        draw_file_columns(frame, pane, active, area, title, &marker, icons);
         return;
     }
     pane.file_cols = 1;
@@ -572,7 +634,7 @@ fn draw_files(
         visible
             .iter()
             .zip(details)
-            .map(|(&f, detail)| file_line(pane.file(f), width, detail, marker(pane, f)))
+            .map(|(&f, detail)| file_line(pane.file(f), width, detail, marker(pane, f), icons))
             .collect()
     };
 
@@ -616,6 +678,7 @@ fn draw_file_columns(
     area: Rect,
     title: String,
     marker: &dyn Fn(&Pane, FileRef) -> Option<[u8; 2]>,
+    icons: IconStyle,
 ) {
     let git_w = if pane
         .files
@@ -626,6 +689,7 @@ fn draw_file_columns(
     } else {
         0
     };
+    let icon_w = if icons == IconStyle::None { 0 } else { 2 };
     let block = panel(title, active);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -643,8 +707,8 @@ fn draw_file_columns(
         .max()
         .unwrap_or(1)
         .min(MAX_COLUMN_NAME);
-    // Tag mark + name + (size and permissions) + space between columns.
-    let cell_w = 2 + git_w + name_w + if with_size { 23 } else { 0 } + 1;
+    // Tag mark + git + icon + name + (size and permissions) + space between columns.
+    let cell_w = 2 + git_w + icon_w + name_w + if with_size { 23 } else { 0 } + 1;
     let cols = (width / cell_w).max(1);
     pane.file_cols = cols;
     pane.file_page = height * cols;
@@ -670,10 +734,19 @@ fn draw_file_columns(
                 if f.kind == FileKind::Symlink {
                     name.push('@');
                 }
+                let icon = crate::icons::file_icon(
+                    &f.name,
+                    f.kind,
+                    crate::platform::is_executable(&f.name, f.mode),
+                    icons,
+                )
+                .unwrap_or_default();
                 let mut cell = format!(
-                    "{}{}{}",
+                    "{}{}{}{}",
                     if f.tagged { "■ " } else { "  " },
-                    git.map(|xy| git_text(&xy)).unwrap_or_default(),
+                    git.map(|xy| git_marker_text(&xy, icons))
+                        .unwrap_or_default(),
+                    icon,
                     fit(&name, name_w)
                 );
                 if with_size {
@@ -715,6 +788,14 @@ fn file_style(f: &FileEntry) -> Style {
 /// `M ` → `"M  "`: the two status letters and a space.
 fn git_text(xy: &[u8; 2]) -> String {
     format!("{}{} ", char::from(xy[0]), char::from(xy[1]))
+}
+
+fn git_marker_text(xy: &[u8; 2], icons: IconStyle) -> String {
+    if let Some(icon) = crate::icons::git_icon(*xy, icons) {
+        icon.to_string()
+    } else {
+        git_text(xy)
+    }
 }
 
 /// What the one-column file window shows after each name (Alt+F).
@@ -775,6 +856,7 @@ fn file_line(
     width: usize,
     detail: Detail,
     git: Option<[u8; 2]>,
+    icons: IconStyle,
 ) -> ListItem<'static> {
     let size = fmt_num(f.size);
     let mode = fmt_mode(f.mode, f.kind);
@@ -806,8 +888,15 @@ fn file_line(
     };
 
     // 2 columns for the tag mark, 3 for the Git status.
-    let git = git.map(|xy| git_text(&xy));
-    let marks = 2 + git.as_ref().map_or(0, String::len);
+    let git = git.map(|xy| git_marker_text(&xy, icons));
+    let icon = crate::icons::file_icon(
+        &f.name,
+        f.kind,
+        crate::platform::is_executable(&f.name, f.mode),
+        icons,
+    );
+    let icon_len = if icon.is_some() { 2 } else { 0 };
+    let marks = 2 + git.as_ref().map_or(0, String::len) + icon_len;
     let name_width = width.saturating_sub(details.chars().count() + marks).max(8);
     let mut name: String = f.name.to_string_lossy().into_owned();
     if f.kind == FileKind::Symlink {
@@ -823,6 +912,9 @@ fn file_line(
             git,
             Style::new().fg(theme().key).add_modifier(Modifier::BOLD),
         ));
+    }
+    if let Some(ic) = icon {
+        spans.push(Span::styled(ic, style));
     }
     spans.extend([
         Span::styled(name, style),
@@ -1165,6 +1257,10 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
                 Style::new()
                     .fg(theme().message)
                     .add_modifier(Modifier::BOLD),
+            )),
+            None if app.selected_name_has_bidi() => Line::from(Span::styled(
+                "Name has hidden bidirectional characters: it may not be what it looks like",
+                Style::new().fg(theme().error),
             )),
             None => first,
         };
@@ -1967,9 +2063,50 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
             Style::new().fg(theme().dim),
         ),
     ];
-    if v.truncated() {
+    if let Some((kind, _)) = v.compression {
         title.push(Span::styled(
-            format!("  (showing first {})", fmt_num(viewer::MAX_BYTES)),
+            format!("  {} → {} bytes", kind.name(), fmt_num(v.data_len())),
+            Style::new().fg(theme().dim),
+        ));
+    }
+    if v.charset() != Charset::Utf8 {
+        title.push(Span::styled(
+            format!("  {}", v.charset().name()),
+            Style::new().fg(theme().dim),
+        ));
+    }
+    if v.truncated() {
+        // The hex view shows every byte read: the line budget cuts only
+        // the text.
+        let shown = if v.lines_cut() && v.mode == ViewMode::Text {
+            Some(format!("{} lines", fmt_num(v.line_count() as u64)))
+        } else if !v.bytes_cut() {
+            None
+        } else if v.compression.is_some() {
+            Some(format!("{} bytes decompressed", fmt_num(v.data_len())))
+        } else {
+            Some(format!("{} MiB", v.limit() >> 20))
+        };
+        if let Some(shown) = shown {
+            title.push(Span::styled(
+                format!("  (showing first {shown})"),
+                Style::new().fg(theme().error),
+            ));
+        }
+    }
+    if let Some(problem) = v.problem() {
+        title.push(Span::styled(
+            format!("  ({problem})"),
+            Style::new().fg(theme().error),
+        ));
+    }
+    if v.bidi_count() > 0 {
+        title.push(Span::styled(
+            format!(
+                "  {} bidirectional control character{} (shown as ·)",
+                v.bidi_count(),
+                if v.bidi_count() == 1 { "" } else { "s" }
+            ),
             Style::new().fg(theme().error),
         ));
     }
@@ -2002,7 +2139,7 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
         prompt_lines(frame, prompt, menu)
     } else {
         let mut words = vec![
-            "Find", "Backward", "Hex", "Colors", "Wrap", "#Num", "Goto", "Edit",
+            "Find", "Backward", "Hex", "Colors", "Wrap", "#Num", "Goto", "Edit", "cOdepage",
         ];
         if diff {
             words.push("Diff");
@@ -2354,6 +2491,219 @@ mod tests {
         assert!(footer(&mut app).contains("usage (W)"));
     }
 
+    fn draw_row0(app: &mut App) -> String {
+        use ratatui::{Terminal, backend::TestBackend};
+        let mut term = Terminal::new(TestBackend::new(120, 20)).unwrap();
+        term.draw(|f| draw(f, app)).unwrap();
+        let buf = term.backend().buffer();
+        (0..120).map(|x| buf[(x, 0)].symbol()).collect()
+    }
+
+    fn draw_text(app: &mut App) -> String {
+        use ratatui::{Terminal, backend::TestBackend};
+        let mut term = Terminal::new(TestBackend::new(140, 20)).unwrap();
+        term.draw(|f| draw(f, app)).unwrap();
+        let buf = term.backend().buffer();
+        (0..20)
+            .flat_map(|y| (0..140).map(move |x| (x, y)))
+            .map(|(x, y)| buf[(x, y)].symbol())
+            .collect()
+    }
+
+    #[test]
+    fn viewer_header_tells_what_was_cut() {
+        use crate::viewer::{LoadOptions, Viewer};
+        let tmp = crate::testing::tempdir();
+        let mut app = App::new(tmp.path().to_path_buf());
+        let load = LoadOptions::view(1 << 20);
+        // Lines long enough for the line budget: these are cut by bytes.
+        let text = format!("{}\n", "0123456789abcdef".repeat(4)).repeat(1 << 15);
+        let raw = text.as_bytes()[..1 << 20].to_vec();
+        app.viewer = Some(Viewer::from_file(
+            "x.txt".into(),
+            text.len() as u64,
+            raw,
+            load,
+        ));
+        let row0 = draw_row0(&mut app);
+        assert!(row0.contains("(showing first 1 MiB)"), "{row0}");
+        let gz = crate::decompress::test_util::gz(text.as_bytes());
+        let n = gz.len() as u64;
+        app.viewer = Some(Viewer::from_file("x.txt.gz".into(), n, gz, load));
+        let row0 = draw_row0(&mut app);
+        assert!(
+            row0.contains(&format!(
+                "(showing first {} bytes decompressed)",
+                fmt_num(1 << 20)
+            )),
+            "{row0}"
+        );
+        assert!(row0.contains("gzip → 1"), "{row0}");
+    }
+
+    /// The note goes away at the first key; the header keeps saying that
+    /// the compressed file was damaged, so it never looks complete.
+    #[test]
+    fn viewer_header_keeps_a_decompression_failure() {
+        use crate::viewer::{LoadOptions, Viewer};
+        let tmp = crate::testing::tempdir();
+        let mut app = App::new(tmp.path().to_path_buf());
+        let load = LoadOptions::view(1 << 20);
+        let down = ratatui::crossterm::event::KeyEvent::new(
+            ratatui::crossterm::event::KeyCode::Down,
+            ratatui::crossterm::event::KeyModifiers::NONE,
+        );
+        let mut gz = crate::decompress::test_util::gz(&b"line of text\n".repeat(10_000));
+        gz.truncate(gz.len() / 2);
+        for (raw, shown) in [
+            (gz, "(truncated or corrupt)"),
+            (
+                b"\x1F\x8B".to_vec(),
+                "(not decompressed: truncated or corrupt)",
+            ),
+        ] {
+            let n = raw.len() as u64;
+            let mut v = Viewer::from_file("x.txt.gz".into(), n, raw, load);
+            assert!(v.note.is_some());
+            v.handle_key(down);
+            assert_eq!(v.note, None);
+            app.viewer = Some(v);
+            let row0 = draw_row0(&mut app);
+            assert!(row0.contains(shown), "{row0}");
+        }
+    }
+
+    /// Cut by the line budget, not by the bytes read: the header counts lines.
+    #[test]
+    fn viewer_header_counts_the_lines_the_budget_kept() {
+        use crate::viewer::{LoadOptions, Viewer};
+        let tmp = crate::testing::tempdir();
+        let mut app = App::new(tmp.path().to_path_buf());
+        let raw = vec![b'\n'; 1 << 20];
+        let v = Viewer::from_file("nl.txt".into(), 1 << 20, raw, LoadOptions::view(1 << 20));
+        let lines = format!("(showing first {} lines)", fmt_num(v.line_count() as u64));
+        app.viewer = Some(v);
+        let row0 = draw_row0(&mut app);
+        assert!(row0.contains(&lines), "{row0}");
+        assert!(!row0.contains("MiB)"), "{row0}");
+        // The hex view shows every byte: nothing was cut there.
+        app.viewer
+            .as_mut()
+            .unwrap()
+            .handle_key(ratatui::crossterm::event::KeyEvent::new(
+                ratatui::crossterm::event::KeyCode::Char('h'),
+                ratatui::crossterm::event::KeyModifiers::NONE,
+            ));
+        let row0 = draw_row0(&mut app);
+        assert!(!row0.contains("(showing first"), "{row0}");
+    }
+
+    #[test]
+    fn viewer_header_names_the_charset_before_the_cut() {
+        use crate::viewer::{LoadOptions, Viewer};
+        let tmp = crate::testing::tempdir();
+        let mut app = App::new(tmp.path().to_path_buf());
+        let text = "ação\n".repeat(1 << 18);
+        let mut raw = crate::charset::test_util::encode(&text, &crate::charset::CP850);
+        raw.truncate(1 << 20);
+        app.viewer = Some(Viewer::from_file(
+            "x.txt".into(),
+            text.len() as u64,
+            raw,
+            LoadOptions::view(1 << 20),
+        ));
+        let row0 = draw_row0(&mut app);
+        let at = row0.find("CP850").unwrap_or_else(|| panic!("{row0}"));
+        assert!(at < row0.find("(showing first").unwrap(), "{row0}");
+        let all = draw_text(&mut app);
+        assert!(all.contains("cOdepage") || all.contains("Odepage"), "{all}");
+    }
+
+    #[test]
+    fn autoview_title_shows_the_note() {
+        let tmp = crate::testing::tempdir();
+        std::fs::write(
+            tmp.path().join("big.xz"),
+            crate::decompress::test_util::xz_header_with_dict_props(40),
+        )
+        .unwrap();
+        let mut app = App::new(tmp.path().to_path_buf());
+        app.handle_key(ratatui::crossterm::event::KeyEvent::new(
+            ratatui::crossterm::event::KeyCode::F(7),
+            ratatui::crossterm::event::KeyModifiers::NONE,
+        ));
+        let text = draw_text(&mut app);
+        assert!(text.contains("(V to view)"), "{text}");
+    }
+
+    #[test]
+    fn viewer_header_counts_bidi_controls() {
+        use ratatui::{Terminal, backend::TestBackend};
+        let tmp = crate::testing::tempdir();
+        let mut app = App::new(tmp.path().to_path_buf());
+        app.viewer = Some(crate::viewer::Viewer::from_bytes(
+            "x.txt".into(),
+            6,
+            "a\u{202E}b\u{2066}c".as_bytes().to_vec(),
+        ));
+        let mut term = Terminal::new(TestBackend::new(100, 20)).unwrap();
+        term.draw(|f| draw(f, &mut app)).unwrap();
+        let buf = term.backend().buffer();
+        let row0: String = (0..100).map(|x| buf[(x, 0)].symbol()).collect();
+        assert!(
+            row0.contains("2 bidirectional control characters (shown as ·)"),
+            "{row0}"
+        );
+        app.viewer = Some(crate::viewer::Viewer::from_bytes(
+            "x.txt".into(),
+            3,
+            "a\u{202E}b".as_bytes().to_vec(),
+        ));
+        term.draw(|f| draw(f, &mut app)).unwrap();
+        let buf = term.backend().buffer();
+        let row0: String = (0..100).map(|x| buf[(x, 0)].symbol()).collect();
+        assert!(
+            row0.contains("1 bidirectional control character (shown as ·)"),
+            "{row0}"
+        );
+    }
+
+    #[test]
+    fn bidi_in_names_never_reaches_the_terminal() {
+        use ratatui::{Terminal, backend::TestBackend};
+        let tmp = crate::testing::tempdir();
+        std::fs::write(tmp.path().join("fatura\u{202E}fdp.sh"), "").unwrap();
+        let mut app = App::new(tmp.path().to_path_buf());
+        app.apply(crate::input::Command::SwitchWindow);
+        let mut term = Terminal::new(TestBackend::new(80, 20)).unwrap();
+        term.draw(|f| draw(f, &mut app)).unwrap();
+        let buf = term.backend().buffer();
+        assert!(
+            buf.content
+                .iter()
+                .all(|c| !crate::bidi::has_bidi(c.symbol()))
+        );
+        let screen: String = buf.content.iter().map(|c| c.symbol()).collect();
+        assert!(screen.contains("faturafdp.sh"), "{screen}");
+    }
+
+    #[test]
+    fn footer_warns_about_a_name_with_hidden_bidi() {
+        use ratatui::{Terminal, backend::TestBackend};
+        let tmp = crate::testing::tempdir();
+        std::fs::write(tmp.path().join("fatura\u{202E}fdp.sh"), "").unwrap();
+        let mut app = App::new(tmp.path().to_path_buf());
+        app.apply(crate::input::Command::SwitchWindow);
+        let mut term = Terminal::new(TestBackend::new(100, 20)).unwrap();
+        term.draw(|f| draw(f, &mut app)).unwrap();
+        let buf = term.backend().buffer();
+        let row: String = (0..100).map(|x| buf[(x, 18)].symbol()).collect();
+        assert!(
+            row.contains("Name has hidden bidirectional characters"),
+            "{row}"
+        );
+    }
+
     #[test]
     fn renders_files_in_columns() {
         use ratatui::{Terminal, backend::TestBackend};
@@ -2491,5 +2841,19 @@ mod tests {
         assert!(screen.contains("[1]"));
         assert!(screen.contains("[x]"));
         assert!(screen.contains("2 bookmarks"));
+    }
+
+    #[test]
+    fn icons_switch_in_file_list() {
+        let tmp = crate::testing::tempdir();
+        std::fs::write(tmp.path().join("main.rs"), "fn main() {}").unwrap();
+        let mut app = App::new(tmp.path().to_path_buf());
+        app.options.icons = IconStyle::None;
+        let screen_none = draw_text(&mut app);
+        assert!(!screen_none.contains("\u{e7a8}"));
+
+        app.options.icons = IconStyle::NerdFonts;
+        let screen_icons = draw_text(&mut app);
+        assert!(screen_icons.contains("\u{e7a8}"));
     }
 }

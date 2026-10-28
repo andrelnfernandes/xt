@@ -22,7 +22,7 @@ Archiven, Verlauf in Eingabezeilen, Hilfe (F1) und Konfigurationsbildschirm
 | Funktion | In ZTreeWin | In Xylem |
 |---|---|---|
 | Filespec | Name mit eigenen Regeln für Stamm und Erweiterung, Datum, Größe, Attribut, umgekehrter Filespec (Ctrl+I), Labels | Glob-Muster für Namen, Datum und Größe wie in ZTreeWin (mit K/M/G); keine Attribute, Umkehrung oder Labels |
-| Betrachter | Modi Alpha, Dump, Hex, Junk und Wrap; Zeichensätze; Hex-Bearbeitung; Lesezeichen; Auto-Scroll | Text (UTF-8) oder Hex, mit ZTreeWin-Suche (F, B, /, \\, Space, + und -), Syntaxfarben (hat ZTreeWin nicht), Zeilenumbruch (W), Zeilennummern (#), Springen zu Zeile (g / :); bis 16 MiB; bewusst keine Hex-Bearbeitung (eigener Editor für Binärdateien unter [`[editors]`](execute.md)) |
+| Betrachter | Modi Alpha, Dump, Hex, Junk und Wrap; Zeichensätze; Hex-Bearbeitung; Lesezeichen; Auto-Scroll | Text (UTF-8, UTF-16, CP850, Windows-1252 und CP437, selbst erkannt, O wechselt) oder Hex, mit ZTreeWin-Suche (F, B, /, \\, Space, + und -), Syntaxfarben (hat ZTreeWin nicht), Zeilenumbruch (W), Zeilennummern (#), Springen zu Zeile (g / :); bis zum Größenlimit (`viewer_max_size`, 16 MiB bis 1 GiB); bewusst keine Hex-Bearbeitung (eigener Editor für Binärdateien unter [`[editors]`](execute.md)) |
 | Ctrl+S | Text, Hex oder Unicode; durchsucht nur den ZIP-Index | Text oder Hex |
 | Attribute | Windows-Attribute (R, A, S, H) | Unix-Berechtigungen oktal (`644`); kein Eigentümer/Gruppe. Unter Windows R, H, S und A wie in ZTreeWin |
 | Sortieren | Name, Ext, Date, Time, Length, Alpha, nuMber, Size, Value, Unsorted; Charset; gleich/unterschiedlich bei geteiltem Bildschirm | Name, Ext, Date, Size, aufsteigend/absteigend, Pfad zuerst; jedes Fenster hat seine eigene Reihenfolge |

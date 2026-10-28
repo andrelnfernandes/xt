@@ -185,14 +185,24 @@ pub fn editor_command(command: &str, file: &Path, cwd: &Path) -> External {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    /// What `open_detached` was asked to open with no opener set (tests only).
+    pub static OPENED: std::cell::RefCell<Vec<PathBuf>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
 /// Opens `file` in the system's default program (`xdg-open`, `start` on
 /// Windows, or `opener`), without handing over the terminal: the program
 /// runs detached in the background.
 pub fn open_detached(file: &Path, opener: &str) -> std::io::Result<()> {
     use std::process::Stdio;
+    // In tests, never opens real programs on the desktop: only notes the file.
+    #[cfg(test)]
+    if opener.trim().is_empty() {
+        OPENED.with_borrow_mut(|o| o.push(file.to_path_buf()));
+        return Ok(());
+    }
     let opener = match opener.trim() {
-        // In tests, never opens real programs on the desktop.
-        "" if cfg!(test) => NO_OP,
         "" => DEFAULT_OPENER,
         other => other,
     };
@@ -348,9 +358,6 @@ pub fn batch_header(file: &Path) -> Option<&'static [u8]> {
 #[cfg(unix)]
 const DEFAULT_OPENER: &str = "xdg-open";
 #[cfg(unix)]
-const NO_OP: &str = "true";
-
-#[cfg(unix)]
 fn default_editor() -> &'static str {
     if in_path("editor") { "editor" } else { "vi" }
 }
@@ -399,9 +406,6 @@ pub fn batch_header(file: &Path) -> Option<&'static [u8]> {
 
 #[cfg(windows)]
 const DEFAULT_OPENER: &str = "start \"\"";
-#[cfg(windows)]
-const NO_OP: &str = "rem";
-
 #[cfg(windows)]
 fn default_editor() -> &'static str {
     "notepad"

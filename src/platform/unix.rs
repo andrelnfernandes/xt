@@ -221,6 +221,16 @@ pub(super) fn fish_data_dir() -> Option<PathBuf> {
     Some(base.join("fish"))
 }
 
+/// RAM and swap from `/proc/meminfo`.
+fn meminfo() -> (Option<Memory>, Option<Memory>) {
+    parse_meminfo(&fs::read_to_string("/proc/meminfo").unwrap_or_default())
+}
+
+/// The machine's RAM, from `/proc/meminfo`.
+pub fn memory() -> Option<Memory> {
+    meminfo().0
+}
+
 /// The machine, from `/proc` and `/etc/os-release` (Linux; elsewhere most
 /// of it stays empty).
 pub fn system() -> System {
@@ -230,8 +240,7 @@ pub fn system() -> System {
             .map(|t| t.trim().to_string())
             .filter(|t| !t.is_empty())
     };
-    let meminfo = read("/proc/meminfo").unwrap_or_default();
-    let (memory, swap) = parse_meminfo(&meminfo);
+    let (memory, swap) = meminfo();
     let kernel = match (
         line("/proc/sys/kernel/ostype"),
         line("/proc/sys/kernel/osrelease"),

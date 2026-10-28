@@ -27,6 +27,48 @@ isso, provavelmente o Xylem também terá uma versão para Windows.
 O Xylem segue as teclas e o jeito de trabalhar do ZTreeWin sempre que possível;
 as diferenças estão descritas em [Comparação com o ZTreeWin](docs/manual/ztreewin.md) (em inglês).
 
+## Segurança: arquivos hostis
+
+O Xylem nunca deve travar, congelar, executar código, escrever fora do destino
+ou esgotar a memória devido ao conteúdo ou ao nome de um arquivo, mesmo que ele
+tenha sido criado propositalmente para isso. Arquivos baixados, pacotes abertos,
+nomes enviados por um servidor remoto e repositórios clonados são todos tratados
+como hostis. Qualquer falha desse tipo é um erro grave e será corrigida com
+rapidez assim que relatada.
+
+Ainda assim, erros acontecem. Veja o que o Xylem faz para manter o risco baixo:
+
+- Tudo o que o Xylem lê por conta própria (texto, hex, codificações, arquivos
+  comprimidos, pacotes) passa por analisadores em Rust com segurança de memória.
+  Nenhum programa externo é executado em um arquivo a menos que você solicite
+  com E, O ou X.
+- Tudo tem limite: a quantidade lida, a quantidade descomprimida, o tempo gasto
+  e o volume de memória que um descompressor pode usar. Apenas um nível de
+  compressão é desfeito, e nada é gravado em disco para exibir um arquivo.
+- Caracteres de controle e controles bidirecionais (Trojan Source) nunca chegam
+  ao terminal. Nomes com caracteres bidi ocultos são sinalizados, e o O pede
+  confirmação antes de abri-los.
+- Ao extrair pacotes ou copiar de uma máquina remota, caminhos com `..` ou
+  caminhos absolutos são recusados, links simbólicos dentro de pacotes não são
+  extraídos, bits setuid são descartados e nomes enviados por servidores SFTP são
+  verificados.
+- O status automático do Git ignora o `core.fsmonitor` do repositório e ignora
+  repositórios que definam seus próprios filtros.
+- As dependências são verificadas contra o banco de dados do RustSec no CI.
+
+Você pode reduzir ainda mais a superfície de ataque:
+
+- Desative a descompressão no visualizador (`viewer_decompress = false`, F12)
+  ao navegar em pastas não confiáveis com o Autoview, ou mantenha o Autoview (F7)
+  fechado nelas.
+- Mantenha a integração com o Git desativada (`git = false`, o padrão) para
+  repositórios que você não criou.
+- Não execute o Xylem como root.
+- Só abra arquivos não confiáveis com O se você confiar no programa que irá
+  abri-los: o Xylem apenas repassa o arquivo para ele.
+
+Encontrou um problema? Relate-o de forma privada [pelos avisos de segurança do GitHub](https://github.com/andrelnfernandes/xylem/security/advisories/new), não em uma issue pública.
+
 ## Aviso
 
 O Xylem é um projeto independente, escrito do zero. Não tem ligação com a

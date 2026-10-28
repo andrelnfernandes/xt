@@ -23,6 +23,10 @@ pub enum Opt {
     SyntaxColors,
     ViewerWrap,
     ViewerLineNumbers,
+    ViewerDecompress,
+    LegacyCharset,
+    ViewerMaxSize,
+    Icons,
     Sort,
     SortDescending,
     EnterViews,
@@ -102,6 +106,22 @@ pub const PAGES: &[Page] = &[
                 Opt::ViewerLineNumbers,
             ),
             ('I', "Built-in terminal colors (Alt+X)", Opt::TerminalTheme),
+            (
+                'J',
+                "Show .gz/.xz/.zst/.bz2 decompressed in the viewer",
+                Opt::ViewerDecompress,
+            ),
+            (
+                'K',
+                "Charset of non-UTF-8 files (O in the viewer)",
+                Opt::LegacyCharset,
+            ),
+            (
+                'L',
+                "Largest part of a file the viewer reads",
+                Opt::ViewerMaxSize,
+            ),
+            ('M', "Icons and glyphs (Nerd Fonts)", Opt::Icons),
         ],
     ),
     (
@@ -192,6 +212,19 @@ impl Opt {
             Opt::SyntaxColors => yes_no(o.syntax_highlight),
             Opt::ViewerWrap => yes_no(o.viewer_wrap),
             Opt::ViewerLineNumbers => yes_no(o.viewer_line_numbers),
+            Opt::ViewerDecompress => yes_no(o.viewer_decompress),
+            Opt::LegacyCharset => o.legacy_charset.as_str().into(),
+            Opt::ViewerMaxSize => {
+                let bytes = o
+                    .viewer_max_size
+                    .bytes(crate::platform::memory().map(|m| m.total));
+                let size = format!("{} MiB", bytes >> 20);
+                match o.viewer_max_size {
+                    crate::config::ViewerMaxSize::Auto => format!("auto ({size})"),
+                    _ => size,
+                }
+            }
+            Opt::Icons => o.icons.as_str().into(),
             Opt::FileDisplay => match o.file_display.as_str() {
                 "names" => "Names in columns".into(),
                 "names_size" => "Names and sizes in columns".into(),
@@ -277,6 +310,10 @@ impl Opt {
             Opt::SyntaxColors => o.syntax_highlight = !o.syntax_highlight,
             Opt::ViewerWrap => o.viewer_wrap = !o.viewer_wrap,
             Opt::ViewerLineNumbers => o.viewer_line_numbers = !o.viewer_line_numbers,
+            Opt::ViewerDecompress => o.viewer_decompress = !o.viewer_decompress,
+            Opt::LegacyCharset => o.legacy_charset = o.legacy_charset.next(),
+            Opt::ViewerMaxSize => o.viewer_max_size = o.viewer_max_size.next(),
+            Opt::Icons => o.icons = o.icons.next(),
             Opt::FileDisplay => o.file_display = o.file_display.next(),
             Opt::Sort => o.sort = o.sort.next(),
             Opt::SortDescending => o.sort_descending = !o.sort_descending,
@@ -499,6 +536,43 @@ mod tests {
         press(&mut s, KeyCode::Char('9'));
         assert_eq!(s.page, 3, "no such page");
         assert!(s.dirty());
+    }
+
+    #[test]
+    fn j_on_page_2_toggles_viewer_decompress() {
+        let mut s = Settings::new(Config::default(), None);
+        assert!(s.config.options.viewer_decompress);
+        press(&mut s, KeyCode::PageDown);
+        press(&mut s, KeyCode::Char('j'));
+        assert!(!s.config.options.viewer_decompress);
+        press(&mut s, KeyCode::Char('j'));
+        assert!(s.config.options.viewer_decompress);
+    }
+
+    #[test]
+    fn k_on_page_2_cycles_legacy_charset() {
+        use crate::config::LegacyCharset::*;
+        let mut s = Settings::new(Config::default(), None);
+        press(&mut s, KeyCode::PageDown);
+        let mut seen = vec![s.config.options.legacy_charset];
+        for _ in 0..4 {
+            press(&mut s, KeyCode::Char('k'));
+            seen.push(s.config.options.legacy_charset);
+        }
+        assert_eq!(seen, [Auto, Cp850, Cp1252, Cp437, Auto]);
+    }
+
+    #[test]
+    fn l_on_page_2_cycles_viewer_max_size() {
+        use crate::config::ViewerMaxSize::*;
+        let mut s = Settings::new(Config::default(), None);
+        press(&mut s, KeyCode::PageDown);
+        let mut seen = vec![s.config.options.viewer_max_size];
+        for _ in 0..5 {
+            press(&mut s, KeyCode::Char('l'));
+            seen.push(s.config.options.viewer_max_size);
+        }
+        assert_eq!(seen, [Auto, Mib16, Mib64, Mib256, Mib1024, Auto]);
     }
 
     #[test]

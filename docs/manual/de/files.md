@@ -55,6 +55,10 @@ zeigt bis zu 16 MiB).
   unter `opener` eingestellt werden.
 - Alt+F5: ein [Archiv](archives.md) wie ein Verzeichnis öffnen.
 
+## Versteckte Richtungszeichen
+
+Manche unsichtbaren Zeichen ändern die Schreibrichtung, sodass ein Name anders aussehen kann, als er wirklich lautet (Trojan Source, CVE-2021-42574; zum Beispiel kann `fatura\u{202E}fdp.sh` wie ein harmloses PDF aussehen). Xylem sendet sie nie an das Terminal: Im Namen erscheinen sie rot markiert, die Fußzeile warnt mit "Name has hidden bidirectional characters", wenn der Cursor auf einem solchen Namen steht, und `O` fragt vor dem Öffnen nach und zeigt den Namen mit den als `\u{XXXX}` ausgeschriebenen Zeichen.
+
 ## Die Zwischenablage
 
 `Y` oder Ctrl+Insert kopiert den Pfad der Datei (im Baum den des
