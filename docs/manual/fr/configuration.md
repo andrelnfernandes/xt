@@ -14,6 +14,10 @@ généralement la fenêtre et n'atteint jamais Xylem) ouvre quatre pages :
 
 La limite de taille de la visionneuse (**L** à la page 2) coûte de la mémoire et du temps : avec `1024` Mio, ouvrir un fichier texte ordinaire de cette taille occupe environ 2,5 Gio de RAM et prend environ 5 s, et les fichiers aux lignes très courtes coûtent plus par octet (voir [la visionneuse](viewer.md)).
 
+Les icônes et glyphes (**M** à la page 2) nécessitent une police intégrant le patch Nerd Fonts. Aucune police spécifique n'est imposée : n'importe quelle police à chasse fixe convient (comme Fira Code, JetBrains Mono, Hack, Meslo ou Cascadia Code), tant que vous utilisez son édition « Nerd Font ». Nerd Fonts injecte des milliers de glyphes standards dans la zone privée d'Unicode. Une police classique sans ce patch (même la Fira Code originale) ne contient pas ces icônes et affichera des carrés vides (`□`). Pour les utiliser :
+- Téléchargez la Nerd Font de votre choix sur nerdfonts.com ou installez un paquet Nerd Fonts via le gestionnaire de paquets de votre distribution.
+- Sélectionnez cette police dans les réglages de votre émulateur de terminal.
+
 La lettre de l'option (ou Enter) modifie la valeur, PgUp/PgDn ou 1–4 changent de
 page, **F4** choisit le thème dans une liste (avec aperçu immédiat), **F3**
 enregistre et applique, **Esc** annule (en demandant confirmation s'il y a des
