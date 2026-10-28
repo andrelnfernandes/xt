@@ -21,6 +21,7 @@ pub enum Opt {
     SyntaxColors,
     ViewerWrap,
     ViewerLineNumbers,
+    ViewerDecompress,
     Sort,
     SortDescending,
     EnterViews,
@@ -94,6 +95,11 @@ pub const PAGES: &[Page] = &[
                 Opt::ViewerLineNumbers,
             ),
             ('I', "Built-in terminal colors (Alt+X)", Opt::TerminalTheme),
+            (
+                'J',
+                "Show .gz/.xz/.zst/.bz2 decompressed in the viewer",
+                Opt::ViewerDecompress,
+            ),
         ],
     ),
     (
@@ -167,6 +173,7 @@ impl Opt {
             Opt::SyntaxColors => yes_no(o.syntax_highlight),
             Opt::ViewerWrap => yes_no(o.viewer_wrap),
             Opt::ViewerLineNumbers => yes_no(o.viewer_line_numbers),
+            Opt::ViewerDecompress => yes_no(o.viewer_decompress),
             Opt::FileDisplay => match o.file_display.as_str() {
                 "names" => "Names in columns".into(),
                 "names_size" => "Names and sizes in columns".into(),
@@ -251,6 +258,7 @@ impl Opt {
             Opt::SyntaxColors => o.syntax_highlight = !o.syntax_highlight,
             Opt::ViewerWrap => o.viewer_wrap = !o.viewer_wrap,
             Opt::ViewerLineNumbers => o.viewer_line_numbers = !o.viewer_line_numbers,
+            Opt::ViewerDecompress => o.viewer_decompress = !o.viewer_decompress,
             Opt::FileDisplay => o.file_display = o.file_display.next(),
             Opt::Sort => o.sort = o.sort.next(),
             Opt::SortDescending => o.sort_descending = !o.sort_descending,
@@ -471,6 +479,17 @@ mod tests {
         press(&mut s, KeyCode::Char('9'));
         assert_eq!(s.page, 3, "no such page");
         assert!(s.dirty());
+    }
+
+    #[test]
+    fn j_on_page_2_toggles_viewer_decompress() {
+        let mut s = Settings::new(Config::default(), None);
+        assert!(s.config.options.viewer_decompress);
+        press(&mut s, KeyCode::PageDown);
+        press(&mut s, KeyCode::Char('j'));
+        assert!(!s.config.options.viewer_decompress);
+        press(&mut s, KeyCode::Char('j'));
+        assert!(s.config.options.viewer_decompress);
     }
 
     #[test]

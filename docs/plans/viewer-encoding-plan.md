@@ -584,10 +584,21 @@ fn xz_header_with_dict_props(props: u8) -> Vec<u8> {
   - `reload` usa `Self::open(path, self.load)`.
 - Cabeçalho:
   - `format!("  {} → {} bytes", kind.name(), fmt_num(data_len))`;
-  - corte: `format!("  (showing first {} MiB)", limit >> 20)` ou
-    `"... MiB decompressed)"` quando há compressão.
+  - corte, arquivo comum: `format!("  (showing first {} MiB)", limit >> 20)`;
+  - corte, arquivo comprimido (o corte pode vir do tempo ou da entrada, então
+    o limite não diz o que aparece): `format!("  (showing first {} bytes
+    decompressed)", fmt_num(data_len))`, com os bytes que o viewer tem.
+- Decisões da revisão (rulings 12 e 13):
+  - o Autoview não desenha `v.note`: o título vira
+    ` Autoview: {name} — {note} ` quando há nota;
+  - a nota do TAR só vale se `note` ainda é `None` (não apaga a nota de
+    descompressão);
+  - se o limite de leitura cortou a entrada comprimida
+    (`size > raw.len()`), a nota `TRUNCATED` é descartada (`cut` fica);
+  - sem dados e sem nota é um fluxo vazio de verdade: texto vazio com
+    `compression = Some(..)`; sem dados e com nota é falha (hex cru + nota).
 
-- [ ] **Passo 1: escrever os testes em `viewer.rs`, que devem falhar.** Use
+- [x] **Passo 1: escrever os testes em `viewer.rs`, que devem falhar.** Use
   os helpers da tarefa 5 (`gz`) e um `LOAD = LoadOptions::view(MAX_BYTES)`.
   - `gz_shows_text`: `from_file("app.log.gz", n, gz(b"one\ntwo\n"), LOAD)`
     dá `visible_lines(2) == ["one", "two"]`,
@@ -610,10 +621,10 @@ fn xz_header_with_dict_props(props: u8) -> Vec<u8> {
     mesmo.
   - Em `app/tests.rs`: com o Autoview aberto num `app.log.gz`, o
     `app.autoview` mostra o texto.
-- [ ] **Passo 2:** os testes falham.
-- [ ] **Passo 3:** implementar.
-- [ ] **Passo 4:** `cargo test` passa.
-- [ ] **Passo 5:** commit
+- [x] **Passo 2:** os testes falham.
+- [x] **Passo 3:** implementar.
+- [x] **Passo 4:** `cargo test` passa.
+- [x] **Passo 5:** commit
   `Viewer: show .gz/.xz/.zst/.bz2 decompressed, with an honest cut notice`.
 
 ### Tarefa 9: opção `viewer_decompress` (F12, página 2, `J`)
@@ -635,18 +646,18 @@ fn xz_header_with_dict_props(props: u8) -> Vec<u8> {
 - Documentação: `viewer.md` (seção sobre arquivos comprimidos: formatos,
   limites, a nota do TAR) e `configuration.md`, nas 6 línguas.
 
-- [ ] **Passo 1: escrever os testes, que devem falhar.**
+- [x] **Passo 1: escrever os testes, que devem falhar.**
   - O `default_config_text_means_defaults`, que já existe, continua
     passando.
   - Um teste no estilo dos de `settings.rs`: a tecla `J` na página 2
     alterna `viewer_decompress`.
   - Em `app/tests.rs`: com `viewer_decompress = false`, o V num `.gz`
     mostra hex.
-- [ ] **Passo 2:** os testes falham.
-- [ ] **Passo 3:** implementar.
-- [ ] **Passo 4:** os testes passam.
-- [ ] **Passo 5:** escrever a documentação.
-- [ ] **Passo 6:** commit `Add viewer_decompress option (F12 page 2, J)`.
+- [x] **Passo 2:** os testes falham.
+- [x] **Passo 3:** implementar.
+- [x] **Passo 4:** os testes passam.
+- [x] **Passo 5:** escrever a documentação.
+- [x] **Passo 6:** commit `Add viewer_decompress option (F12 page 2, J)`.
   Atualize o status. Fim do PR 3.
 
 ---

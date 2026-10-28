@@ -9,6 +9,9 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use ratatui::style::Color;
 
+use crate::decompress::{
+    self, AUTOVIEW_DICT, AUTOVIEW_TIME, Compression, Limits, VIEW_DICT, VIEW_TIME,
+};
 use crate::highlight::Highlighter;
 use crate::search::Pattern;
 
@@ -64,6 +67,40 @@ pub enum Action {
     GotoLine,
 }
 
+/// How a file is read: how much of it, and whether a compressed file is
+/// shown decompressed.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LoadOptions {
+    pub decompress: bool,
+    pub limits: Limits,
+}
+
+impl LoadOptions {
+    /// The V key: up to `limit` bytes read, and as many decompressed.
+    pub fn view(limit: u64) -> Self {
+        LoadOptions {
+            decompress: true,
+            limits: Limits {
+                output: limit as usize,
+                dict: VIEW_DICT,
+                time: VIEW_TIME,
+            },
+        }
+    }
+
+    /// Autoview: 1 MiB and tighter memory and time limits.
+    pub fn autoview() -> Self {
+        LoadOptions {
+            decompress: true,
+            limits: Limits {
+                output: 1 << 20,
+                dict: AUTOVIEW_DICT,
+                time: AUTOVIEW_TIME,
+            },
+        }
+    }
+}
+
 /// Match found: in text mode, line and columns (in characters); in
 /// hex, `line` is the 16-byte row and `start..end` the bytes in the file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -110,6 +147,15 @@ pub struct Viewer {
     pub line_numbers: bool,
     /// First visible wrapped sub-row within `lines[top]` when `wrap` is active.
     pub sub_top: usize,
+    /// How the file was read (kept by `reload`).
+    pub load: LoadOptions,
+    /// The compression the file was shown through, and the file's size.
+    pub compression: Option<(Compression, u64)>,
+    /// Not all of the file (or of its decompressed contents) is shown.
+    cut: bool,
+    /// What went wrong decompressing, for the header: the note says it
+    /// too, but any key clears the note.
+    problem: Option<String>,
 }
 
 /// A piece of a displayed line: text, its color and whether it is part of
@@ -132,23 +178,92 @@ impl std::ops::Deref for StyledRow {
 }
 
 impl Viewer {
-    /// Reads only the start of the file (Autoview uses a smaller limit, to
-    /// move quickly through large files).
-    pub fn open_limited(path: PathBuf, limit: u64) -> io::Result<Self> {
+    /// Reads up to `load.limits.output` bytes of the file on disk.
+    pub fn open(path: PathBuf, load: LoadOptions) -> io::Result<Self> {
         let file = File::open(&path)?;
         let size = file.metadata()?.len();
-        let mut data = Vec::new();
-        file.take(limit).read_to_end(&mut data)?;
+        let mut raw = Vec::new();
+        file.take(load.limits.output as u64).read_to_end(&mut raw)?;
         Ok(Viewer {
             on_disk: true,
-            ..Self::from_bytes(path, size, data)
+            ..Self::from_file(path, size, raw, load)
         })
+    }
+
+    /// Views the start of a file (`raw`, of `size` bytes in all), decompressed
+    /// when it is a .gz/.xz/.zst/.bz2 and `load` says so.
+    pub fn from_file(path: PathBuf, size: u64, raw: Vec<u8>, load: LoadOptions) -> Self {
+        let mut cut = size > raw.len() as u64;
+        let mut compression = None;
+        let mut note = None;
+        let mut problem = None;
+        let mut failed = false;
+        let mut data = raw;
+        if let Some(kind) = load.decompress.then(|| decompress::sniff(&data)).flatten() {
+            let d = decompress::decompress(&data, kind, load.limits);
+            if d.data.is_empty() && d.note.is_some() {
+                failed = true;
+            } else {
+                data = d.data;
+                cut |= d.cut;
+                compression = Some((kind, size));
+            }
+            note = d.note;
+            // The decoder running out of input is expected when the read
+            // limit cut the compressed file.
+            if cut && !failed && note.as_deref() == Some(decompress::TRUNCATED) {
+                note = None;
+            }
+            problem = note.as_deref().and_then(|n| problem_text(n, failed, d.cut));
+            // V helps only if its own limit is enough. xz does not say what
+            // it needs, so V is suggested and may refuse too.
+            let v_can = d.needed.is_none_or(|n| n <= u64::from(VIEW_DICT));
+            if load.limits.dict == AUTOVIEW_DICT
+                && v_can
+                && note.as_deref() == Some(decompress::memory_note(AUTOVIEW_DICT).as_str())
+            {
+                note = note.map(|n| format!("{n} (V to view)"));
+            }
+        }
+        if note.is_none() && data.get(257..262) == Some(b"ustar") {
+            note = Some("TAR archive: Alt+F5 opens it as a folder".into());
+        }
+        // The colors follow the name inside the compressed file.
+        let name = compression.and_then(|(kind, _)| {
+            let s = path.to_str()?.strip_suffix(kind.extension())?;
+            Some(PathBuf::from(s.strip_suffix('.')?))
+        });
+        let mut v = Self::from_bytes(path, size, data);
+        if let Some(name) = name {
+            v = v.colored_as(&name);
+        }
+        if failed {
+            // The raw bytes of a compressed file that gave nothing.
+            v.mode = ViewMode::Hex;
+            v.colors = None;
+            v.colors_on = false;
+        }
+        v.load = load;
+        v.compression = compression;
+        v.cut = cut;
+        v.note = note;
+        v.problem = problem;
+        v
+    }
+
+    pub fn limit(&self) -> u64 {
+        self.load.limits.output as u64
+    }
+
+    /// Bytes of contents shown (decompressed ones, when it is compressed).
+    pub fn data_len(&self) -> u64 {
+        self.data.len() as u64
     }
 
     /// Reads the file again (after editing), keeping the position, the mode
     /// and whether colors are on.
     pub fn reload(&mut self) -> io::Result<()> {
-        let new = Self::open_limited(self.path.clone(), MAX_BYTES)?;
+        let new = Self::open(self.path.clone(), self.load)?;
         let old = std::mem::replace(self, new);
         self.mode = old.mode;
         self.top = old.top.min(self.line_count().saturating_sub(1));
@@ -277,6 +392,7 @@ impl Viewer {
         } else {
             ViewMode::Text
         };
+        let data_len = data.len() as u64;
         let (lines, bidi) = text_lines(&String::from_utf8_lossy(&data));
         let colors = (mode == ViewMode::Text)
             .then(|| Highlighter::for_file(&path, lines.first().map_or("", String::as_str)))
@@ -302,6 +418,10 @@ impl Viewer {
             wrap: false,
             line_numbers: false,
             sub_top: 0,
+            load: LoadOptions::view(MAX_BYTES),
+            compression: None,
+            cut: size > data_len,
+            problem: None,
         }
     }
 
@@ -321,7 +441,13 @@ impl Viewer {
     }
 
     pub fn truncated(&self) -> bool {
-        self.size > self.data.len() as u64
+        self.cut
+    }
+
+    /// The decompression failed or stopped on damaged data (the header
+    /// keeps saying so).
+    pub fn problem(&self) -> Option<&str> {
+        self.problem.as_deref()
     }
 
     pub fn line_count(&self) -> usize {
@@ -828,6 +954,27 @@ pub fn wrap_line_ranges(text: &str, width: usize) -> Vec<std::ops::Range<usize>>
     ranges
 }
 
+/// The header's lasting word on a decompression `note`: `failed` when
+/// nothing came out (the raw bytes are shown), `cut` when the decoder
+/// stopped on the time limit, which the cut notice already tells.
+fn problem_text(note: &str, failed: bool, cut: bool) -> Option<String> {
+    let truncated = note == decompress::TRUNCATED;
+    let reason = if truncated {
+        "truncated or corrupt"
+    } else {
+        note
+    };
+    if failed {
+        Some(format!("not decompressed: {reason}"))
+    } else if truncated {
+        Some(reason.to_string())
+    } else if cut {
+        None
+    } else {
+        Some(format!("incomplete: {reason}"))
+    }
+}
+
 /// How far `looks_binary` looks.
 pub const BINARY_PROBE: usize = 8192;
 
@@ -904,7 +1051,183 @@ fn hex_row(data: &[u8], offset: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::decompress::test_util::gz;
     use crate::search::SearchSpec;
+
+    const LOAD: LoadOptions = LoadOptions {
+        decompress: true,
+        limits: Limits {
+            output: MAX_BYTES as usize,
+            dict: VIEW_DICT,
+            time: VIEW_TIME,
+        },
+    };
+
+    fn from_gz(name: &str, raw: Vec<u8>, load: LoadOptions) -> Viewer {
+        let n = raw.len() as u64;
+        Viewer::from_file(PathBuf::from(name), n, raw, load)
+    }
+
+    #[test]
+    fn gz_shows_text() {
+        let raw = gz(b"one\ntwo\n");
+        let n = raw.len() as u64;
+        let v = Viewer::from_file(PathBuf::from("app.log.gz"), n, raw, LOAD);
+        assert_eq!(v.visible_lines(2), ["one", "two"]);
+        assert_eq!(v.compression, Some((Compression::Gzip, n)));
+        assert!(!v.truncated());
+    }
+
+    #[test]
+    fn cut_counts_the_decompressed_side() {
+        let text = "0123456789abcdef\n".repeat(4 << 16);
+        let raw = gz(text.as_bytes());
+        let n = raw.len() as u64;
+        assert!(n < 1 << 20);
+        let v = Viewer::from_file(
+            PathBuf::from("big.txt.gz"),
+            n,
+            raw,
+            LoadOptions::view(1 << 20),
+        );
+        assert!(v.truncated());
+        assert!(n < v.data.len() as u64);
+    }
+
+    #[test]
+    fn truncated_tar_gz_keeps_the_truncated_note() {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("a.tar.gz");
+        crate::archive::tests::make_tar(&path, true);
+        let mut raw = std::fs::read(&path).unwrap();
+        raw.truncate(raw.len() / 2);
+        let v = Viewer::from_file(path, raw.len() as u64, raw, LOAD);
+        assert_eq!(v.note.as_deref(), Some(crate::decompress::TRUNCATED));
+    }
+
+    #[test]
+    fn input_cut_by_the_read_limit_is_not_corrupt() {
+        let mut x: u32 = 12345;
+        let noise: Vec<u8> = (0..2 << 20)
+            .map(|_| {
+                x = x.wrapping_mul(1664525).wrapping_add(1013904223);
+                (x >> 24) as u8
+            })
+            .collect();
+        let mut raw = gz(&noise);
+        let size = raw.len() as u64;
+        raw.truncate(1 << 20);
+        let v = Viewer::from_file(
+            PathBuf::from("n.bin.gz"),
+            size,
+            raw,
+            LoadOptions::view(1 << 20),
+        );
+        assert!(v.truncated());
+        assert_eq!(v.note, None);
+    }
+
+    #[test]
+    fn empty_gz_is_an_empty_text() {
+        let v = from_gz("e.txt.gz", gz(b""), LOAD);
+        assert_eq!(v.mode, ViewMode::Text);
+        assert!(v.compression.is_some());
+        assert_eq!(v.note, None);
+    }
+
+    #[test]
+    fn plain_text_named_gz_stays_text() {
+        let v = from_gz("notes.txt.gz", b"just text".to_vec(), LOAD);
+        assert_eq!(v.compression, None);
+        assert_eq!(v.visible_lines(1), ["just text"]);
+    }
+
+    #[test]
+    fn signature_only_shows_raw_hex() {
+        let v = from_gz("a.gz", b"\x1F\x8B".to_vec(), LOAD);
+        assert_eq!(v.mode, ViewMode::Hex);
+        assert_eq!(v.note.as_deref(), Some(crate::decompress::TRUNCATED));
+    }
+
+    #[test]
+    fn header_problem_by_case() {
+        let mem = decompress::memory_note(VIEW_DICT);
+        let truncated = decompress::TRUNCATED;
+        assert_eq!(
+            problem_text(truncated, false, false).as_deref(),
+            Some("truncated or corrupt")
+        );
+        assert_eq!(
+            problem_text(truncated, true, false).as_deref(),
+            Some("not decompressed: truncated or corrupt")
+        );
+        assert_eq!(
+            problem_text(&mem, false, false),
+            Some(format!("incomplete: {mem}"))
+        );
+        // A time cut is already in the cut notice.
+        assert_eq!(
+            problem_text("decompression stopped after 3 s", false, true),
+            None
+        );
+    }
+
+    /// "(V to view)" only when V's own 64 MiB limit is enough.
+    #[test]
+    fn autoview_suggests_v_only_when_v_can_do_it() {
+        let note = |raw: &[u8]| from_gz("a.zst", raw.to_vec(), LoadOptions::autoview()).note;
+        let refused = decompress::memory_note(AUTOVIEW_DICT);
+        // zstd frame headers asking for a 32 MiB and a 128 MiB window.
+        let v_can = [0x28, 0xB5, 0x2F, 0xFD, 0x00, 0x78];
+        let v_cannot = [0x28, 0xB5, 0x2F, 0xFD, 0x00, 0x88];
+        assert_eq!(note(&v_can), Some(format!("{refused} (V to view)")));
+        assert_eq!(note(&v_cannot), Some(refused.clone()));
+        // xz does not say how much it needs: V may work, so it is suggested.
+        let xz = crate::decompress::test_util::xz_header_with_dict_props(40);
+        assert_eq!(note(&xz), Some(format!("{refused} (V to view)")));
+    }
+
+    #[test]
+    fn decompressed_source_gets_its_colors() {
+        let v = from_gz("x.rs.gz", gz(b"fn main() {}\n"), LOAD);
+        assert_eq!(v.language(), Some("Rust"));
+    }
+
+    #[test]
+    fn tar_gz_says_alt_f5() {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("a.tar.gz");
+        crate::archive::tests::make_tar(&path, true);
+        let raw = std::fs::read(&path).unwrap();
+        let v = Viewer::from_file(path, raw.len() as u64, raw, LOAD);
+        assert_eq!(
+            v.note.as_deref(),
+            Some("TAR archive: Alt+F5 opens it as a folder")
+        );
+    }
+
+    #[test]
+    fn decompress_off_shows_hex() {
+        let load = LoadOptions {
+            decompress: false,
+            ..LOAD
+        };
+        let v = from_gz("a.txt.gz", gz(b"one\n"), load);
+        assert_eq!(v.mode, ViewMode::Hex);
+        assert_eq!(v.compression, None);
+    }
+
+    #[test]
+    fn reload_keeps_the_load_options() {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("a.txt.gz");
+        std::fs::write(&path, gz(b"one\n")).unwrap();
+        let load = LoadOptions::view(1 << 20);
+        let mut v = Viewer::open(path, load).unwrap();
+        v.reload().unwrap();
+        assert_eq!(v.load, load);
+        assert_eq!(v.visible_lines(1), ["one"]);
+    }
 
     fn viewer(data: &[u8]) -> Viewer {
         Viewer::from_bytes(PathBuf::from("t"), data.len() as u64, data.to_vec())
@@ -966,7 +1289,7 @@ mod tests {
         let path = tmp.path().join("a.txt");
         let lines = |n: usize| (0..n).map(|i| format!("line {i}\n")).collect::<String>();
         std::fs::write(&path, lines(100)).unwrap();
-        let mut v = Viewer::open_limited(path.clone(), MAX_BYTES).unwrap();
+        let mut v = Viewer::open(path.clone(), LoadOptions::view(MAX_BYTES)).unwrap();
         assert!(v.on_disk);
         v.top = 50;
         std::fs::write(&path, lines(120)).unwrap();
@@ -1016,10 +1339,10 @@ mod tests {
         let tmp = crate::testing::tempdir();
         let path = tmp.path().join("f.txt");
         std::fs::write(&path, "abc").unwrap();
-        let v = Viewer::open_limited(path, MAX_BYTES).unwrap();
+        let v = Viewer::open(path, LoadOptions::view(MAX_BYTES)).unwrap();
         assert_eq!(v.size, 3);
         assert!(!v.truncated());
-        assert!(Viewer::open_limited(tmp.path().join("missing"), MAX_BYTES).is_err());
+        assert!(Viewer::open(tmp.path().join("missing"), LoadOptions::view(MAX_BYTES)).is_err());
     }
 
     fn pat(t: &str) -> Pattern {

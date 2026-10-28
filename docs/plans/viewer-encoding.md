@@ -4,8 +4,9 @@ Subprojeto 1 do [plano de visualizadores](viewers.md).
 
 **Status (2026-10-27):** PR 1 (guarda bidi, Tarefas 1 a 4) implementado no
 branch `bidi-guard`; PR 2 (módulo `decompress` e correção do Alt+F5,
-Tarefas 5 a 7) implementado no branch `decompress`; o próximo é o PR 3
-(Tarefa 8). Spec aprovado pelo
+Tarefas 5 a 7) implementado no branch `decompress`; PR 3 (Tarefas 8 e 9)
+implementado no branch `viewer-decompress`; o próximo é o PR 4
+(Tarefa 10). Spec aprovado pelo
 autor. O plano de implementação
 está em [viewer-encoding-plan.md](viewer-encoding-plan.md). Ao escrevê-lo,
 quatro pontos foram corrigidos aqui: a janela do zstd, a conta do xz, o
@@ -157,9 +158,15 @@ bytes brutos (disco / archive / remoto, até o limite)
 - **Cabeçalho**, depois do tamanho:
   - `gzip → 9,876,543 bytes` quando o arquivo é comprimido;
   - o nome da codificação (`CP850`, `UTF-16LE`...) quando não é UTF-8;
-  - quando o arquivo foi cortado: `(showing first 64 MiB)` ou
-    `(showing first 64 MiB decompressed)`, com o limite real do contexto.
-    Hoje esse aviso imprime sempre `MAX_BYTES`.
+  - quando o arquivo foi cortado: `(showing first 64 MiB)` (arquivo comum,
+    com o limite real do contexto) ou `(showing first 1,048,576 bytes
+    decompressed)` (comprimido, com os bytes que o viewer tem, porque o corte
+    também pode vir do tempo). Hoje esse aviso imprime sempre `MAX_BYTES`;
+  - quando a descompressão falha ou para em dados danificados, na cor de
+    erro: `(truncated or corrupt)`, `(incomplete: …)` (o limite de memória
+    parou no meio) ou `(not decompressed: …)` (nada saiu, e o hex mostra os
+    bytes brutos). O aviso do rodapé some na primeira tecla; isto fica
+    (revisão final, M1).
 - **Tecla `O` ("cOdepage"), dentro do viewer** (na lista de arquivos, `O`
   continua sendo "abrir no programa do sistema"), troca em ciclo: UTF-8, CP850, 1252, CP437,
   UTF-16LE, UTF-16BE. O rodapé mostra o nome, por exemplo
@@ -252,7 +259,10 @@ tamanho. No remoto, também controla as respostas do servidor.
   (`FrameDecoder::set_max_window_size`; o padrão, `DEFAULT_MAX_WINDOW_SIZE`,
   é 128 MiB). O máximo do formato, ~3,75 TB (`MAX_WINDOW_SIZE`), não é o
   teto do decoder. Arquivos `zstd --long` e `--ultra -22` (128 MiB) são
-  recusados no V, com aviso.
+  recusados no V, com aviso. No Autoview, o ` (V to view)` só aparece
+  quando a janela pedida (`WindowSizeTooBig { requested }`) cabe nos 64 MiB
+  do V. O xz não diz quanto pede, então nele o sufixo continua sempre
+  (revisão final, M6).
   - O `StreamingDecoder` lê um frame só. Para arquivos com vários frames
     (`pzstd`, `zstd -T`), cria-se um decoder novo para cada frame até a
     entrada acabar. O erro `ReadFrameHeaderError::SkipFrame` pula `length`
