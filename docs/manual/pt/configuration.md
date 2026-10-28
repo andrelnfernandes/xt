@@ -14,6 +14,10 @@ janela e nunca chega ao Xylem) abre quatro páginas:
 
 O limite de tamanho do visualizador (**L** na página 2) custa memória e tempo: com `1024` MiB, abrir um arquivo de texto comum desse tamanho ocupa cerca de 2,5 GiB de RAM e leva uns 5 s, e arquivos de linhas muito curtas custam mais por byte (veja [o visualizador](viewer.md)).
 
+Ícones e glifos (**M** na página 2) exigem uma fonte com o patch do Nerd Fonts. Não é necessária uma fonte específica: qualquer fonte monoespaçada funciona (como Fira Code, JetBrains Mono, Hack, Meslo ou Cascadia Code), desde que seja a sua versão "Nerd Font". O Nerd Fonts injeta milhares de glifos padronizados na área privada do Unicode. Fontes comuns sem o patch (mesmo a Fira Code original) não contêm esses desenhos e exibirão retângulos vazios (`□`). Para utilizá-los:
+- Baixe qualquer Nerd Font de sua preferência em nerdfonts.com ou instale um pacote Nerd Fonts pelo gerenciador de pacotes da sua distribuição.
+- Selecione a fonte instalada nas preferências do seu emulador de terminal.
+
 A letra da opção (ou Enter) altera o valor, PgUp/PgDn ou 1–4 trocam de página,
 **F4** escolhe o tema em uma lista (com pré-visualização instantânea), **F3**
 salva e aplica, **Esc** cancela (pergunta se houver alterações).

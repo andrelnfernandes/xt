@@ -65,7 +65,8 @@ legacy_charset = "auto"
 # 16 to 256 MiB), "16", "64", "256" or "1024" (MiB). Remote files: at most 16.
 viewer_max_size = "auto"
 # Icons and glyphs in file lists and the directory tree: "none" (classic
-# plain text) or "nerd-fonts" (requires a Nerd Font terminal font).
+# plain text) or "nerd-fonts" (requires a Nerd Font terminal font from
+# https://www.nerdfonts.com, e.g. FiraCode or JetBrainsMono Nerd Font).
 icons = "none"
 # Initial mode of the files window (Alt+F changes it while running): "names"
 # (several columns), "names_size" (columns with size), "details" (one
