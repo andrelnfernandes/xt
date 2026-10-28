@@ -113,11 +113,7 @@ pub const PAGES: &[Page] = &[
                 "Largest part of a file the viewer reads",
                 Opt::ViewerMaxSize,
             ),
-            (
-                'M',
-                "Icons and glyphs (Nerd Fonts)",
-                Opt::Icons,
-            ),
+            ('M', "Icons and glyphs (Nerd Fonts)", Opt::Icons),
         ],
     ),
     (
