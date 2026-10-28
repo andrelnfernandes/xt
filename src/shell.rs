@@ -50,6 +50,31 @@ pub const FILE_VAR: &str = "XY_FILE";
 /// Environment variable with the generated Vim theme script (`-S`).
 pub const VIM_THEME_VAR: &str = "XY_VIM_THEME";
 
+/// Terminal hex editors searched on `PATH` when `binary_editor` is empty.
+#[cfg(unix)]
+pub const BINARY_EDITORS: &[&str] = &["hexedit", "heh", "bvi", "dhex"];
+#[cfg(windows)]
+pub const BINARY_EDITORS: &[&str] = &["heh", "hexedit", "bvi"];
+
+/// Finds the first installed terminal hex editor on `PATH`.
+pub fn detect_binary_editor() -> Option<&'static str> {
+    let paths = std::env::var_os("PATH")?;
+    for &cand in BINARY_EDITORS {
+        let found = std::env::split_paths(&paths).any(|dir| {
+            let full = dir.join(cand);
+            #[cfg(windows)]
+            if !full.is_file() {
+                return dir.join(format!("{cand}.exe")).is_file();
+            }
+            full.is_file()
+        });
+        if found {
+            return Some(cand);
+        }
+    }
+    None
+}
+
 /// Whether the command line starts with `vi`, `vim` or `nvim` (including
 /// symlinks such as `/usr/bin/editor -> /usr/bin/vim.basic`).
 pub fn is_vim_line(line: &OsStr) -> bool {

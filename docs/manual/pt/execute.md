@@ -13,36 +13,60 @@ editor é `vi`, `vim` ou `nvim`. Defina `editor_in_frame = false` para entregar
 todo o terminal ao editor, ou `editor_theme = false` para manter o esquema de
 cores próprio do editor.
 
-### Editores por tipo de arquivo
+### Arquivos binários e editores por tipo de arquivo
 
-Um editor de texto só estraga uma imagem ou um programa, por isso o E não abre
-**arquivos binários** (aqueles com um byte nulo próximo ao início, que o
-visualizador mostra em hexadecimal): ele avisa no rodapé e sugere `O`, que abre
-o arquivo no programa próprio do sistema. Para editá-los, ou para dar um editor
-próprio a certos arquivos, liste-os na tabela `[editors]` do `config.toml`:
+Um editor de texto só estraga uma imagem ou um programa, por isso o `E` nunca
+abre **arquivos binários** (aqueles com um byte nulo próximo ao início, que o
+visualizador mostra em hexadecimal) no editor de texto.
+
+Em vez disso, quando **Edit binary files with E** está ativado
+(`edit_binary = true`, tecla **I** na página 1 do **F12**), o `E` abre arquivos
+binários em um editor hexadecimal/binário:
+
+1. Um padrão correspondente em `[editors]` (se houver), ou
+2. O **Binary editor** definido na página 1 do **F12** (`binary_editor`, tecla
+   **J**) ou `binary` em `[editors]`, ou
+3. Se deixado em branco, o primeiro editor hexadecimal de terminal encontrado no
+   `PATH`:
+   - **Linux**: `hexedit`, `heh`, `bvi`, `dhex`
+   - **Windows**: `heh` (`winget install ndd7xv.heh`), `hexedit`, `bvi`
+
+Editores hexadecimais de terminal rodam da mesma forma que o editor de texto:
+**dentro da moldura do Xylem** por padrão (`editor_in_frame = true`) e com o
+**tema de cores do Xylem** (`editor_theme = true`). Para um editor hexadecimal
+gráfico (`ImHex`, `GHex`, `Okteta` no Linux; `ImHex`, `HxD` no Windows) que você
+queira deixar aberto na própria janela dele, adicione `&` ao final do comando
+(por exemplo, `imhex %f &` ou `ghex %f &`): o Xylem o inicia diretamente sem
+abrir a moldura de terminal.
+
+Se preferir que o `E` não abra arquivos binários (e apenas avise no rodapé
+sugerindo `O` para abrir no programa do sistema), mude **Edit binary files with
+E** para `no` (`edit_binary = false` na página 1 do **F12**).
+
+Para dar um editor próprio a determinados tipos de arquivo, liste-os na tabela
+`[editors]` do `config.toml`:
 
 ```toml
 [editors]
-"*.png *.jpg *.jpeg *.gif" = "gimp %f"
-"*.md" = "typora"
+"*.png *.jpg *.jpeg *.gif" = "gimp %f &"
+"*.md" = "typora %f &"
 "*.svg" = ""            # vazio: o editor habitual, mesmo tendo correspondido
-binary = "hexedit"      # qualquer outro arquivo binário
+binary = "hexedit"      # reserva para qualquer outro arquivo binário
 ```
 
 Cada chave é uma lista de padrões de nomes, como no [Filespec](filespec.md)
 (maiúsculas e minúsculas não importam); cada valor é uma linha de comando, com
 `%f` para o arquivo (caso contrário, o arquivo vai ao final). A primeira chave
 que corresponder vence, na ordem do arquivo. `binary` serve para os arquivos
-binários que nenhum padrão capturou; os demais arquivos abrem no editor
-habitual. Os comandos rodam da mesma forma que o editor: dentro da moldura do
-Xylem por padrão, ou assumindo o terminal quando `editor_in_frame = false`
-(para um programa gráfico que você queira deixar aberto em segundo plano,
-adicione `&` e defina `editor_in_frame = false`, ou use `O`).
+binários que nenhum padrão capturou quando `binary_editor` está vazio; os demais
+arquivos abrem no editor de texto habitual.
 
-O Xylem não tem um editor hexadecimal próprio, e isso é uma decisão, não uma
-falta: daria muito trabalho para pouco uso, e editar bytes à mão é um jeito
-fácil de corromper um arquivo. Quem precisa disso pode escolher uma ferramenta
-feita para esse fim (`hexedit`, `bvi`, `dhex`, `ImHex`...) em `binary`.
+O Xylem não tem um editor hexadecimal próprio, e isso é uma decisão deliberada:
+desenvolver e manter um daria muito trabalho para pouco uso, e editar bytes à
+mão é um jeito fácil de corromper um arquivo. Em vez disso, o Xylem integra
+editores hexadecimais dedicados direto dentro da sua moldura e com o seu tema de
+cores — e permite desativar a edição de binários com uma única opção no **F12**
+se você não quiser essa integração.
 
 ## eXecute (X)
 

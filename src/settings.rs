@@ -12,6 +12,8 @@ pub enum Opt {
     Editor,
     EditorInFrame,
     EditorTheme,
+    EditBinary,
+    BinaryEditor,
     HelpLanguage,
     Opener,
     DateFormat,
@@ -47,10 +49,14 @@ type Page = (&'static str, &'static [(char, &'static str, Opt)]);
 const EDITOR_LABEL: &str = "Editor (empty: $VISUAL, $EDITOR, vi)";
 #[cfg(unix)]
 const OPENER_LABEL: &str = "Open with (empty: xdg-open)";
+#[cfg(unix)]
+const BINARY_EDITOR_LABEL: &str = "Binary editor (empty: auto — hexedit, heh, bvi, dhex)";
 #[cfg(windows)]
 const EDITOR_LABEL: &str = "Editor (empty: %VISUAL%, %EDITOR%, notepad)";
 #[cfg(windows)]
 const OPENER_LABEL: &str = "Open with (empty: start)";
+#[cfg(windows)]
+const BINARY_EDITOR_LABEL: &str = "Binary editor (empty: auto — heh, hexedit, bvi)";
 
 pub const PAGES: &[Page] = &[
     (
@@ -80,6 +86,8 @@ pub const PAGES: &[Page] = &[
                 "Help language (F1, L switches while open)",
                 Opt::HelpLanguage,
             ),
+            ('I', "Edit binary files with E", Opt::EditBinary),
+            ('J', BINARY_EDITOR_LABEL, Opt::BinaryEditor),
         ],
     ),
     (
@@ -169,6 +177,23 @@ impl Opt {
             Opt::Editor => o.editor.clone(),
             Opt::EditorInFrame => yes_no(o.editor_in_frame),
             Opt::EditorTheme => yes_no(o.editor_theme),
+            Opt::EditBinary => yes_no(o.edit_binary),
+            Opt::BinaryEditor => {
+                if !o.binary_editor.trim().is_empty() {
+                    o.binary_editor.clone()
+                } else if let Some((_, cmd)) = c
+                    .editors
+                    .0
+                    .iter()
+                    .find(|(k, v)| k == crate::editors::BINARY && !v.trim().is_empty())
+                {
+                    format!("(from [editors]: {})", cmd.trim())
+                } else if let Some(found) = crate::shell::detect_binary_editor() {
+                    format!("(auto: {found})")
+                } else {
+                    "(auto: none found)".into()
+                }
+            }
             Opt::HelpLanguage => {
                 let raw = o.help_language.trim();
                 if raw.is_empty() || raw.eq_ignore_ascii_case("auto") {
@@ -259,9 +284,10 @@ impl Opt {
     fn cycle(self, c: &mut Config) -> bool {
         let o = &mut c.options;
         match self {
-            Opt::Editor | Opt::Opener => return false,
+            Opt::Editor | Opt::Opener | Opt::BinaryEditor => return false,
             Opt::EditorInFrame => o.editor_in_frame = !o.editor_in_frame,
             Opt::EditorTheme => o.editor_theme = !o.editor_theme,
+            Opt::EditBinary => o.edit_binary = !o.edit_binary,
             Opt::HelpLanguage => {
                 let mut choices = vec![String::from("auto")];
                 choices.extend(crate::help::available_languages());
@@ -371,6 +397,7 @@ impl Settings {
                     let text = input.text.trim().to_string();
                     match opt {
                         Opt::Opener => self.config.options.opener = text,
+                        Opt::BinaryEditor => self.config.options.binary_editor = text,
                         _ => self.config.options.editor = text,
                     }
                     self.editing = None;
@@ -440,6 +467,7 @@ impl Settings {
         if !opt.cycle(&mut self.config) {
             let current = match opt {
                 Opt::Opener => &self.config.options.opener,
+                Opt::BinaryEditor => &self.config.options.binary_editor,
                 _ => &self.config.options.editor,
             };
             self.editing = Some((opt, LineInput::new(current)));

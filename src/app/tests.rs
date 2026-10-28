@@ -2644,7 +2644,10 @@ fn e_on_a_binary_file_needs_an_editor_from_the_config() {
         b"\xff\xd8\xff\xe0\0\x10JFIF\0",
     )
     .unwrap();
+    write(tmp.path().join("raw.bin"), b"\x7fELF\0\x01\x02").unwrap();
     let mut app = App::new(tmp.path().to_path_buf());
+    // When edit_binary is false, E refuses binary files even if a hex editor is installed.
+    app.options.edit_binary = false;
     press(&mut app, KeyCode::Enter);
     press(&mut app, KeyCode::Char('e'));
     assert!(app.external.is_none(), "no text editor for binary files");
@@ -2658,18 +2661,32 @@ fn e_on_a_binary_file_needs_an_editor_from_the_config() {
     assert!(v.note.as_deref().unwrap().starts_with("Binary file"));
     press(&mut app, KeyCode::Esc);
 
+    // With edit_binary = true and binary_editor set in options (or [editors]), E opens it.
     let mut config = Config::default();
+    config.options.edit_binary = true;
+    config.options.binary_editor = "bvi".into();
     config.editors.0 = vec![
         ("*.png *.JPG".into(), "gimp %f &".into()),
         ("binary".into(), "hexedit".into()),
     ];
     app.apply_config(&config).unwrap();
+    // photo.jpg matches the pattern "*.png *.JPG".
     press(&mut app, KeyCode::Char('e'));
     let ext = app.external.take().expect("editor");
     let line = ext.line.to_string_lossy();
     assert!(line.starts_with("gimp ") && line.ends_with(" &"), "{line}");
-    // The name is in the line, or on Windows in XY_FILE.
     assert!(ext.file.is_some_and(|f| f.ends_with("photo.jpg")), "{line}");
+
+    // raw.bin uses options.binary_editor ("bvi"), or falls back to [editors].binary ("hexedit").
+    press(&mut app, KeyCode::Down);
+    press(&mut app, KeyCode::Char('e'));
+    let ext = app.external.take().expect("binary_editor");
+    assert!(ext.line.to_string_lossy().starts_with("bvi "));
+
+    app.options.binary_editor.clear();
+    press(&mut app, KeyCode::Char('e'));
+    let ext = app.external.take().expect("[editors].binary");
+    assert!(ext.line.to_string_lossy().starts_with("hexedit "));
 }
 
 #[test]

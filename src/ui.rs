@@ -1769,6 +1769,7 @@ fn draw_settings(frame: &mut Frame, s: &Settings) {
     let lines = if let Some((opt, input)) = &s.editing {
         let label = match opt {
             settings::Opt::Opener => "Open with: ",
+            settings::Opt::BinaryEditor => "Binary editor: ",
             _ => "Editor: ",
         };
         let col = menu.x + (label.len() + input.cursor) as u16;

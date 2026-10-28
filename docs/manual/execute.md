@@ -13,35 +13,56 @@ including syntax and UI colors matching the active theme when the editor is
 over to the editor instead, or `editor_theme = false` to keep the editor's own
 color scheme.
 
-### Editors by file type
+### Binary files and editors by file type
 
-A text editor only mangles an image or a program, so E does not open
-**binary files** (those with a null byte near the start, which the viewer
-shows in hex): it says so in the footer and suggests `O`, which opens the file
-in the system's own program. To edit them, or to give some files an editor of
-their own, list them in the `[editors]` table of `config.toml`:
+A text editor only mangles an image or a program, so `E` never opens **binary
+files** (those with a null byte near the start, which the viewer shows in hex)
+in the text editor.
+
+Instead, when **Edit binary files with E** is enabled (`edit_binary = true`, key
+**I** on page 1 of **F12**), `E` opens binary files in a hex/binary editor:
+
+1. A matching pattern in `[editors]` (if any), or
+2. The **Binary editor** set on page 1 of **F12** (`binary_editor`, key **J**) or
+   `binary` in `[editors]`, or
+3. If left empty, the first terminal hex editor found on `PATH`:
+   - **Linux**: `hexedit`, `heh`, `bvi`, `dhex`
+   - **Windows**: `heh` (`winget install ndd7xv.heh`), `hexedit`, `bvi`
+
+Terminal hex editors run the same way as the text editor: **inside Xylem's
+frame** by default (`editor_in_frame = true`) and with **Xylem's color theme**
+(`editor_theme = true`). For a graphical hex editor (`ImHex`, `GHex`, `Okteta`
+on Linux; `ImHex`, `HxD` on Windows) that you want to leave running in its own
+window, add `&` at the end of the command (for example, `imhex %f &` or
+`ghex %f &`): Xylem launches it directly without opening the terminal frame.
+
+If you prefer `E` not to open binary files at all (and only suggest `O` to open
+them in the system's program), set **Edit binary files with E** to `no`
+(`edit_binary = false` on page 1 of **F12**).
+
+To give specific file types an editor of their own, list them in the `[editors]`
+table of `config.toml`:
 
 ```toml
 [editors]
-"*.png *.jpg *.jpeg *.gif" = "gimp %f"
-"*.md" = "typora"
+"*.png *.jpg *.jpeg *.gif" = "gimp %f &"
+"*.md" = "typora %f &"
 "*.svg" = ""            # empty: the usual editor, even though it matched
-binary = "hexedit"      # any other binary file
+binary = "hexedit"      # fallback for any other binary file
 ```
 
 Each key is a list of name patterns, as in [Filespec](filespec.md) (case does
 not matter); each value a command line, with `%f` for the file (or else the
 file goes at the end). The first key that matches wins, in the file's order.
-`binary` is for the binary files that no pattern took; the other files open
-in the usual editor. Commands run the same way as the editor: inside Xylem's
-frame by default, or with the terminal handed over when `editor_in_frame = false`
-(for a graphical program you want to leave running, add `&` and set
-`editor_in_frame = false`, or use `O`).
+`binary` is for the binary files that no pattern took when `binary_editor` is
+empty; the other files open in the usual text editor.
 
-Xylem has no hex editor of its own, and that is a decision, not something
-missing: it would be a lot of work for little use, and editing bytes by hand
-is an easy way to corrupt a file. Whoever needs it can choose a tool made for
-that (`hexedit`, `bvi`, `dhex`, `ImHex`...) in `binary`.
+Xylem has no built-in hex editor of its own, and that is a deliberate design
+choice: writing and maintaining one would be a lot of work for little use, and
+editing raw bytes by hand is an easy way to corrupt a file. Instead, Xylem
+integrates dedicated hex editors right inside its frame and color theme — and
+lets you turn binary editing off with a single option in **F12** if you do not
+want it.
 
 ## eXecute (X)
 
