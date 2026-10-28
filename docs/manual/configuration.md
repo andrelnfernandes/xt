@@ -18,6 +18,8 @@ Icons and glyphs (**M** on page 2) require a font patched with Nerd Fonts. You d
 - Download any Nerd Font of your choice from nerdfonts.com, or install a Nerd Fonts package from your distribution's package manager.
 - Select that font in your terminal emulator's font settings.
 
+If the columns drift out of line with icons on, the terminal is probably drawing "ambiguous width" characters as wide (a setting common with Chinese, Japanese and Korean fonts), while Xylem counts each icon as one cell. Set that option to narrow, or turn icons off.
+
 The option's letter (or Enter) changes the value, PgUp/PgDn or 1–4 switch
 pages, **F4** picks the theme from a list (with an instant preview), **F3**
 saves and applies, **Esc** cancels (it asks if there are changes).

@@ -26,6 +26,7 @@ use crate::config::{self, IconStyle, TerminalTheme, formats, theme};
 use crate::filetype;
 use crate::git::StatusCache;
 use crate::help::{self, Help};
+use crate::icons::{DirKind, SLOT_WIDTH};
 use crate::input::Command;
 use crate::model::tree::{FileEntry, FileKind, NodeId};
 use crate::ops::{Conflict, Facts, Operation};
@@ -367,6 +368,22 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(Line::from(clock), right);
 }
 
+/// What the directory of a tree row is, for its icon.
+fn dir_kind(pane: &Pane, id: NodeId) -> DirKind {
+    let root = id == crate::model::tree::ROOT;
+    if root && pane.archive.is_some() {
+        DirKind::Archive
+    } else if root && pane.remote.is_some() {
+        DirKind::Remote
+    } else if pane.tree.has_git(id) {
+        DirKind::Repo
+    } else if pane.tree.node(id).expanded {
+        DirKind::Open
+    } else {
+        DirKind::Closed
+    }
+}
+
 fn draw_tree(
     frame: &mut Frame,
     pane: &mut Pane,
@@ -407,13 +424,12 @@ fn draw_tree(
             } else {
                 Style::new()
             };
-            let icon = crate::icons::dir_icon(
-                node.expanded,
-                false,
-                pane.archive.is_some() && row.id == crate::model::tree::ROOT,
-                pane.remote.is_some() && row.id == crate::model::tree::ROOT,
-                icons,
-            );
+            // Only with icons on: the repository check looks through the
+            // subdirectories and files of the row.
+            let icon = match icons {
+                IconStyle::None => None,
+                _ => crate::icons::dir_icon(dir_kind(pane, row.id), icons),
+            };
             let mut spans = vec![Span::styled(
                 row.prefix.clone(),
                 Style::new().fg(theme().dim),
@@ -429,7 +445,7 @@ fn draw_tree(
             spans.push(Span::styled(name.clone(), name_style));
             if let Some(totals) = &totals {
                 let (count, bytes) = totals[row.id];
-                let icon_len = if icon.is_some() { 2 } else { 0 };
+                let icon_len = if icon.is_some() { SLOT_WIDTH } else { 0 };
                 let used = row.prefix.chars().count() + icon_len + name.chars().count();
                 let mut bar = None;
                 let value = match (node.scanned, kbyte.show) {
@@ -587,16 +603,14 @@ fn draw_files(
     // Status letters of a file in the repository ("  " if unchanged).
     let marker =
         |pane: &Pane, f: FileRef| git.map(|g| g.marker(&pane.file_path(f)).unwrap_or(*b"  "));
-    let kind = match (pane.view, icons) {
-        (FileView::Dir, IconStyle::NerdFonts) => "\u{f07c} Files",
-        (FileView::Dir, _) => "Files",
-        (FileView::Branch(_), IconStyle::NerdFonts) => "\u{e725} Branch",
-        (FileView::Branch(_), _) => "Branch",
-        (FileView::Showall, IconStyle::NerdFonts) => "\u{f0349} Showall",
-        (FileView::Showall, _) => "Showall",
+    let kind = match pane.view {
+        FileView::Dir => "Files",
+        FileView::Branch(_) => "Branch",
+        FileView::Showall => "Showall",
     };
     let title = format!(
-        " {kind}: {} ({}) {} ",
+        " {}{kind}: {} ({}) {} ",
+        crate::icons::view_icon(pane.view, icons).unwrap_or_default(),
         pane.filespec.text(),
         fmt_num(pane.files.len() as u64),
         pane.sort.label()
@@ -689,7 +703,11 @@ fn draw_file_columns(
     } else {
         0
     };
-    let icon_w = if icons == IconStyle::None { 0 } else { 2 };
+    let icon_w = if icons == IconStyle::None {
+        0
+    } else {
+        SLOT_WIDTH
+    };
     let block = panel(title, active);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -744,8 +762,7 @@ fn draw_file_columns(
                 let mut cell = format!(
                     "{}{}{}{}",
                     if f.tagged { "■ " } else { "  " },
-                    git.map(|xy| git_marker_text(&xy, icons))
-                        .unwrap_or_default(),
+                    git.map(|xy| git_text(&xy)).unwrap_or_default(),
                     icon,
                     fit(&name, name_w)
                 );
@@ -788,14 +805,6 @@ fn file_style(f: &FileEntry) -> Style {
 /// `M ` → `"M  "`: the two status letters and a space.
 fn git_text(xy: &[u8; 2]) -> String {
     format!("{}{} ", char::from(xy[0]), char::from(xy[1]))
-}
-
-fn git_marker_text(xy: &[u8; 2], icons: IconStyle) -> String {
-    if let Some(icon) = crate::icons::git_icon(*xy, icons) {
-        icon.to_string()
-    } else {
-        git_text(xy)
-    }
 }
 
 /// What the one-column file window shows after each name (Alt+F).
@@ -887,15 +896,15 @@ fn file_line(
         Detail::Type(what) => format!(" {}", fit(&what, (width * 45 / 100).clamp(12, 50))),
     };
 
-    // 2 columns for the tag mark, 3 for the Git status.
-    let git = git.map(|xy| git_marker_text(&xy, icons));
+    // 2 columns for the tag mark, 3 for the Git status, then the icon.
+    let git = git.map(|xy| git_text(&xy));
     let icon = crate::icons::file_icon(
         &f.name,
         f.kind,
         crate::platform::is_executable(&f.name, f.mode),
         icons,
     );
-    let icon_len = if icon.is_some() { 2 } else { 0 };
+    let icon_len = if icon.is_some() { SLOT_WIDTH } else { 0 };
     let marks = 2 + git.as_ref().map_or(0, String::len) + icon_len;
     let name_width = width.saturating_sub(details.chars().count() + marks).max(8);
     let mut name: String = f.name.to_string_lossy().into_owned();
@@ -2855,5 +2864,97 @@ mod tests {
         app.options.icons = IconStyle::NerdFonts;
         let screen_icons = draw_text(&mut app);
         assert!(screen_icons.contains("\u{e7a8}"));
+    }
+
+    fn entry(name: &str) -> FileEntry {
+        FileEntry {
+            name: name.into(),
+            size: 10,
+            disk: 10,
+            link: None,
+            modified: None,
+            mode: 0o644,
+            kind: FileKind::File,
+            tagged: false,
+        }
+    }
+
+    /// The row as the terminal shows it, `width` columns wide.
+    fn item_text(item: ListItem<'static>, width: u16) -> String {
+        use ratatui::{Terminal, backend::TestBackend};
+        let mut term = Terminal::new(TestBackend::new(width, 1)).unwrap();
+        term.draw(|f| f.render_widget(List::new([item]), f.area()))
+            .unwrap();
+        let buf = term.backend().buffer();
+        (0..width).map(|x| buf[(x, 0)].symbol()).collect()
+    }
+
+    #[test]
+    fn icons_keep_the_details_column_with_git_status() {
+        // Unchanged, modified, untracked and a mix: the size, date and
+        // permissions start in the same column on every row.
+        for xy in [*b"  ", *b" M", *b"??", *b"AM"] {
+            let item = file_line(
+                &entry("main.rs"),
+                80,
+                Detail::Standard,
+                Some(xy),
+                IconStyle::NerdFonts,
+            );
+            assert_eq!(item.width(), 80, "{}", String::from_utf8_lossy(&xy));
+        }
+    }
+
+    #[test]
+    fn git_status_letters_stay_with_icons() {
+        // Index and work tree apart: " M" is not "M ".
+        for xy in [*b" M", *b"M ", *b"??"] {
+            let item = file_line(
+                &entry("main.rs"),
+                80,
+                Detail::Standard,
+                Some(xy),
+                IconStyle::NerdFonts,
+            );
+            let text = item_text(item, 80);
+            let letters = String::from_utf8_lossy(&xy);
+            assert!(
+                text.starts_with(&format!("  {letters} \u{e7a8} main.rs")),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn branch_title_is_not_a_git_branch() {
+        // B is XTree's branch view (the files of a subtree), not Git's.
+        let tmp = crate::testing::tempdir();
+        std::fs::create_dir(tmp.path().join("sub")).unwrap();
+        let mut app = App::new(tmp.path().to_path_buf());
+        app.options.icons = IconStyle::NerdFonts;
+        app.panes[0].set_view(FileView::Branch(crate::model::tree::ROOT));
+        let screen = draw_text(&mut app);
+        assert!(screen.contains("\u{f0645} Branch: "), "{screen}");
+        assert!(!screen.contains('\u{e725}'));
+    }
+
+    #[test]
+    fn tree_marks_git_repositories() {
+        let tmp = crate::testing::tempdir();
+        std::fs::create_dir_all(tmp.path().join("proj").join(".git")).unwrap();
+        // A worktree or submodule: `.git` is a file.
+        std::fs::create_dir(tmp.path().join("wt")).unwrap();
+        std::fs::write(tmp.path().join("wt").join(".git"), "gitdir: ../x").unwrap();
+        std::fs::create_dir(tmp.path().join("plain")).unwrap();
+        let mut app = App::new(tmp.path().to_path_buf());
+        app.apply(crate::input::Command::ExpandAll);
+        while app.busy() {
+            app.tick(std::time::Duration::from_millis(50));
+        }
+        app.options.icons = IconStyle::NerdFonts;
+        let screen = draw_text(&mut app);
+        assert!(screen.contains("\u{e5fb} proj"), "{screen}");
+        assert!(screen.contains("\u{e5fb} wt"), "{screen}");
+        assert!(!screen.contains("\u{e5fb} plain"), "{screen}");
     }
 }

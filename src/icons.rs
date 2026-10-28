@@ -1,37 +1,61 @@
-//! Nerd Fonts icon lookups for files, directories and Git markers.
+//! Nerd Fonts icons for files, directories and window titles.
 //!
-//! When enabled (`icons = "nerd-fonts"`), each icon occupies exactly 2 display
-//! columns (1 Nerd Font glyph + 1 trailing space) to ensure columns remain
-//! aligned in the TUI. When disabled (`icons = "none"`), lookups return `None`.
+//! When enabled (`icons = "nerd-fonts"`), each icon takes `SLOT_WIDTH`
+//! display columns: the glyph and a space, so columns stay aligned. When
+//! disabled (`icons = "none"`), lookups return `None`. Git status keeps its
+//! two letters: one icon cannot tell the index from the work tree.
+//!
+//! Each glyph is named as in Nerd Fonts' `glyphnames.json` (v3), so it can be
+//! checked there: the glyph itself does not show without a Nerd Font.
 
 use std::ffi::OsStr;
 use std::path::Path;
 
 use crate::config::IconStyle;
 use crate::model::tree::FileKind;
+use crate::pane::FileView;
 
-/// Returns the icon for a directory in the tree or file list.
-pub fn dir_icon(
-    open: bool,
-    is_repo: bool,
-    is_archive: bool,
-    is_remote: bool,
-    style: IconStyle,
-) -> Option<&'static str> {
+/// Display columns of every icon: the glyph and the space after it, which
+/// the wider glyphs of a non-Mono Nerd Font spill into.
+pub const SLOT_WIDTH: usize = 2;
+
+/// What a directory of the tree is, for its icon.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DirKind {
+    Closed,
+    Open,
+    /// Holds a `.git`.
+    Repo,
+    /// Root of an archive opened as a folder.
+    Archive,
+    /// Root of a remote machine (SFTP).
+    Remote,
+}
+
+/// Returns the icon for a directory in the tree.
+pub fn dir_icon(kind: DirKind, style: IconStyle) -> Option<&'static str> {
     if style == IconStyle::None {
         return None;
     }
-    if is_archive {
-        Some("\u{f410} ") //  package
-    } else if is_remote {
-        Some("\u{f048b} ") // 󰒋 cloud/remote folder
-    } else if is_repo {
-        Some("\u{e5fb} ") //  folder-git
-    } else if open {
-        Some("\u{f07b} ") //  folder-open
-    } else {
-        Some("\u{f07c} ") //  folder
+    Some(match kind {
+        DirKind::Closed => "\u{f07b} ",  // fa-folder
+        DirKind::Open => "\u{f07c} ",    // fa-folder_open
+        DirKind::Repo => "\u{e5fb} ",    // custom-folder_git
+        DirKind::Archive => "\u{f410} ", // oct-file_zip
+        DirKind::Remote => "\u{f048b} ", // md-server
+    })
+}
+
+/// Returns the icon before the title of the files window.
+pub fn view_icon(view: FileView, style: IconStyle) -> Option<&'static str> {
+    if style == IconStyle::None {
+        return None;
     }
+    Some(match view {
+        FileView::Dir => "\u{f07c} ",        // fa-folder_open
+        FileView::Branch(_) => "\u{f0645} ", // md-file_tree: a subtree
+        FileView::Showall => "\u{f0349} ",   // md-magnify
+    })
 }
 
 /// Returns the icon for a file based on its name, kind and executable bit.
@@ -45,7 +69,7 @@ pub fn file_icon(
         return None;
     }
     if kind == FileKind::Symlink {
-        return Some("\u{f0c1} "); //  link
+        return Some("\u{f0c1} "); // fa-link
     }
 
     let name_str = name.to_string_lossy();
@@ -65,32 +89,9 @@ pub fn file_icon(
     }
 
     if is_exec {
-        Some("\u{f0633} ") // 󰘳 binary / executable
+        Some("\u{f013} ") // fa-gear: executable
     } else {
-        Some("\u{f0214} ") // 󰈔 generic file
-    }
-}
-
-/// Returns the icon for a Git status marker (e.g. `b"M "`, `b"? "`).
-/// Each icon is 3 columns (1 glyph + 2 trailing spaces) matching `git_text`.
-pub fn git_icon(status: [u8; 2], style: IconStyle) -> Option<&'static str> {
-    if style == IconStyle::None {
-        return None;
-    }
-    if status == *b"? " || status == *b"??" {
-        Some("\u{f457}  ") //  untracked / new
-    } else if status == *b"M " || status == *b" M" || status == *b"MM" {
-        Some("\u{f459}  ") //  modified
-    } else if status == *b"A " || status == *b" A" {
-        Some("\u{f457}  ") //  added
-    } else if status == *b"D " || status == *b" D" {
-        Some("\u{f458}  ") //  deleted
-    } else if status[0] == b'U' || status[1] == b'U' {
-        Some("\u{f4db}  ") //  conflict
-    } else if status == *b"R " || status == *b" R" {
-        Some("\u{f45a}  ") //  renamed
-    } else {
-        None
+        Some("\u{f0214} ") // md-file
     }
 }
 
@@ -98,22 +99,22 @@ pub fn git_icon(status: [u8; 2], style: IconStyle) -> Option<&'static str> {
 fn match_exact_name(name: &str) -> Option<&'static str> {
     match name {
         "dockerfile" | "dockerfile.dev" | "docker-compose.yml" | "docker-compose.yaml" => {
-            Some("\u{f0868} ") // 󰡨 docker
+            Some("\u{f0868} ") // md-docker
         }
         "makefile" | "cmakelists.txt" | "justfile" => {
-            Some("\u{e779} ") //  build
+            Some("\u{e779} ") // dev-gnu
         }
         "cargo.toml" | "cargo.lock" => {
-            Some("\u{e7a8} ") //  rust
+            Some("\u{e7a8} ") // dev-rust
         }
         "package.json" | "package-lock.json" | "tsconfig.json" => {
-            Some("\u{e60c} ") //  js / node
+            Some("\u{e60c} ") // seti-javascript
         }
         ".gitignore" | ".gitmodules" | ".gitattributes" | ".gitconfig" => {
-            Some("\u{e702} ") //  git
+            Some("\u{e702} ") // dev-git
         }
         "license" | "licence" | "license.md" | "license.txt" => {
-            Some("\u{f48e} ") //  license
+            Some("\u{f495} ") // oct-law
         }
         _ => None,
     }
@@ -123,59 +124,59 @@ fn match_exact_name(name: &str) -> Option<&'static str> {
 fn match_extension(ext: &str) -> Option<&'static str> {
     match ext {
         // Rust
-        "rs" => Some("\u{e7a8} "), // 
+        "rs" => Some("\u{e7a8} "), // dev-rust
         // Python
-        "py" | "pyw" | "ipynb" => Some("\u{e73c} "), // 
+        "py" | "pyw" | "ipynb" => Some("\u{e73c} "), // dev-python
         // C / C++
-        "c" | "h" | "cpp" | "hpp" | "cc" | "cxx" | "hxx" => Some("\u{e61d} "), // 
+        "c" | "h" | "cpp" | "hpp" | "cc" | "cxx" | "hxx" => Some("\u{e61d} "), // custom-cpp
         // Go
-        "go" => Some("\u{e627} "), // 
+        "go" => Some("\u{e627} "), // seti-go
         // Java & Kotlin
-        "java" | "jar" => Some("\u{e738} "), // 
-        "kt" | "kts" => Some("\u{e634} "),   // 
+        "java" | "jar" => Some("\u{e738} "), // dev-java
+        "kt" | "kts" => Some("\u{e634} "),   // seti-kotlin
         // JavaScript & TypeScript
-        "js" | "mjs" | "cjs" | "jsx" => Some("\u{e60c} "), // 
-        "ts" | "mts" | "tsx" => Some("\u{e628} "),         // 
+        "js" | "mjs" | "cjs" | "jsx" => Some("\u{e60c} "), // seti-javascript
+        "ts" | "mts" | "tsx" => Some("\u{e628} "),         // seti-typescript
         // Web
-        "html" | "htm" => Some("\u{f13b} "), // 
-        "css" | "scss" | "sass" | "less" => Some("\u{e749} "), // 
+        "html" | "htm" => Some("\u{f13b} "), // fa-html5
+        "css" | "scss" | "sass" | "less" => Some("\u{e749} "), // dev-css3
         // Shell
-        "sh" | "bash" | "zsh" | "fish" | "ksh" => Some("\u{e795} "), // 
+        "sh" | "bash" | "zsh" | "fish" | "ksh" => Some("\u{e795} "), // dev-terminal
         // Other languages
-        "lua" => Some("\u{e620} "),       // 
-        "rb" => Some("\u{e739} "),        // 
-        "php" => Some("\u{e608} "),       // 
-        "pl" | "pm" => Some("\u{e769} "), // 
-        "zig" => Some("\u{e6a9} "),       // 
-        "swift" => Some("\u{e755} "),     // 
+        "lua" => Some("\u{e620} "),       // seti-lua
+        "rb" => Some("\u{e739} "),        // dev-ruby
+        "php" => Some("\u{e608} "),       // seti-php
+        "pl" | "pm" => Some("\u{e769} "), // dev-perl
+        "zig" => Some("\u{e6a9} "),       // seti-zig
+        "swift" => Some("\u{e755} "),     // dev-swift
         // Config and Data
         "toml" | "yaml" | "yml" | "json" | "json5" | "ini" | "conf" | "xml" | "sql" | "csv"
-        | "tsv" => Some("\u{e615} "), // 
+        | "tsv" => Some("\u{e615} "), // seti-config
         // Documents and Markdown
-        "md" | "markdown" => Some("\u{f48a} "), // 
-        "pdf" => Some("\u{f1c1} "),             // 
-        "txt" | "log" => Some("\u{f15c} "),     // 
+        "md" | "markdown" => Some("\u{f48a} "), // oct-markdown
+        "pdf" => Some("\u{f1c1} "),             // fa-file_pdf
+        "txt" | "log" => Some("\u{f15c} "),     // fa-file_lines
         // Archives and Compressed
         "zip" | "tar" | "gz" | "xz" | "zst" | "bz2" | "7z" | "rar" | "tgz" | "txz" | "tbz2" => {
-            Some("\u{f410} ") // 
+            Some("\u{f410} ") // oct-file_zip
         }
         // Images
         "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "bmp" | "ico" | "tiff" => {
-            Some("\u{f03e} ") // 
+            Some("\u{f03e} ") // fa-image
         }
         // Video
         "mp4" | "mkv" | "avi" | "mov" | "webm" | "flv" | "wmv" => {
-            Some("\u{f0fce} ") // 󰿎
+            Some("\u{f0fce} ") // md-movie_open
         }
         // Audio
         "mp3" | "flac" | "wav" | "ogg" | "m4a" | "aac" | "opus" => {
-            Some("\u{f0386} ") // 󰎆
+            Some("\u{f0386} ") // md-music_circle
         }
         // Fonts
-        "ttf" | "otf" | "woff" | "woff2" => Some("\u{f031} "), // 
+        "ttf" | "otf" | "woff" | "woff2" => Some("\u{f031} "), // fa-font
         // Packages / Binaries
         "deb" | "rpm" | "apk" | "iso" | "bin" | "exe" | "dll" | "so" | "dylib" => {
-            Some("\u{f471} ") // 
+            Some("\u{f471} ") // oct-file_binary
         }
         _ => None,
     }
@@ -196,8 +197,8 @@ mod tests {
             ),
             None
         );
-        assert_eq!(dir_icon(false, false, false, false, IconStyle::None), None);
-        assert_eq!(git_icon(*b"M ", IconStyle::None), None);
+        assert_eq!(dir_icon(DirKind::Closed, IconStyle::None), None);
+        assert_eq!(view_icon(FileView::Dir, IconStyle::None), None);
     }
 
     #[test]
@@ -225,40 +226,46 @@ mod tests {
         );
         assert_eq!(
             file_icon(OsStr::new("run_tool"), FileKind::File, true, style),
-            Some("\u{f0633} ")
+            Some("\u{f013} ")
+        );
+        assert_eq!(
+            file_icon(OsStr::new("LICENSE"), FileKind::File, false, style),
+            Some("\u{f495} ")
         );
     }
 
     #[test]
     fn dir_icons_follow_state() {
         let style = IconStyle::NerdFonts;
-        assert_eq!(
-            dir_icon(false, false, false, false, style),
-            Some("\u{f07c} ")
-        );
-        assert_eq!(
-            dir_icon(true, false, false, false, style),
-            Some("\u{f07b} ")
-        );
-        assert_eq!(
-            dir_icon(false, true, false, false, style),
-            Some("\u{e5fb} ")
-        );
-        assert_eq!(
-            dir_icon(false, false, true, false, style),
-            Some("\u{f410} ")
-        );
-        assert_eq!(
-            dir_icon(false, false, false, true, style),
-            Some("\u{f048b} ")
-        );
+        // fa-folder and fa-folder_open.
+        assert_eq!(dir_icon(DirKind::Closed, style), Some("\u{f07b} "));
+        assert_eq!(dir_icon(DirKind::Open, style), Some("\u{f07c} "));
+        assert_eq!(dir_icon(DirKind::Repo, style), Some("\u{e5fb} "));
+        assert_eq!(dir_icon(DirKind::Archive, style), Some("\u{f410} "));
+        assert_eq!(dir_icon(DirKind::Remote, style), Some("\u{f048b} "));
     }
 
     #[test]
-    fn git_markers_have_icons() {
+    fn every_icon_fills_the_slot() {
+        // As the screen measures it.
+        use ratatui::text::Span;
         let style = IconStyle::NerdFonts;
-        assert_eq!(git_icon(*b"M ", style), Some("\u{f459}  "));
-        assert_eq!(git_icon(*b"? ", style), Some("\u{f457}  "));
-        assert_eq!(git_icon(*b"D ", style), Some("\u{f458}  "));
+        let kinds = [
+            DirKind::Closed,
+            DirKind::Open,
+            DirKind::Repo,
+            DirKind::Archive,
+            DirKind::Remote,
+        ];
+        let views = [FileView::Dir, FileView::Branch(0), FileView::Showall];
+        let names = ["a.rs", "Makefile", "x.mkv", "LICENSE", "noext"];
+        let icons = kinds
+            .map(|k| dir_icon(k, style))
+            .into_iter()
+            .chain(views.map(|v| view_icon(v, style)))
+            .chain(names.map(|n| file_icon(OsStr::new(n), FileKind::File, false, style)));
+        for icon in icons {
+            assert_eq!(Span::raw(icon.unwrap()).width(), SLOT_WIDTH, "{icon:?}");
+        }
     }
 }

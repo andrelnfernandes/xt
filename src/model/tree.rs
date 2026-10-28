@@ -251,6 +251,14 @@ impl Tree {
         &self.nodes[id]
     }
 
+    /// Whether the directory holds a `.git` (a directory, or the file of a
+    /// worktree or submodule), from what was already read: never the disk.
+    pub fn has_git(&self, id: NodeId) -> bool {
+        let node = &self.nodes[id];
+        node.children.iter().any(|&c| self.nodes[c].name == ".git")
+            || node.files.iter().any(|f| f.name == ".git")
+    }
+
     /// Full path of the directory.
     pub fn path(&self, id: NodeId) -> PathBuf {
         let mut parts = Vec::new();
