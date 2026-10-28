@@ -6,6 +6,12 @@ courant en bas et des statistiques à droite. Il lit (charge) les répertoires e
 mémoire, ce qui permet de marquer des fichiers dans toute une branche et de les
 copier, déplacer, supprimer, comparer ou renommer en une seule fois.
 
+Xylem traite les fichiers non fiables comme hostiles : il ne doit jamais
+planter, se figer, exécuter du code, écrire en dehors de la destination ni
+épuiser la mémoire en raison du contenu ou du nom d'un fichier. Néanmoins, des
+erreurs peuvent survenir. Consultez la déclaration de sécurité dans le README
+pour la liste complète des protections et recommandations.
+
 **F1** (ou **Alt+H**, pour les terminaux qui gardent F1 pour eux) ouvre l'aide
 sur ce que vous faites : dans une invite, l'aide de cette invite ; dans
 l'arborescence ou la fenêtre de fichiers, l'aide de cette fenêtre. Dans l'aide,
