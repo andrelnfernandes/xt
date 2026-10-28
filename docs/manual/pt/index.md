@@ -6,6 +6,12 @@ abaixo e estatísticas à direita. Ele lê (*log*) os diretórios para a memóri
 permitindo marcar arquivos em todo um ramo e copiá-los, movê-los, excluí-los,
 compará-los ou renomeá-los de uma só vez.
 
+O Xylem trata arquivos não confiáveis como hostis: ele nunca deve travar,
+congelar, executar código, escrever fora do destino ou esgotar a memória devido
+ao conteúdo ou ao nome de um arquivo. Ainda assim, erros acontecem. Veja a
+declaração de segurança no README para a lista completa de proteções e
+recomendações.
+
 **F1** (ou **Alt+H**, para terminais que reservam o F1 para si) abre a ajuda
 sobre o que você está fazendo: dentro de um prompt, a ajuda daquele prompt; na
 árvore ou na janela de arquivos, a ajuda daquela janela. Na ajuda, **Tab** e
