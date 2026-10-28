@@ -1,7 +1,7 @@
 # Plano: novos visualizadores de arquivo
 
 Origem: conversa de 2026-10-27, logo depois da integração com editores hex
-(commit 5cb7ff6, branch `binary-editor`). Este arquivo é o plano geral; cada
+(commit e9c4bee, branch `binary-editor`). Este arquivo é o plano geral; cada
 subprojeto tem o seu spec, nesta mesma pasta.
 
 ## Objetivo

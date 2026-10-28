@@ -1,6 +1,6 @@
 # Final review findings — fix wave (one dispatch)
 
-Source: whole-branch review a7c163c..f6f8e83 (opus). Reviewer's measurement harness: ~/.cache/xt-dev/review-bench
+Source: whole-branch review b401dc5..f6f8e83 (opus). Reviewer's measurement harness: ~/.cache/xt-dev/review-bench
 (build: `cargo build --release --offline --manifest-path ~/.cache/xt-dev/review-bench/Cargo.toml`;
 `target/release/review-bench 1024` = Autoview limits, `review-bench 2048 bzip2` = V limits; `target/release/lines 16 nl`;
 `target/release/frame 64`). It compiles the project's real decompress.rs/panic_guard.rs via `#[path]` — after the fixes,

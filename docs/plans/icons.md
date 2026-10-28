@@ -135,7 +135,7 @@ Ordem: link simbólico > nome exato > extensão > executável > genérico.
 
 ## Revisão (2026-10-28)
 
-Revisão da primeira versão (commits `956e58f`, `0e456b7`, `d8afe39`), aceita pelo
+Revisão da primeira versão (commits `19449be`, `44bce39`, `ae41721`), aceita pelo
 autor. Cada correção começou por um teste que falhou pelo motivo certo.
 
 1. **Desalinhamento com status Git:** `file_line` somava `String::len` (bytes) do
