@@ -18,6 +18,8 @@ O limite de tamanho do visualizador (**L** na página 2) custa memória e tempo:
 - Baixe qualquer Nerd Font de sua preferência em nerdfonts.com ou instale um pacote Nerd Fonts pelo gerenciador de pacotes da sua distribuição.
 - Selecione a fonte instalada nas preferências do seu emulador de terminal.
 
+Se as colunas se desalinharem com os ícones ligados, o terminal provavelmente desenha os caracteres de "largura ambígua" como largos (ajuste comum com fontes chinesas, japonesas e coreanas), enquanto o Xylem conta cada ícone como uma célula. Ajuste essa opção para estreito ou desligue os ícones.
+
 A letra da opção (ou Enter) altera o valor, PgUp/PgDn ou 1–4 trocam de página,
 **F4** escolhe o tema em uma lista (com pré-visualização instantânea), **F3**
 salva e aplica, **Esc** cancela (pergunta se houver alterações).

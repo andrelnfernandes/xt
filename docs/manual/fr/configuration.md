@@ -18,6 +18,8 @@ Les icônes et glyphes (**M** à la page 2) nécessitent une police intégrant l
 - Téléchargez la Nerd Font de votre choix sur nerdfonts.com ou installez un paquet Nerd Fonts via le gestionnaire de paquets de votre distribution.
 - Sélectionnez cette police dans les réglages de votre émulateur de terminal.
 
+Si les colonnes se décalent avec les icônes, le terminal affiche probablement les caractères de « largeur ambiguë » en double largeur (un réglage courant avec les polices chinoises, japonaises et coréennes), alors que Xylem compte chaque icône comme une cellule. Réglez cette option sur étroit, ou désactivez les icônes.
+
 La lettre de l'option (ou Enter) modifie la valeur, PgUp/PgDn ou 1–4 changent de
 page, **F4** choisit le thème dans une liste (avec aperçu immédiat), **F3**
 enregistre et applique, **Esc** annule (en demandant confirmation s'il y a des

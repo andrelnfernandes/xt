@@ -18,6 +18,8 @@ Icons und Symbole (**M** auf Seite 2) erfordern eine mit Nerd Fonts erweiterte S
 - Laden Sie eine beliebige Nerd Font Ihrer Wahl von nerdfonts.com herunter oder installieren Sie ein Nerd-Fonts-Paket über Ihre Paketverwaltung.
 - Wählen Sie diese Schriftart in den Einstellungen Ihres Terminal-Emulators aus.
 
+Verrutschen die Spalten bei eingeschalteten Icons, stellt das Terminal vermutlich Zeichen „mehrdeutiger Breite“ breit dar (eine bei chinesischen, japanischen und koreanischen Schriften übliche Einstellung), während Xylem jedes Icon als eine Zelle zählt. Stellen Sie diese Option auf schmal oder schalten Sie die Icons aus.
+
 Der Buchstabe der Option (oder Enter) ändert den Wert, PgUp/PgDn oder 1–4
 wechseln die Seite, **F4** wählt das Thema aus einer Liste (mit sofortiger
 Vorschau), **F3** speichert und wendet die Einstellungen an, **Esc** bricht ab

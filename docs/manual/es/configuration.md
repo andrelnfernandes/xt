@@ -18,6 +18,8 @@ Los iconos y glifos (**M** en la página 2) requieren una fuente con el parche d
 - Descargue cualquier Nerd Font de su preferencia desde nerdfonts.com o instale un paquete de Nerd Fonts con el gestor de paquetes de su distribución.
 - Seleccione esa fuente en las preferencias de su emulador de terminal.
 
+Si las columnas se desalinean con los iconos activados, probablemente la terminal dibuja los caracteres de "ancho ambiguo" como anchos (un ajuste habitual con fuentes chinas, japonesas y coreanas), mientras que Xylem cuenta cada icono como una celda. Ponga esa opción en estrecho o desactive los iconos.
+
 La letra de la opción (o Enter) cambia el valor, PgUp/PgDn o 1–4 cambian de
 página, **F4** elige el tema de una lista (con vista previa instantánea), **F3**
 guarda y aplica, y **Esc** cancela (pregunta si hay cambios).
