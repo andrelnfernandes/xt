@@ -6,8 +6,9 @@ Subprojeto 1 do [plano de visualizadores](viewers.md).
 branch `bidi-guard`; PR 2 (módulo `decompress` e correção do Alt+F5,
 Tarefas 5 a 7) implementado no branch `decompress`; PR 3 (Tarefas 8 e 9)
 implementado no branch `viewer-decompress`; PR 4 (Tarefas 10 e 11,
-`charset` e a tecla `O`) implementado no branch `viewer-charset`; o próximo
-é o PR 5 (Tarefa 12). Spec aprovado pelo
+`charset` e a tecla `O`) implementado no branch `viewer-charset`; PR 5
+(Tarefa 12, `viewer_max_size`) implementado no branch `viewer-max-size`; o
+próximo é o PR 6 (Tarefa 13). Spec aprovado pelo
 autor. O plano de implementação
 está em [viewer-encoding-plan.md](viewer-encoding-plan.md). Ao escrevê-lo,
 quatro pontos foram corrigidos aqui: a janela do zstd, a conta do xz, o
@@ -298,6 +299,43 @@ tamanho. No remoto, também controla as respostas do servidor.
   original no disco. O pico fica perto de 2,5× o limite, mais o dicionário.
   Com `auto`, isso dá cerca de 8% da RAM, mais o dicionário (64 MiB no
   máximo).
+  - **Custo por linha (revisão final, C2):** a conta acima vale para texto
+    comum. Cada linha é uma `String` (24 bytes, mais o bloco do alocador,
+    de no mínimo 32 bytes, em passos de 16), cada caractere bidi guarda 16
+    bytes de posição e uma tabulação vira até 8 espaços. Medido antes da
+    correção: 16 MiB de `\n` davam 402 MiB de pico (×25), e 64 MiB davam
+    1,6 GiB. Com `auto`, o pico chegava a ~0,9× a RAM, e 256 MiB de quebras
+    de linha cabem num `.bz2` de 208 bytes.
+  - **Orçamento:** o `text_lines` estima a memória enquanto monta as linhas
+    (por linha, `size_of::<String>()` e, se não for vazia, a capacidade
+    arredondada para 16 com mínimo de 32; mais 16 por marca bidi) e para
+    quando a estimativa passa de 2× o limite de leitura
+    (`load.limits.output`; `MAX_BYTES` no `from_bytes`). A estimativa é
+    conferida a cada caractere, então uma linha única de tabulações ou de
+    marcas bidi também para. O vetor de linhas é reservado de uma vez, pela
+    contagem de `\n` limitada ao orçamento, e não cresce.
+  - Quando o orçamento corta, o viewer fica cortado (`truncated()`) e o
+    cabeçalho diz `(showing first N lines)`, na cor de erro. No hex, que
+    mostra todos os bytes lidos, esse aviso não aparece. A troca de
+    codificação (`O`) usa o mesmo orçamento.
+  - Um log com linhas de ~100 bytes custa ~1,4× o tamanho e não é cortado.
+    Linhas de 16 bytes custam ~3,3× e são cortadas perto de 60%.
+  - Medido depois (release, `lines` do harness da revisão, com orçamento
+    de 2× a entrada): 16 MiB de `\n` → 50 MiB de pico (×3,1); 64 MiB → 194
+    MiB (×3,0).
+- **Custo de redesenho (revisão final, I1):** cada quadro custava o
+  comprimento inteiro da linha visível (`Vec<char>` da linha toda e cores
+  para todos os caracteres): 68 ms por quadro numa linha de 16 MiB, 254 ms
+  numa de 64 MiB. Agora:
+  - sem quebra, só os caracteres de `left` até preencher a largura;
+  - com quebra (`W`), só as linhas visuais necessárias, por um iterador
+    preguiçoso (`WrapRows`), que também serve ao `↓` e à busca;
+  - as cores, só para esse trecho;
+  - linhas com mais de 10.000 caracteres não são coloridas (o syntect
+    levou 11 s numa linha JSON de 16 MiB, e 9 ms a cada 10.000 caracteres).
+
+  Medido depois: ~1 µs por quadro sem quebra e ~50 µs com quebra, nas
+  duas linhas.
 - **Arquivo truncado ou corrompido:** mostra o que conseguiu descomprimir e
   o aviso `compressed data truncated or corrupt`.
 - **Defesa extra:** a chamada aos descompressores roda dentro de

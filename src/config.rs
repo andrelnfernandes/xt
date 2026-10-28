@@ -61,6 +61,9 @@ viewer_decompress = true
 # Charset of files that are not UTF-8 or UTF-16 (O in the viewer changes the current file's codepage):
 # "auto" (guess CP850 or Windows-1252), "cp850", "cp1252" or "cp437".
 legacy_charset = "auto"
+# Largest part of a file the viewer reads (V): "auto" (1/32 of the RAM, from
+# 16 to 256 MiB), "16", "64", "256" or "1024" (MiB). Remote files: at most 16.
+viewer_max_size = "auto"
 # Initial mode of the files window (Alt+F changes it while running): "names"
 # (several columns), "names_size" (columns with size), "details" (one
 # column with size, date and permissions), "owner" (size, owner and group,
@@ -200,6 +203,8 @@ pub struct Options {
     pub viewer_decompress: bool,
     /// Charset of viewer files that are not UTF-8 or UTF-16.
     pub legacy_charset: LegacyCharset,
+    /// Largest part of a file the viewer reads.
+    pub viewer_max_size: ViewerMaxSize,
     /// Initial mode of the files window (Alt+F changes it while running).
     pub file_display: FileDisplay,
     /// Initial file sort order.
@@ -241,6 +246,7 @@ impl Default for Options {
             viewer_line_numbers: false,
             viewer_decompress: true,
             legacy_charset: LegacyCharset::Auto,
+            viewer_max_size: ViewerMaxSize::Auto,
             file_display: FileDisplay::Details,
             sort: SortKey::Name,
             sort_descending: false,
@@ -287,6 +293,7 @@ impl Options {
             ("viewer_line_numbers", Value::from(self.viewer_line_numbers)),
             ("viewer_decompress", Value::from(self.viewer_decompress)),
             ("legacy_charset", s(self.legacy_charset.as_str())),
+            ("viewer_max_size", s(self.viewer_max_size.as_str())),
             ("file_display", s(self.file_display.as_str())),
             ("sort", s(self.sort.as_str())),
             ("sort_descending", Value::from(self.sort_descending)),
@@ -533,6 +540,57 @@ impl Choice for LegacyCharset {
             LegacyCharset::Cp850 => "cp850",
             LegacyCharset::Cp1252 => "cp1252",
             LegacyCharset::Cp437 => "cp437",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+pub enum ViewerMaxSize {
+    /// 1/32 of the RAM, from 16 to 256 MiB.
+    #[default]
+    #[serde(rename = "auto")]
+    Auto,
+    #[serde(rename = "16")]
+    Mib16,
+    #[serde(rename = "64")]
+    Mib64,
+    #[serde(rename = "256")]
+    Mib256,
+    #[serde(rename = "1024")]
+    Mib1024,
+}
+
+impl ViewerMaxSize {
+    /// The limit in bytes; `total_ram` is the machine's RAM, if known.
+    pub fn bytes(self, total_ram: Option<u64>) -> u64 {
+        const MIB: u64 = 1 << 20;
+        match self {
+            ViewerMaxSize::Auto => {
+                total_ram.map_or(16 * MIB, |ram| (ram / 32).clamp(16 * MIB, 256 * MIB))
+            }
+            ViewerMaxSize::Mib16 => 16 * MIB,
+            ViewerMaxSize::Mib64 => 64 * MIB,
+            ViewerMaxSize::Mib256 => 256 * MIB,
+            ViewerMaxSize::Mib1024 => 1024 * MIB,
+        }
+    }
+}
+
+impl Choice for ViewerMaxSize {
+    const ALL: &'static [Self] = &[
+        ViewerMaxSize::Auto,
+        ViewerMaxSize::Mib16,
+        ViewerMaxSize::Mib64,
+        ViewerMaxSize::Mib256,
+        ViewerMaxSize::Mib1024,
+    ];
+    fn as_str(self) -> &'static str {
+        match self {
+            ViewerMaxSize::Auto => "auto",
+            ViewerMaxSize::Mib16 => "16",
+            ViewerMaxSize::Mib64 => "64",
+            ViewerMaxSize::Mib256 => "256",
+            ViewerMaxSize::Mib1024 => "1024",
         }
     }
 }
@@ -1273,6 +1331,26 @@ mod tests {
         assert_eq!(NumberFormat::Comma.next(), NumberFormat::Dot);
         assert_eq!(SortKey::Size.next(), SortKey::Name);
         assert_eq!(PruneConfirm::Y.next().as_str(), "prune");
+    }
+
+    #[test]
+    fn auto_is_a_32nd_of_ram_between_16_and_256_mib() {
+        const MIB: u64 = 1 << 20;
+        const GIB: u64 = 1 << 30;
+        assert_eq!(ViewerMaxSize::Auto.bytes(Some(8 * GIB)), 256 * MIB);
+        assert_eq!(ViewerMaxSize::Auto.bytes(Some(6 * GIB)), 192 * MIB);
+        assert_eq!(ViewerMaxSize::Auto.bytes(Some(512 * MIB)), 16 * MIB);
+        assert_eq!(ViewerMaxSize::Auto.bytes(Some(64 * GIB)), 256 * MIB);
+        assert_eq!(ViewerMaxSize::Auto.bytes(None), 16 * MIB);
+        assert_eq!(ViewerMaxSize::Mib1024.bytes(Some(512 * MIB)), 1024 * MIB);
+    }
+
+    #[test]
+    fn viewer_max_size_is_read() {
+        assert_eq!(Options::default().viewer_max_size, ViewerMaxSize::Auto);
+        let c = Config::parse("[options]\nviewer_max_size = \"64\"").unwrap();
+        assert_eq!(c.options.viewer_max_size, ViewerMaxSize::Mib64);
+        assert!(Config::parse("[options]\nviewer_max_size = \"65\"").is_err());
     }
 
     #[test]

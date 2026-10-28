@@ -1,7 +1,7 @@
 # The viewer
 
 `V` opens the file in the viewer (Autoview, F7, shows it next to the list).
-Binary files open in hex. Files over 16 MiB show only the beginning.
+Binary files open in hex. Files over the size limit show only the beginning.
 
 | Key | What it does |
 |---|---|
@@ -36,7 +36,8 @@ shell, C, JavaScript, SQL, YAML, Markdown...), recognized by extension, by name
 (`Makefile`) or by the first line (`#!/bin/bash`). The default is
 `syntax_highlight` (page 2 of the [configuration](configuration.md)). Colors
 stay readable on the current theme's background, and only the first 20,000
-lines are colored, so huge files never slow the viewer down.
+lines are colored, and no line longer than 10,000 characters, so huge files
+never slow the viewer down.
 
 ## Text direction controls
 
@@ -50,11 +51,19 @@ Xylem finds the encoding by itself, in this order: a decompressed file first, th
 
 To always use one encoding for old text files instead of the guess, set `legacy_charset` to `cp850`, `cp1252` or `cp437` (**K** on page 2 of the [configuration](configuration.md)). The default is `auto`.
 
+## Size limit
+
+The viewer reads only the beginning of a big file, and the header says `(showing first N MiB)`. How much it reads is the `viewer_max_size` option (**L** on page 2 of the [configuration](configuration.md)): `auto`, `16`, `64`, `256` or `1024` (MiB). With `auto`, the default, the limit is 1/32 of the machine's RAM, never less than 16 MiB and never more than 256 MiB (it is 16 MiB when the RAM cannot be read). The configuration screen shows the value in use, for example `auto (256 MiB)`.
+
+Two cases do not follow it. Autoview always reads 1 MiB. A file on a remote machine (SFTP) is read at most up to 16 MiB, because Esc cannot cancel that read.
+
+A bigger limit costs memory and time: with `1024`, an ordinary text file that big takes roughly 2.5 GiB of RAM and about 5 s to open. Very short lines cost more than their bytes, because each line has its own bookkeeping, and so do tabs and hidden direction controls: the viewer keeps lines up to about twice the size limit in memory, and past that the header says `(showing first N lines)`. A log of ordinary lines (about 100 bytes) is never cut by this.
+
 ## Compressed files
 
 Files ending in `.gz`, `.xz`, `.zst` or `.bz2` open decompressed, as text. Xylem looks at the first bytes of the file, not at its name, and opens one level only: a `.gz` inside a `.gz` stays compressed. The header says `gzip → N bytes` (the format and the size after decompression).
 
-Decompression has limits. The viewer reads up to 16 MiB, takes at most 3 s and uses at most 64 MiB of memory for the xz dictionary or the zstd window. In Autoview the limits are 1 MiB, 100 ms and 16 MiB. When the output or the time limit is hit, the header says `(showing first N bytes decompressed)`. A note tells what happened:
+Decompression has limits. The viewer reads up to the size limit, takes at most 3 s and uses at most 64 MiB of memory for the xz dictionary or the zstd window. In Autoview the limits are 1 MiB, 100 ms and 16 MiB. When the output or the time limit is hit, the header says `(showing first N bytes decompressed)`. A note tells what happened:
 
 - `decompression stopped after 3 s` (100 ms in Autoview)
 - `compressed data truncated or corrupt`

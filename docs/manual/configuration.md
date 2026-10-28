@@ -8,9 +8,11 @@ window and never reaches Xylem) opens four pages:
 | Page | Options |
 |---|---|
 | 1. Programs and formats | editor, open editor inside Xylem's frame, Xylem theme in the editor, help language, opener, date format, number format, Git commands |
-| 2. Display and sorting | hidden files, initial sort order and direction, what Enter does in the file window, initial display mode, syntax colors, soft wrap, line numbers, compressed files and the charset of old text files in the viewer, colors of the built-in terminal |
+| 2. Display and sorting | hidden files, initial sort order and direction, what Enter does in the file window, initial display mode, syntax colors, soft wrap, line numbers, compressed files, the charset of old text files and the size limit of what the viewer reads, colors of the built-in terminal |
 | 3. Confirmations and history | confirm on quit, delete to trash, Prune confirmation, entries with `@` not saved, the built-in terminal's own history |
 | 4. Copy, compare and refresh | ignore 2 s, ignore 1 h, automatic refresh, where Alt+C/Alt+M paths start |
+
+The viewer's size limit (**L** on page 2) costs memory and time: with `1024` MiB, opening an ordinary text file that big takes roughly 2.5 GiB of RAM and about 5 s, and files of very short lines cost more per byte (see [the viewer](viewer.md)).
 
 The option's letter (or Enter) changes the value, PgUp/PgDn or 1–4 switch
 pages, **F4** picks the theme from a list (with an instant preview), **F3**

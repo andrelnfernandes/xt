@@ -8,9 +8,11 @@ généralement la fenêtre et n'atteint jamais Xylem) ouvre quatre pages :
 | Page | Options |
 |---|---|
 | 1. Programmes et formats | éditeur, ouvrir l'éditeur dans le cadre de Xylem, thème Xylem dans l'éditeur, langue de l'aide, programme d'ouverture, format de date, format de nombres, commandes Git |
-| 2. Affichage et tri | fichiers cachés, ordre et sens de tri initiaux, action d'Enter dans la fenêtre de fichiers, mode d'affichage initial, coloration syntaxique, retour à la ligne, numéros de ligne, fichiers compressés et encodage des vieux textes dans la visionneuse, couleurs du terminal intégré |
+| 2. Affichage et tri | fichiers cachés, ordre et sens de tri initiaux, action d'Enter dans la fenêtre de fichiers, mode d'affichage initial, coloration syntaxique, retour à la ligne, numéros de ligne, fichiers compressés, encodage des vieux textes et limite de taille de ce que lit la visionneuse, couleurs du terminal intégré |
 | 3. Confirmations et historique | confirmer avant de quitter, supprimer vers la corbeille, confirmation de Prune, entrées avec `@` non enregistrées, historique propre au terminal intégré |
 | 4. Copie, comparaison et rafraîchissement | ignorer 2 s, ignorer 1 h, rafraîchissement automatique, point de départ des chemins Alt+C/Alt+M |
+
+La limite de taille de la visionneuse (**L** à la page 2) coûte de la mémoire et du temps : avec `1024` Mio, ouvrir un fichier texte ordinaire de cette taille occupe environ 2,5 Gio de RAM et prend environ 5 s, et les fichiers aux lignes très courtes coûtent plus par octet (voir [la visionneuse](viewer.md)).
 
 La lettre de l'option (ou Enter) modifie la valeur, PgUp/PgDn ou 1–4 changent de
 page, **F4** choisit le thème dans une liste (avec aperçu immédiat), **F3**

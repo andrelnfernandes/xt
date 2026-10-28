@@ -84,7 +84,13 @@ impl App {
 
     /// Opens `path` in the viewer (from inside the ZIP/TAR, if applicable).
     pub(crate) fn load_viewer(&self, path: PathBuf, size: u64) -> std::io::Result<Viewer> {
-        let mut load = LoadOptions::view(viewer::MAX_BYTES);
+        // A remote read is synchronous and Esc cannot cancel it: capped.
+        let limit = if self.remote.is_some() {
+            self.viewer_limit.min(viewer::MAX_BYTES)
+        } else {
+            self.viewer_limit
+        };
+        let mut load = LoadOptions::view(limit);
         load.decompress = self.options.viewer_decompress;
         load.fallback = self.options.legacy_charset.fallback();
         self.load_viewer_with(path, size, load)

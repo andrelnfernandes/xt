@@ -1,8 +1,8 @@
 # La visionneuse
 
 `V` ouvre le fichier dans la visionneuse (Autoview, F7, l'affiche à côté de la
-liste). Les fichiers binaires s'ouvrent en hexadécimal. Pour les fichiers de
-plus de 16 Mio, seul le début est affiché.
+liste). Les fichiers binaires s'ouvrent en hexadécimal. Pour les fichiers qui dépassent la limite de taille,
+seul le début est affiché.
 
 | Touche | Action |
 |---|---|
@@ -39,8 +39,9 @@ Python, shell, C, JavaScript, SQL, YAML, Markdown...), reconnus par leur
 extension, leur nom (`Makefile`) ou leur première ligne (`#!/bin/bash`). Le
 réglage par défaut est `syntax_highlight` (page 2 de la
 [configuration](configuration.md)). Les couleurs restent lisibles sur l'arrière-plan
-du thème actif, et seules les 20 000 premières lignes sont colorées, afin que
-les très gros fichiers ne ralentissent jamais la visionneuse.
+du thème actif, et seules les 20 000 premières lignes sont colorées, et aucune
+ligne de plus de 10 000 caractères, afin que les très gros fichiers ne
+ralentissent jamais la visionneuse.
 
 ## Caractères de contrôle de direction
 
@@ -54,11 +55,19 @@ Xylem trouve l'encodage seul, dans cet ordre : d'abord il décompresse le fichie
 
 Pour toujours utiliser un seul encodage pour les vieux textes, au lieu de la devinette, réglez `legacy_charset` sur `cp850`, `cp1252` ou `cp437` (**K** à la page 2 de la [configuration](configuration.md)). La valeur par défaut est `auto`.
 
+## Limite de taille
+
+La visionneuse ne lit que le début d'un gros fichier, et l'en-tête indique `(showing first N MiB)`. La quantité lue dépend de l'option `viewer_max_size` (**L** à la page 2 de la [configuration](configuration.md)) : `auto`, `16`, `64`, `256` ou `1024` (Mio). Avec `auto`, la valeur par défaut, la limite est 1/32 de la RAM de la machine, jamais moins de 16 Mio ni plus de 256 Mio (16 Mio si la RAM ne peut pas être lue). L'écran de configuration affiche la valeur utilisée, par exemple `auto (256 MiB)`.
+
+Deux cas font exception. Autoview lit toujours 1 Mio. Un fichier sur une machine distante (SFTP) est lu jusqu'à 16 Mio au plus, car Échap ne peut pas annuler cette lecture.
+
+Une limite plus grande coûte de la mémoire et du temps : avec `1024`, un fichier texte ordinaire de cette taille occupe environ 2,5 Gio de RAM et met environ 5 s à s'ouvrir. Les lignes très courtes coûtent plus que leurs octets, car chaque ligne a sa propre gestion, et il en va de même pour les tabulations et les caractères de contrôle de direction cachés : la visionneuse garde des lignes jusqu'à environ deux fois la limite de taille en mémoire et, au-delà, l'en-tête indique `(showing first N lines)`. Un journal de lignes ordinaires (environ 100 octets) n'est jamais coupé pour cette raison.
+
 ## Fichiers compressés
 
 Les fichiers qui se terminent par `.gz`, `.xz`, `.zst` ou `.bz2` s'ouvrent décompressés, en texte. Xylem regarde les premiers octets du fichier, pas le nom, et n'ouvre qu'un seul niveau : un `.gz` dans un `.gz` reste compressé. L'en-tête affiche `gzip → N bytes` (le format et la taille après décompression).
 
-La décompression a des limites. La visionneuse lit jusqu'à 16 Mio, prend au plus 3 s et utilise au plus 64 Mio de mémoire pour le dictionnaire xz ou la fenêtre zstd. Dans Autoview, les limites sont 1 Mio, 100 ms et 16 Mio. Quand la limite de sortie ou de temps est atteinte, l'en-tête indique `(showing first N bytes decompressed)`. Une note dit ce qui s'est passé :
+La décompression a des limites. La visionneuse lit jusqu'à la limite de taille, prend au plus 3 s et utilise au plus 64 Mio de mémoire pour le dictionnaire xz ou la fenêtre zstd. Dans Autoview, les limites sont 1 Mio, 100 ms et 16 Mio. Quand la limite de sortie ou de temps est atteinte, l'en-tête indique `(showing first N bytes decompressed)`. Une note dit ce qui s'est passé :
 
 - `decompression stopped after 3 s` (100 ms dans Autoview)
 - `compressed data truncated or corrupt` (données compressées tronquées ou corrompues)
