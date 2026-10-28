@@ -22,7 +22,7 @@ use ratatui::widgets::{Block, BorderType, Clear, List, ListItem, ListState, Para
 
 use crate::app::{self, App, BookmarksView, FileView, Focus, KbyteShow, MenuMode, Pane};
 use crate::charset::Charset;
-use crate::config::{self, formats, theme, IconStyle, TerminalTheme};
+use crate::config::{self, IconStyle, TerminalTheme, formats, theme};
 use crate::filetype;
 use crate::git::StatusCache;
 use crate::help::{self, Help};
@@ -110,7 +110,14 @@ fn draw_screen(frame: &mut Frame, app: &mut App) {
             Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)])
                 .areas(main);
         let active = app.active;
-        draw_files(frame, &mut app.panes[active], true, list, git, app.options.icons);
+        draw_files(
+            frame,
+            &mut app.panes[active],
+            true,
+            list,
+            git,
+            app.options.icons,
+        );
         if let Some(v) = &mut app.autoview {
             let name = v
                 .path
@@ -137,7 +144,15 @@ fn draw_screen(frame: &mut Frame, app: &mut App) {
         let [left, stats] =
             Layout::horizontal([Constraint::Min(20), Constraint::Length(STATS_WIDTH)]).areas(main);
         // The pane first: the Usage view leaves its selected row for the panel.
-        draw_pane(frame, &mut app.panes[0], true, false, left, git, app.options.icons);
+        draw_pane(
+            frame,
+            &mut app.panes[0],
+            true,
+            false,
+            left,
+            git,
+            app.options.icons,
+        );
         draw_stats(frame, app, stats);
     }
 }
@@ -399,9 +414,10 @@ fn draw_tree(
                 pane.remote.is_some() && row.id == crate::model::tree::ROOT,
                 icons,
             );
-            let mut spans = vec![
-                Span::styled(row.prefix.clone(), Style::new().fg(theme().dim)),
-            ];
+            let mut spans = vec![Span::styled(
+                row.prefix.clone(),
+                Style::new().fg(theme().dim),
+            )];
             if let Some(ic) = icon {
                 let ic_style = if node.error.is_some() {
                     Style::new().fg(theme().error)
@@ -528,7 +544,14 @@ fn draw_picker(frame: &mut Frame, app: &mut App, main: Rect, menu: Rect) {
         " Folder: {} ",
         fit_tail(&path.to_string_lossy(), width.saturating_sub(10))
     );
-    draw_tree(frame, picker.pane_mut(), true, title, main, app.options.icons);
+    draw_tree(
+        frame,
+        picker.pane_mut(),
+        true,
+        title,
+        main,
+        app.options.icons,
+    );
 
     let mut keys = vec![
         ("↑↓", "move"),
@@ -721,7 +744,8 @@ fn draw_file_columns(
                 let mut cell = format!(
                     "{}{}{}{}",
                     if f.tagged { "■ " } else { "  " },
-                    git.map(|xy| git_marker_text(&xy, icons)).unwrap_or_default(),
+                    git.map(|xy| git_marker_text(&xy, icons))
+                        .unwrap_or_default(),
                     icon,
                     fit(&name, name_w)
                 );

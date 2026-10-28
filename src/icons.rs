@@ -137,17 +137,17 @@ fn match_extension(ext: &str) -> Option<&'static str> {
         "js" | "mjs" | "cjs" | "jsx" => Some("\u{e60c} "), // 
         "ts" | "mts" | "tsx" => Some("\u{e628} "),         // 
         // Web
-        "html" | "htm" => Some("\u{f13b} "),              // 
+        "html" | "htm" => Some("\u{f13b} "), // 
         "css" | "scss" | "sass" | "less" => Some("\u{e749} "), // 
         // Shell
         "sh" | "bash" | "zsh" | "fish" | "ksh" => Some("\u{e795} "), // 
         // Other languages
-        "lua" => Some("\u{e620} "),  // 
-        "rb" => Some("\u{e739} "),   // 
-        "php" => Some("\u{e608} "),  // 
+        "lua" => Some("\u{e620} "),       // 
+        "rb" => Some("\u{e739} "),        // 
+        "php" => Some("\u{e608} "),       // 
         "pl" | "pm" => Some("\u{e769} "), // 
-        "zig" => Some("\u{e6a9} "),  // 
-        "swift" => Some("\u{e755} "), // 
+        "zig" => Some("\u{e6a9} "),       // 
+        "swift" => Some("\u{e755} "),     // 
         // Config and Data
         "toml" | "yaml" | "yml" | "json" | "json5" | "ini" | "conf" | "xml" | "sql" | "csv"
         | "tsv" => Some("\u{e615} "), // 
@@ -188,7 +188,12 @@ mod tests {
     #[test]
     fn none_style_returns_none() {
         assert_eq!(
-            file_icon(OsStr::new("main.rs"), FileKind::File, false, IconStyle::None),
+            file_icon(
+                OsStr::new("main.rs"),
+                FileKind::File,
+                false,
+                IconStyle::None
+            ),
             None
         );
         assert_eq!(dir_icon(false, false, false, false, IconStyle::None), None);
