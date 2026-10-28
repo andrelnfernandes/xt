@@ -48,13 +48,15 @@ You can make the attack surface smaller still:
 Found a problem? Please report it privately [CHANNEL], not in a public issue.
 ```
 
-## Pendência do autor antes do PR
+## Decisões tomadas
 
-- **`[CHANNEL]`:** decidir o canal de denúncia privada. As opções são o "Report a
-  vulnerability" do GitHub (ativar em Settings → Security → Private vulnerability
-  reporting; o link fica `https://github.com/andrelnfernandes/xylem/security/advisories/new`)
-  ou um e-mail. Não use o e-mail do autor sem ele confirmar. Se a decisão não vier,
-  use o link do GitHub e avise no PR que ele precisa estar ativado.
+- **`[CHANNEL]`:** canal de denúncia privada definido como o Private vulnerability
+  reporting do GitHub (`https://github.com/andrelnfernandes/xylem/security/advisories/new`).
+- **Manual:** parágrafo curto no início de `index.md` nas 6 línguas apontando para o README.
+- **Status da implementação:** arquivos modificados (`README.md`, `README.pt-BR.md`,
+  `docs/manual/**/index.md`) e testes validados (`cargo test help`,
+  `cargo test default_config_text_means_defaults`). Pronto para commit e PR mediante
+  autorização do autor.
 
 ## O que fazer (roteiro para o agente que continuar)
 

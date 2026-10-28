@@ -6,6 +6,13 @@ und rechts die Statistiken. Er liest (loggt) Verzeichnisse in den Speicher ein,
 sodass Sie Dateien über einen gesamten Zweig hinweg markieren und in einem
 Schritt kopieren, verschieben, löschen, vergleichen oder umbenennen können.
 
+Xylem behandelt nicht vertrauenswürdige Dateien als potenziell feindlich: Es
+sollte niemals abstürzen, einfrieren, Code ausführen, außerhalb des Zielorts
+schreiben oder den Speicher erschöpfen, ganz gleich, was eine Datei enthält oder
+wie sie benannt ist. Dennoch können Fehler vorkommen. Eine vollständige Liste
+der Schutzmaßnahmen und Empfehlungen finden Sie in der Sicherheitserklärung
+im README.
+
 **F1** (oder **Alt+H** in Terminals, die F1 selbst belegen) öffnet die Hilfe zu
 dem, was Sie gerade tun: in einer Eingabezeile die Hilfe zu dieser Eingabe; im
 Baum- oder Dateifenster die Hilfe zu diesem Fenster. In der Hilfe wählen
