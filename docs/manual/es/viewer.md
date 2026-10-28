@@ -9,6 +9,7 @@ muestran solo el principio.
 | ↑ ↓ PgUp PgDn Home End | desplazar |
 | ← → | desplazar lateralmente |
 | `H` | texto o hexadecimal |
+| `O` | siguiente codificación (UTF-8, CP850, 1252, CP437, UTF-16) |
 | `C` | activar o desactivar colores de sintaxis |
 | `W` | activar o desactivar el ajuste de línea |
 | `#` o `L` | activar o desactivar números de línea (en modo texto) |
@@ -43,6 +44,14 @@ los archivos enormes nunca ralenticen el visor.
 ## Caracteres de control de dirección
 
 Algunos caracteres invisibles cambian la dirección del texto y pueden hacer que un código parezca distinto de lo que realmente dice (Trojan Source, CVE-2021-42574). El visor nunca los oculta: cada uno aparece como un `·` rojo, y el encabezado indica cuántos hay.
+
+## Codificación del texto
+
+Xylem descubre la codificación solo, en este orden: primero descomprime el archivo, luego busca un BOM (UTF-8, UTF-16 LE o BE), luego UTF-16 sin BOM, luego UTF-8. Un archivo que no es nada de eso es texto antiguo: Xylem elige CP850 (DOS, Europa occidental) o Windows-1252 contando las letras con tilde. Los archivos `.reg` de Windows son UTF-16 y se abren como texto normal.
+
+**O** muestra el archivo en la siguiente codificación: UTF-8, CP850, Windows-1252, CP437, UTF-16 LE, UTF-16 BE y de nuevo UTF-8. El pie dice cuál, y la cabecera muestra su nombre cuando no es UTF-8. Si elige UTF-16 en un archivo que se abrió en hexadecimal, pasa a texto. Su elección se mantiene después de editar el archivo y volver.
+
+Para usar siempre una sola codificación en los textos antiguos, en lugar de la suposición, ponga `legacy_charset` en `cp850`, `cp1252` o `cp437` (**K** en la página 2 de la [configuración](configuration.md)). El valor por defecto es `auto`.
 
 ## Archivos comprimidos
 

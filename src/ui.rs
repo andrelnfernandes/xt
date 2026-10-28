@@ -21,6 +21,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Clear, List, ListItem, ListState, Paragraph};
 
 use crate::app::{self, App, BookmarksView, FileView, Focus, KbyteShow, MenuMode, Pane};
+use crate::charset::Charset;
 use crate::config::TerminalTheme;
 use crate::config::{self, formats, theme};
 use crate::filetype;
@@ -1987,6 +1988,12 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
             Style::new().fg(theme().dim),
         ));
     }
+    if v.charset() != Charset::Utf8 {
+        title.push(Span::styled(
+            format!("  {}", v.charset().name()),
+            Style::new().fg(theme().dim),
+        ));
+    }
     if v.truncated() {
         let shown = if v.compression.is_some() {
             format!("{} bytes decompressed", fmt_num(v.data_len()))
@@ -2043,7 +2050,7 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
         prompt_lines(frame, prompt, menu)
     } else {
         let mut words = vec![
-            "Find", "Backward", "Hex", "Colors", "Wrap", "#Num", "Goto", "Edit",
+            "Find", "Backward", "Hex", "Colors", "Wrap", "#Num", "Goto", "Edit", "cOdepage",
         ];
         if diff {
             words.push("Diff");
@@ -2474,6 +2481,27 @@ mod tests {
             let row0 = draw_row0(&mut app);
             assert!(row0.contains(shown), "{row0}");
         }
+    }
+
+    #[test]
+    fn viewer_header_names_the_charset_before_the_cut() {
+        use crate::viewer::{LoadOptions, Viewer};
+        let tmp = crate::testing::tempdir();
+        let mut app = App::new(tmp.path().to_path_buf());
+        let text = "ação\n".repeat(1 << 18);
+        let mut raw = crate::charset::test_util::encode(&text, &crate::charset::CP850);
+        raw.truncate(1 << 20);
+        app.viewer = Some(Viewer::from_file(
+            "x.txt".into(),
+            text.len() as u64,
+            raw,
+            LoadOptions::view(1 << 20),
+        ));
+        let row0 = draw_row0(&mut app);
+        let at = row0.find("CP850").unwrap_or_else(|| panic!("{row0}"));
+        assert!(at < row0.find("(showing first").unwrap(), "{row0}");
+        let all = draw_text(&mut app);
+        assert!(all.contains("cOdepage") || all.contains("Odepage"), "{all}");
     }
 
     #[test]
