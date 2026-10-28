@@ -133,8 +133,34 @@ es, de, fr e zh) e precisa acompanhar cada mudança.
     branch `viewer-charset`, ainda sem push nem PR.
   - **PR 5 (`viewer_max_size` e a RAM, Tarefa 12): implementado** no branch
     `viewer-max-size`, ainda sem push nem PR.
-  - **Próximo passo:** PR 6 (Tarefa 13 em diante). Marque os checkboxes no
-    plano e atualize este status ao fim de cada PR.
+  - **PR 6 (`cargo audit` no CI, Tarefa 13): implementado** no branch
+    `ci-audit`, ainda sem push nem PR.
+  - **Subprojeto 1 implementado** nos PRs 1 a 6, em branches encadeados
+    (`bidi-guard` → `decompress` → `viewer-decompress` → `viewer-charset` →
+    `viewer-max-size` → `ci-audit`), nada enviado.
+- **Revisão final (2026-10-27): feita, e a onda de correções aplicada.** Os
+  achados e as decisões estão em
+  [viewer-encoding-final-review.md](viewer-encoding-final-review.md). Cada
+  correção foi no branch onde o problema nasceu, com rebase da pilha:
+  - `bidi-guard`: T4 (o `O` num nome com bidi abre os arquivos da pergunta,
+    não a seleção do momento do `y`) e "la visionneuse" no francês;
+  - `decompress`: C1 (o limite de tempo fica do lado da entrada, com o
+    leitor `Deadline`; streams, membros, blocos e frames vazios não o
+    burlam mais) e M5 (erro claro no Alt+F5 para dicionário do xz acima do
+    limite);
+  - `viewer-decompress`: M1 (o cabeçalho guarda `(truncated or corrupt)`,
+    `(incomplete: …)` ou `(not decompressed: …)` depois que o aviso some),
+    M6 (`(V to view)` só quando os 64 MiB do V bastam; no xz, sempre), M8
+    (doc do campo `viewer_decompress`) e M2 (manual, 6 línguas);
+  - `viewer-max-size`: C2 (orçamento de memória do `text_lines`, 2× o
+    limite de leitura, com `(showing first N lines)`), I1 (cada quadro
+    custa o que cabe na tela; linhas de mais de 10.000 caracteres sem cor)
+    e M3 + M9 (manual, 6 línguas);
+  - `ci-audit`: M7 (`cargo-audit` fixo na 0.22.2 e auditoria semanal).
+  - **Próximo passo:** uma re-revisão só das correções; depois push e PRs.
+  - **Decisão em aberto para o autor:** RUSTSEC-2025-0141 (`bincode` sem
+    manutenção, via `syntect`). Ele só lê os dumps embutidos do próprio
+    `syntect`, nunca arquivos do usuário; hoje é um aviso, não falha o CI.
 - **Correções feitas no spec ao escrever o plano** (já incorporadas):
   - o `ruzstd` 0.9.1 já limita a janela a 128 MiB por padrão
     (`new_with_max_window_size`);
