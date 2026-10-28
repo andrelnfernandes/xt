@@ -14,6 +14,7 @@ mod filetype;
 mod git;
 mod help;
 mod highlight;
+mod icons;
 mod info;
 mod input;
 mod keymap;

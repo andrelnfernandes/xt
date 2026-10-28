@@ -24,6 +24,7 @@ pub enum Opt {
     ViewerDecompress,
     LegacyCharset,
     ViewerMaxSize,
+    Icons,
     Sort,
     SortDescending,
     EnterViews,
@@ -112,6 +113,11 @@ pub const PAGES: &[Page] = &[
                 "Largest part of a file the viewer reads",
                 Opt::ViewerMaxSize,
             ),
+            (
+                'M',
+                "Icons and glyphs (Nerd Fonts)",
+                Opt::Icons,
+            ),
         ],
     ),
     (
@@ -197,6 +203,7 @@ impl Opt {
                     _ => size,
                 }
             }
+            Opt::Icons => o.icons.as_str().into(),
             Opt::FileDisplay => match o.file_display.as_str() {
                 "names" => "Names in columns".into(),
                 "names_size" => "Names and sizes in columns".into(),
@@ -284,6 +291,7 @@ impl Opt {
             Opt::ViewerDecompress => o.viewer_decompress = !o.viewer_decompress,
             Opt::LegacyCharset => o.legacy_charset = o.legacy_charset.next(),
             Opt::ViewerMaxSize => o.viewer_max_size = o.viewer_max_size.next(),
+            Opt::Icons => o.icons = o.icons.next(),
             Opt::FileDisplay => o.file_display = o.file_display.next(),
             Opt::Sort => o.sort = o.sort.next(),
             Opt::SortDescending => o.sort_descending = !o.sort_descending,
