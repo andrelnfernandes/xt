@@ -182,6 +182,7 @@ es, de, fr e zh) e precisa acompanhar cada mudança.
   Resultado com o binário release de 2026-10-26: 16 MiB custam cerca de
   +40 MiB de RAM (2,5× o arquivo) e cerca de 75 ms de CPU.
 - **Preferências do autor:**
+  - validação obrigatória antes de PR: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` e `cargo test`;
   - segurança primeiro, com modelo de ameaça em todo desenho;
   - arquivos temporários só em `~/.cache/xt-dev/`, nunca em `/tmp`;
   - planos registrados aqui a cada passo aprovado;

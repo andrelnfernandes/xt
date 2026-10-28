@@ -8,11 +8,15 @@ window and never reaches Xylem) opens four pages:
 | Page | Options |
 |---|---|
 | 1. Programs and formats | editor, open editor inside Xylem's frame, Xylem theme in the editor, help language, opener, date format, number format, Git commands |
-| 2. Display and sorting | hidden files, initial sort order and direction, what Enter does in the file window, initial display mode, syntax colors, soft wrap, line numbers, compressed files, the charset of old text files and the size limit of what the viewer reads, colors of the built-in terminal |
+| 2. Display and sorting | hidden files, initial sort order and direction, what Enter does in the file window, initial display mode, syntax colors, soft wrap, line numbers, compressed files, the charset of old text files, the size limit of what the viewer reads, icons and glyphs (Nerd Fonts), colors of the built-in terminal |
 | 3. Confirmations and history | confirm on quit, delete to trash, Prune confirmation, entries with `@` not saved, the built-in terminal's own history |
 | 4. Copy, compare and refresh | ignore 2 s, ignore 1 h, automatic refresh, where Alt+C/Alt+M paths start |
 
 The viewer's size limit (**L** on page 2) costs memory and time: with `1024` MiB, opening an ordinary text file that big takes roughly 2.5 GiB of RAM and about 5 s, and files of very short lines cost more per byte (see [the viewer](viewer.md)).
+
+Icons and glyphs (**M** on page 2) require a font patched with Nerd Fonts. You do not need a specific font: any monospaced font will work (such as Fira Code, JetBrains Mono, Hack, Meslo or Cascadia Code), as long as you choose its "Nerd Font" edition. Nerd Fonts injects thousands of standard icon glyphs into the Unicode Private Use Area. An unpatched font (even original Fira Code) does not contain these icons and will show missing boxes (`□`). To use icons:
+- Download any Nerd Font of your choice from nerdfonts.com, or install a Nerd Fonts package from your distribution's package manager.
+- Select that font in your terminal emulator's font settings.
 
 The option's letter (or Enter) changes the value, PgUp/PgDn or 1–4 switch
 pages, **F4** picks the theme from a list (with an instant preview), **F3**

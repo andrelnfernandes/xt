@@ -64,6 +64,10 @@ legacy_charset = "auto"
 # Largest part of a file the viewer reads (V): "auto" (1/32 of the RAM, from
 # 16 to 256 MiB), "16", "64", "256" or "1024" (MiB). Remote files: at most 16.
 viewer_max_size = "auto"
+# Icons and glyphs in file lists and the directory tree: "none" (classic
+# plain text) or "nerd-fonts" (requires a Nerd Font terminal font from
+# https://www.nerdfonts.com, e.g. FiraCode or JetBrainsMono Nerd Font).
+icons = "none"
 # Initial mode of the files window (Alt+F changes it while running): "names"
 # (several columns), "names_size" (columns with size), "details" (one
 # column with size, date and permissions), "owner" (size, owner and group,
@@ -205,6 +209,8 @@ pub struct Options {
     pub legacy_charset: LegacyCharset,
     /// Largest part of a file the viewer reads.
     pub viewer_max_size: ViewerMaxSize,
+    /// Icons and glyphs (Nerd Fonts).
+    pub icons: IconStyle,
     /// Initial mode of the files window (Alt+F changes it while running).
     pub file_display: FileDisplay,
     /// Initial file sort order.
@@ -247,6 +253,7 @@ impl Default for Options {
             viewer_decompress: true,
             legacy_charset: LegacyCharset::Auto,
             viewer_max_size: ViewerMaxSize::Auto,
+            icons: IconStyle::None,
             file_display: FileDisplay::Details,
             sort: SortKey::Name,
             sort_descending: false,
@@ -294,6 +301,7 @@ impl Options {
             ("viewer_decompress", Value::from(self.viewer_decompress)),
             ("legacy_charset", s(self.legacy_charset.as_str())),
             ("viewer_max_size", s(self.viewer_max_size.as_str())),
+            ("icons", s(self.icons.as_str())),
             ("file_display", s(self.file_display.as_str())),
             ("sort", s(self.sort.as_str())),
             ("sort_descending", Value::from(self.sort_descending)),
@@ -591,6 +599,27 @@ impl Choice for ViewerMaxSize {
             ViewerMaxSize::Mib64 => "64",
             ViewerMaxSize::Mib256 => "256",
             ViewerMaxSize::Mib1024 => "1024",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+pub enum IconStyle {
+    /// Classic plain-text (no glyphs/icons).
+    #[default]
+    #[serde(rename = "none")]
+    None,
+    /// Nerd Fonts icons (requires a Nerd Font terminal font).
+    #[serde(rename = "nerd-fonts")]
+    NerdFonts,
+}
+
+impl Choice for IconStyle {
+    const ALL: &'static [Self] = &[IconStyle::None, IconStyle::NerdFonts];
+    fn as_str(self) -> &'static str {
+        match self {
+            IconStyle::None => "none",
+            IconStyle::NerdFonts => "nerd-fonts",
         }
     }
 }
@@ -1351,6 +1380,16 @@ mod tests {
         let c = Config::parse("[options]\nviewer_max_size = \"64\"").unwrap();
         assert_eq!(c.options.viewer_max_size, ViewerMaxSize::Mib64);
         assert!(Config::parse("[options]\nviewer_max_size = \"65\"").is_err());
+    }
+
+    #[test]
+    fn icons_is_read() {
+        assert_eq!(Options::default().icons, IconStyle::None);
+        let c = Config::parse("[options]\nicons = \"nerd-fonts\"").unwrap();
+        assert_eq!(c.options.icons, IconStyle::NerdFonts);
+        assert_eq!(IconStyle::None.next(), IconStyle::NerdFonts);
+        assert_eq!(IconStyle::NerdFonts.next(), IconStyle::None);
+        assert!(Config::parse("[options]\nicons = \"emoji\"").is_err());
     }
 
     #[test]

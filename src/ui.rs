@@ -22,8 +22,7 @@ use ratatui::widgets::{Block, BorderType, Clear, List, ListItem, ListState, Para
 
 use crate::app::{self, App, BookmarksView, FileView, Focus, KbyteShow, MenuMode, Pane};
 use crate::charset::Charset;
-use crate::config::TerminalTheme;
-use crate::config::{self, formats, theme};
+use crate::config::{self, IconStyle, TerminalTheme, formats, theme};
 use crate::filetype;
 use crate::git::StatusCache;
 use crate::help::{self, Help};
@@ -111,7 +110,14 @@ fn draw_screen(frame: &mut Frame, app: &mut App) {
             Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)])
                 .areas(main);
         let active = app.active;
-        draw_files(frame, &mut app.panes[active], true, list, git);
+        draw_files(
+            frame,
+            &mut app.panes[active],
+            true,
+            list,
+            git,
+            app.options.icons,
+        );
         if let Some(v) = &mut app.autoview {
             let name = v
                 .path
@@ -132,13 +138,21 @@ fn draw_screen(frame: &mut Frame, app: &mut App) {
                 .areas(main);
         let active = app.active;
         for (i, (pane, area)) in app.panes.iter_mut().zip(halves).enumerate() {
-            draw_pane(frame, pane, i == active, true, area, git);
+            draw_pane(frame, pane, i == active, true, area, git, app.options.icons);
         }
     } else {
         let [left, stats] =
             Layout::horizontal([Constraint::Min(20), Constraint::Length(STATS_WIDTH)]).areas(main);
         // The pane first: the Usage view leaves its selected row for the panel.
-        draw_pane(frame, &mut app.panes[0], true, false, left, git);
+        draw_pane(
+            frame,
+            &mut app.panes[0],
+            true,
+            false,
+            left,
+            git,
+            app.options.icons,
+        );
         draw_stats(frame, app, stats);
     }
 }
@@ -277,13 +291,14 @@ fn draw_pane(
     split: bool,
     area: Rect,
     git: Option<&StatusCache>,
+    icons: IconStyle,
 ) {
     if pane.usage.is_some() {
         draw_usage(frame, pane, active, area);
         return;
     }
     if pane.focus == Focus::Files {
-        draw_files(frame, pane, active, area, git);
+        draw_files(frame, pane, active, area, git, icons);
         return;
     }
     let width = area.width.saturating_sub(4) as usize;
@@ -303,13 +318,13 @@ fn draw_pane(
     // Too low for both (e.g. above the terminal's panel): the tree alone,
     // rather than a tree of one or two lines.
     if area.height < MIN_TREE_WITH_FILES {
-        draw_tree(frame, pane, active, title, area);
+        draw_tree(frame, pane, active, title, area, icons);
         return;
     }
     let [tree, files] =
         Layout::vertical([Constraint::Min(3), Constraint::Length(SMALL_FILE_WINDOW)]).areas(area);
-    draw_tree(frame, pane, active, title, tree);
-    draw_files(frame, pane, false, files, git);
+    draw_tree(frame, pane, active, title, tree, icons);
+    draw_files(frame, pane, false, files, git, icons);
 }
 
 fn panel(title: impl Into<Line<'static>>, active: bool) -> Block<'static> {
@@ -352,7 +367,14 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(Line::from(clock), right);
 }
 
-fn draw_tree(frame: &mut Frame, pane: &mut Pane, active: bool, title: String, area: Rect) {
+fn draw_tree(
+    frame: &mut Frame,
+    pane: &mut Pane,
+    active: bool,
+    title: String,
+    area: Rect,
+    icons: IconStyle,
+) {
     pane.tree_page = area.height.saturating_sub(2) as usize;
 
     let (range, mut state) = visible_window(&mut pane.tree_state, pane.rows.len(), pane.tree_page);
@@ -385,13 +407,30 @@ fn draw_tree(frame: &mut Frame, pane: &mut Pane, active: bool, title: String, ar
             } else {
                 Style::new()
             };
-            let mut spans = vec![
-                Span::styled(row.prefix.clone(), Style::new().fg(theme().dim)),
-                Span::styled(name.clone(), name_style),
-            ];
+            let icon = crate::icons::dir_icon(
+                node.expanded,
+                false,
+                pane.archive.is_some() && row.id == crate::model::tree::ROOT,
+                pane.remote.is_some() && row.id == crate::model::tree::ROOT,
+                icons,
+            );
+            let mut spans = vec![Span::styled(
+                row.prefix.clone(),
+                Style::new().fg(theme().dim),
+            )];
+            if let Some(ic) = icon {
+                let ic_style = if node.error.is_some() {
+                    Style::new().fg(theme().error)
+                } else {
+                    Style::new().fg(theme().key)
+                };
+                spans.push(Span::styled(ic, ic_style));
+            }
+            spans.push(Span::styled(name.clone(), name_style));
             if let Some(totals) = &totals {
                 let (count, bytes) = totals[row.id];
-                let used = row.prefix.chars().count() + name.chars().count();
+                let icon_len = if icon.is_some() { 2 } else { 0 };
+                let used = row.prefix.chars().count() + icon_len + name.chars().count();
                 let mut bar = None;
                 let value = match (node.scanned, kbyte.show) {
                     (false, _) => "?".to_string(),
@@ -505,7 +544,14 @@ fn draw_picker(frame: &mut Frame, app: &mut App, main: Rect, menu: Rect) {
         " Folder: {} ",
         fit_tail(&path.to_string_lossy(), width.saturating_sub(10))
     );
-    draw_tree(frame, picker.pane_mut(), true, title, main);
+    draw_tree(
+        frame,
+        picker.pane_mut(),
+        true,
+        title,
+        main,
+        app.options.icons,
+    );
 
     let mut keys = vec![
         ("↑↓", "move"),
@@ -533,6 +579,7 @@ fn draw_files(
     active: bool,
     area: Rect,
     git: Option<&StatusCache>,
+    icons: IconStyle,
 ) {
     let git = git.filter(|g| {
         pane.archive.is_none() && pane.remote.is_none() && g.in_repo(&pane.current_path())
@@ -540,10 +587,13 @@ fn draw_files(
     // Status letters of a file in the repository ("  " if unchanged).
     let marker =
         |pane: &Pane, f: FileRef| git.map(|g| g.marker(&pane.file_path(f)).unwrap_or(*b"  "));
-    let kind = match pane.view {
-        FileView::Dir => "Files",
-        FileView::Branch(_) => "Branch",
-        FileView::Showall => "Showall",
+    let kind = match (pane.view, icons) {
+        (FileView::Dir, IconStyle::NerdFonts) => "\u{f07c} Files",
+        (FileView::Dir, _) => "Files",
+        (FileView::Branch(_), IconStyle::NerdFonts) => "\u{e725} Branch",
+        (FileView::Branch(_), _) => "Branch",
+        (FileView::Showall, IconStyle::NerdFonts) => "\u{f0349} Showall",
+        (FileView::Showall, _) => "Showall",
     };
     let title = format!(
         " {kind}: {} ({}) {} ",
@@ -556,7 +606,7 @@ fn draw_files(
         _ => false,
     };
     if pane.display.multi_column() && !pane.files.is_empty() && !error {
-        draw_file_columns(frame, pane, active, area, title, &marker);
+        draw_file_columns(frame, pane, active, area, title, &marker, icons);
         return;
     }
     pane.file_cols = 1;
@@ -584,7 +634,7 @@ fn draw_files(
         visible
             .iter()
             .zip(details)
-            .map(|(&f, detail)| file_line(pane.file(f), width, detail, marker(pane, f)))
+            .map(|(&f, detail)| file_line(pane.file(f), width, detail, marker(pane, f), icons))
             .collect()
     };
 
@@ -628,6 +678,7 @@ fn draw_file_columns(
     area: Rect,
     title: String,
     marker: &dyn Fn(&Pane, FileRef) -> Option<[u8; 2]>,
+    icons: IconStyle,
 ) {
     let git_w = if pane
         .files
@@ -638,6 +689,7 @@ fn draw_file_columns(
     } else {
         0
     };
+    let icon_w = if icons == IconStyle::None { 0 } else { 2 };
     let block = panel(title, active);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -655,8 +707,8 @@ fn draw_file_columns(
         .max()
         .unwrap_or(1)
         .min(MAX_COLUMN_NAME);
-    // Tag mark + name + (size and permissions) + space between columns.
-    let cell_w = 2 + git_w + name_w + if with_size { 23 } else { 0 } + 1;
+    // Tag mark + git + icon + name + (size and permissions) + space between columns.
+    let cell_w = 2 + git_w + icon_w + name_w + if with_size { 23 } else { 0 } + 1;
     let cols = (width / cell_w).max(1);
     pane.file_cols = cols;
     pane.file_page = height * cols;
@@ -682,10 +734,19 @@ fn draw_file_columns(
                 if f.kind == FileKind::Symlink {
                     name.push('@');
                 }
+                let icon = crate::icons::file_icon(
+                    &f.name,
+                    f.kind,
+                    crate::platform::is_executable(&f.name, f.mode),
+                    icons,
+                )
+                .unwrap_or_default();
                 let mut cell = format!(
-                    "{}{}{}",
+                    "{}{}{}{}",
                     if f.tagged { "■ " } else { "  " },
-                    git.map(|xy| git_text(&xy)).unwrap_or_default(),
+                    git.map(|xy| git_marker_text(&xy, icons))
+                        .unwrap_or_default(),
+                    icon,
                     fit(&name, name_w)
                 );
                 if with_size {
@@ -727,6 +788,14 @@ fn file_style(f: &FileEntry) -> Style {
 /// `M ` → `"M  "`: the two status letters and a space.
 fn git_text(xy: &[u8; 2]) -> String {
     format!("{}{} ", char::from(xy[0]), char::from(xy[1]))
+}
+
+fn git_marker_text(xy: &[u8; 2], icons: IconStyle) -> String {
+    if let Some(icon) = crate::icons::git_icon(*xy, icons) {
+        icon.to_string()
+    } else {
+        git_text(xy)
+    }
 }
 
 /// What the one-column file window shows after each name (Alt+F).
@@ -787,6 +856,7 @@ fn file_line(
     width: usize,
     detail: Detail,
     git: Option<[u8; 2]>,
+    icons: IconStyle,
 ) -> ListItem<'static> {
     let size = fmt_num(f.size);
     let mode = fmt_mode(f.mode, f.kind);
@@ -818,8 +888,15 @@ fn file_line(
     };
 
     // 2 columns for the tag mark, 3 for the Git status.
-    let git = git.map(|xy| git_text(&xy));
-    let marks = 2 + git.as_ref().map_or(0, String::len);
+    let git = git.map(|xy| git_marker_text(&xy, icons));
+    let icon = crate::icons::file_icon(
+        &f.name,
+        f.kind,
+        crate::platform::is_executable(&f.name, f.mode),
+        icons,
+    );
+    let icon_len = if icon.is_some() { 2 } else { 0 };
+    let marks = 2 + git.as_ref().map_or(0, String::len) + icon_len;
     let name_width = width.saturating_sub(details.chars().count() + marks).max(8);
     let mut name: String = f.name.to_string_lossy().into_owned();
     if f.kind == FileKind::Symlink {
@@ -835,6 +912,9 @@ fn file_line(
             git,
             Style::new().fg(theme().key).add_modifier(Modifier::BOLD),
         ));
+    }
+    if let Some(ic) = icon {
+        spans.push(Span::styled(ic, style));
     }
     spans.extend([
         Span::styled(name, style),
@@ -2760,5 +2840,19 @@ mod tests {
         assert!(screen.contains("[1]"));
         assert!(screen.contains("[x]"));
         assert!(screen.contains("2 bookmarks"));
+    }
+
+    #[test]
+    fn icons_switch_in_file_list() {
+        let tmp = crate::testing::tempdir();
+        std::fs::write(tmp.path().join("main.rs"), "fn main() {}").unwrap();
+        let mut app = App::new(tmp.path().to_path_buf());
+        app.options.icons = IconStyle::None;
+        let screen_none = draw_text(&mut app);
+        assert!(!screen_none.contains("\u{e7a8}"));
+
+        app.options.icons = IconStyle::NerdFonts;
+        let screen_icons = draw_text(&mut app);
+        assert!(screen_icons.contains("\u{e7a8}"));
     }
 }

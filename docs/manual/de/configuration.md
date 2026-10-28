@@ -8,11 +8,15 @@ Fenster und erreicht Xylem nicht) öffnet vier Seiten:
 | Seite | Optionen |
 |---|---|
 | 1. Programme und Formate | Editor, Editor im Xylem-Rahmen öffnen, Xylem-Thema im Editor, Hilfesprache, Programm zum Öffnen (Opener), Datumsformat, Zahlenformat, Git-Befehle |
-| 2. Anzeige und Sortierung | versteckte Dateien, anfängliches Sortierkriterium und Richtung, Verhalten von Enter im Dateifenster, anfänglicher Anzeigemodus, Syntaxfarben, Zeilenumbruch, Zeilennummern, komprimierte Dateien, die Kodierung alter Texte und das Größenlimit dessen, was der Betrachter liest, Farben des integrierten Terminals |
+| 2. Anzeige und Sortierung | versteckte Dateien, anfängliches Sortierkriterium und Richtung, Verhalten von Enter im Dateifenster, anfänglicher Anzeigemodus, Syntaxfarben, Zeilenumbruch, Zeilennummern, komprimierte Dateien, die Kodierung alter Texte, das Größenlimit dessen, was der Betrachter liest, Icons und Symbole (Nerd Fonts), Farben des integrierten Terminals |
 | 3. Bestätigungen und Verlauf | beim Beenden nachfragen, in den Papierkorb löschen, Prune-Bestätigung, Einträge mit `@` nicht speichern, eigener Verlauf des integrierten Terminals |
 | 4. Kopieren, Vergleichen und Aktualisieren | 2 s ignorieren, 1 Std. ignorieren, automatische Aktualisierung, Startpunkt der Pfade bei Alt+C/Alt+M |
 
 Das Größenlimit des Betrachters (**L** auf Seite 2) kostet Speicher und Zeit: Mit `1024` MiB belegt das Öffnen einer gewöhnlichen Textdatei dieser Größe etwa 2,5 GiB RAM und dauert rund 5 s, und Dateien mit sehr kurzen Zeilen kosten mehr pro Byte (siehe [den Betrachter](viewer.md)).
+
+Icons und Symbole (**M** auf Seite 2) erfordern eine mit Nerd Fonts erweiterte Schriftart. Sie benötigen keine bestimmte Schriftart: Jede dicktengleiche Schrift funktioniert (wie Fira Code, JetBrains Mono, Hack, Meslo oder Cascadia Code), solange Sie die jeweilige „Nerd Font“-Variante wählen. Nerd Fonts fügt tausende Standard-Symbole in den privaten Unicode-Bereich ein. Herkömmliche Schriftarten ohne diese Erweiterung (selbst die originale Fira Code) enthalten diese Symbole nicht und zeigen leere Kästchen (`□`). So richten Sie sie ein:
+- Laden Sie eine beliebige Nerd Font Ihrer Wahl von nerdfonts.com herunter oder installieren Sie ein Nerd-Fonts-Paket über Ihre Paketverwaltung.
+- Wählen Sie diese Schriftart in den Einstellungen Ihres Terminal-Emulators aus.
 
 Der Buchstabe der Option (oder Enter) ändert den Wert, PgUp/PgDn oder 1–4
 wechseln die Seite, **F4** wählt das Thema aus einer Liste (mit sofortiger

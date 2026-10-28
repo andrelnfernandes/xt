@@ -8,11 +8,15 @@ janela e nunca chega ao Xylem) abre quatro páginas:
 | Página | Opções |
 |---|---|
 | 1. Programas e formatos | editor, abrir editor dentro da moldura do Xylem, tema do Xylem no editor, idioma da ajuda, programa de abertura (`opener`), formato de data, formato numérico, comandos Git |
-| 2. Exibição e ordenação | arquivos ocultos, ordem e direção iniciais de classificação, o que Enter faz na janela de arquivos, modo de exibição inicial, cores de sintaxe, quebra de linha, números de linha, arquivos comprimidos, a codificação de textos antigos e o limite de tamanho do que o visualizador lê, cores do terminal integrado |
+| 2. Exibição e ordenação | arquivos ocultos, ordem e direção iniciais de classificação, o que Enter faz na janela de arquivos, modo de exibição inicial, cores de sintaxe, quebra de linha, números de linha, arquivos comprimidos, a codificação de textos antigos, o limite de tamanho do que o visualizador lê, ícones e glifos (Nerd Fonts), cores do terminal integrado |
 | 3. Confirmações e histórico | confirmar ao sair, excluir para a lixeira, confirmação do Prune, entradas com `@` não salvas, histórico próprio do terminal integrado |
 | 4. Copiar, comparar e atualizar | ignorar 2 s, ignorar 1 h, atualização automática, onde começam os caminhos de Alt+C/Alt+M |
 
 O limite de tamanho do visualizador (**L** na página 2) custa memória e tempo: com `1024` MiB, abrir um arquivo de texto comum desse tamanho ocupa cerca de 2,5 GiB de RAM e leva uns 5 s, e arquivos de linhas muito curtas custam mais por byte (veja [o visualizador](viewer.md)).
+
+Ícones e glifos (**M** na página 2) exigem uma fonte com o patch do Nerd Fonts. Não é necessária uma fonte específica: qualquer fonte monoespaçada funciona (como Fira Code, JetBrains Mono, Hack, Meslo ou Cascadia Code), desde que seja a sua versão "Nerd Font". O Nerd Fonts injeta milhares de glifos padronizados na área privada do Unicode. Fontes comuns sem o patch (mesmo a Fira Code original) não contêm esses desenhos e exibirão retângulos vazios (`□`). Para utilizá-los:
+- Baixe qualquer Nerd Font de sua preferência em nerdfonts.com ou instale um pacote Nerd Fonts pelo gerenciador de pacotes da sua distribuição.
+- Selecione a fonte instalada nas preferências do seu emulador de terminal.
 
 A letra da opção (ou Enter) altera o valor, PgUp/PgDn ou 1–4 trocam de página,
 **F4** escolhe o tema em uma lista (com pré-visualização instantânea), **F3**
