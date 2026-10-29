@@ -305,6 +305,16 @@ install -m 755 xy-*-x86_64-unknown-linux-musl/xy ~/.local/bin/</pre></div>
             <p>Each archive has a <code>.sha256</code> next to it, to check with <code>sha256sum -c</code>.</p>
           </div>
           <div class="card">
+            <h3>Package (.deb or .rpm)</h3>
+            <p>The releases after 0.4.0 also have packages for Debian, Ubuntu, Fedora, RHEL, openSUSE
+              and their derivatives, x86_64 or ARM64. They also install the menu entry, the icons
+              and the man page:</p>
+            <div class="code"><pre>sudo apt install ./xylem-fm_*_amd64.deb
+sudo dnf install ./xylem-fm-*.x86_64.rpm</pre></div>
+            <p>They come from the Releases page, not from a repository: to update, install the next
+              one the same way.</p>
+          </div>
+          <div class="card">
             <h3>With Cargo</h3>
             <p>Needs Rust, via <a href="https://rustup.rs">rustup</a>. On
               <a href="https://crates.io/crates/xylem-fm">crates.io</a> Xylem is called
