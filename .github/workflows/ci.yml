@@ -69,10 +69,12 @@ jobs:
           test -f /usr/share/man/man1/xy.1.gz
           test -f /usr/share/applications/xylem.desktop
           sudo apt-get remove -y xylem-fm
+      # The Fedora image skips the files marked as docs (tsflags=nodocs), the
+      # man page among them; a normal installation has them.
       - name: Install the .rpm
         run: |
           docker run --rm -v "$PWD/target/packages:/packages:ro" fedora:latest sh -euc '
-            dnf install -y -q --setopt=install_weak_deps=False /packages/*.rpm
+            dnf install -y -q --setopt=install_weak_deps=False --setopt=tsflags= /packages/*.rpm
             xy --version
             test -f /usr/share/man/man1/xy.1.gz
             test -f /usr/share/applications/xylem.desktop
