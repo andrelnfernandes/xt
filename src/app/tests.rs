@@ -1381,6 +1381,21 @@ fn git_menu() {
     );
     press(&mut app, KeyCode::Esc);
 
+    // Graph of the whole repository, in git's colors but without its codes.
+    ctrl(&mut app, 'g');
+    press(&mut app, KeyCode::Char('g'));
+    let v = app.viewer.as_ref().expect("graph shown");
+    let lines = v.visible_lines(20);
+    assert!(lines[0].starts_with("* ") && lines[0].contains("(HEAD -> "));
+    assert!(lines[0].ends_with(" first"), "{lines:?}");
+    assert!(
+        lines
+            .iter()
+            .all(|l| !l.contains('\u{1b}') && !l.contains('·'))
+    );
+    assert!(v.colors_on);
+    press(&mut app, KeyCode::Esc);
+
     // Status letters in the list, before and after Add.
     app.refresh_git();
     let a = app.current_path().join("a.rs");

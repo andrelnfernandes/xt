@@ -10,12 +10,15 @@ Ctrl+G abre o menu Git no rodapé; a próxima letra escolhe:
 
 - **S**tatus, **L**og, **D**iff (contra HEAD: staged e unstaged juntos, com
   cores) e **B**lame abrem no [visualizador](viewer.md), com busca;
+- **G**raph: `git log --graph --decorate --oneline --all`, os
+  últimos 1000 commits de todos os ramos, com as cores do próprio Git (uma por
+  linha de ramo), também no visualizador;
 - **A**dd e **U**nstage;
 - **C**ommit abre o próprio editor do Git, como faz `git commit`.
 
 Os comandos atuam nos arquivos marcados da lista ou, se não houver nenhum, no
-arquivo atual; na árvore, no diretório atual. O Status sempre cobre todo o
-repositório. Para push, pull e outros comandos que usam a rede, use
+arquivo atual; na árvore, no diretório atual. O Status e o Graph sempre cobrem todo
+o repositório. Para push, pull e outros comandos que usam a rede, use
 [eXecute](execute.md) (`X`), por exemplo `git push`.
 
 ## Status na lista de arquivos

@@ -27,6 +27,9 @@ pub const MAX_LINE_CHARS: usize = 10_000;
 /// Name that `for_name` colors like `git status` does in a terminal.
 pub const GIT_STATUS: &str = "git status";
 
+/// Text that brings its own ANSI colors (git's graph): see [`from_ansi`].
+pub const ANSI: &str = "ansi";
+
 /// Minimum contrast ratio between text and background (WCAG uses 4.5 for
 /// body text; 3.5 keeps the theme's colors closer to the original).
 const MIN_CONTRAST: f64 = 3.5;
@@ -226,6 +229,166 @@ impl Highlighter {
     }
 }
 
+/// Text with ANSI colors, as `git log --graph --color` writes it: the text
+/// without the escape sequences, and its colors. Only the text color of the
+/// SGR sequences (`ESC [ ... m`) counts; any other sequence is dropped, and
+/// other control characters are left for the viewer to show as `·`. Tabs
+/// are expanded here, so the colors stay on their characters.
+pub fn from_ansi(text: &[u8]) -> (Vec<u8>, Option<Highlighter>) {
+    type Rgb = (u8, u8, u8);
+    let text = String::from_utf8_lossy(text);
+    let mut plain = String::with_capacity(text.len());
+    let mut done = Vec::new();
+    let mut fg: Option<Rgb> = None;
+    for line in text.split_inclusive('\n') {
+        let line = line.strip_suffix('\n').unwrap_or(line);
+        let mut segments: Vec<(Option<Rgb>, String)> = Vec::new();
+        let mut col = 0;
+        let mut chars = line.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '\u{1b}' {
+                if chars.next_if_eq(&'[').is_some() {
+                    let mut params = String::new();
+                    while let Some(p) = chars.next_if(|p| !('\u{40}'..='\u{7e}').contains(p)) {
+                        params.push(p);
+                    }
+                    if chars.next() == Some('m') {
+                        fg = sgr(&params, fg);
+                    }
+                }
+                continue;
+            }
+            let piece = if c == '\t' {
+                " ".repeat(8 - col % 8)
+            } else {
+                c.to_string()
+            };
+            col += piece.chars().count();
+            plain.push_str(&piece);
+            match segments.last_mut() {
+                Some((color, s)) if *color == fg => s.push_str(&piece),
+                _ => segments.push((fg, piece)),
+            }
+        }
+        plain.push('\n');
+        done.push(segments);
+    }
+    if !enabled() {
+        return (plain.into_bytes(), None);
+    }
+    let background = STYLE.read().unwrap_or_else(|e| e.into_inner()).1;
+    let text_color = crate::config::theme().text;
+    let done = done
+        .into_iter()
+        .take(MAX_LINES)
+        .map(|segments| {
+            segments
+                .into_iter()
+                .map(|(c, s)| {
+                    let color = c.map_or(text_color, |rgb| {
+                        let (r, g, b) = readable(rgb, background);
+                        Color::Rgb(r, g, b)
+                    });
+                    (color, s)
+                })
+                .collect()
+        })
+        .collect();
+    let colors = Highlighter {
+        lines: None,
+        done,
+        background,
+        language: "Git graph".into(),
+        failed: false,
+    };
+    (plain.into_bytes(), Some(colors))
+}
+
+/// The text color after the SGR sequence with these parameters (`1;32`).
+fn sgr(params: &str, mut fg: Option<(u8, u8, u8)>) -> Option<(u8, u8, u8)> {
+    let mut nums = params.split([';', ':']).map(|p| {
+        if p.is_empty() {
+            Some(0)
+        } else {
+            p.parse::<u16>().ok()
+        }
+    });
+    while let Some(n) = nums.next() {
+        let Some(n) = n else { break };
+        match n {
+            0 | 39 => fg = None,
+            30..=37 => fg = Some(ansi16(n as usize - 30)),
+            90..=97 => fg = Some(ansi16(n as usize - 90 + 8)),
+            38 => {
+                let mut next = || nums.next().flatten();
+                fg = match next() {
+                    Some(5) => next().map(|i| ansi256(i as usize)).or(fg),
+                    Some(2) => match (next(), next(), next()) {
+                        (Some(r), Some(g), Some(b)) => {
+                            let byte = |v: u16| v.min(255) as u8;
+                            Some((byte(r), byte(g), byte(b)))
+                        }
+                        _ => fg,
+                    },
+                    _ => fg,
+                };
+            }
+            // Background colors' arguments, so they are not read as colors.
+            48 => {
+                let skip = match nums.next().flatten() {
+                    Some(5) => 1,
+                    Some(2) => 3,
+                    _ => 0,
+                };
+                for _ in 0..skip {
+                    nums.next();
+                }
+            }
+            _ => {}
+        }
+    }
+    fg
+}
+
+/// The 16 basic colors, in the Tango palette (see `rgb_of`).
+fn ansi16(i: usize) -> (u8, u8, u8) {
+    const PALETTE: [(u8, u8, u8); 16] = [
+        (46, 52, 54),
+        (204, 0, 0),
+        (78, 154, 6),
+        (196, 160, 0),
+        (52, 101, 164),
+        (117, 80, 123),
+        (6, 152, 154),
+        (211, 215, 207),
+        (85, 87, 83),
+        (239, 41, 41),
+        (138, 226, 52),
+        (252, 233, 79),
+        (114, 159, 207),
+        (173, 127, 168),
+        (52, 226, 226),
+        (238, 238, 236),
+    ];
+    PALETTE[i % 16]
+}
+
+/// The xterm 256-color palette.
+fn ansi256(i: usize) -> (u8, u8, u8) {
+    match i {
+        0..=15 => ansi16(i),
+        16..=231 => {
+            let level = |v: usize| if v == 0 { 0 } else { (55 + v * 40) as u8 };
+            let i = i - 16;
+            (level(i / 36), level(i / 6 % 6), level(i % 6))
+        }
+        _ => {
+            let v = (8 + (i.min(255) - 232) * 10) as u8;
+            (v, v, v)
+        }
+    }
+}
+
 /// `fg` adjusted (lightened on dark backgrounds, darkened on light ones)
 /// until it has enough contrast with `bg`.
 fn readable(fg: (u8, u8, u8), bg: (u8, u8, u8)) -> (u8, u8, u8) {
@@ -266,6 +429,45 @@ mod tests {
 
     fn lines(text: &str) -> Vec<String> {
         text.lines().map(String::from).collect()
+    }
+
+    #[test]
+    fn ansi_colors_without_the_sequences() {
+        let text = b"* \x1b[33m1a2b3c4\x1b[m \x1b[33m(\x1b[1;36mHEAD -> \x1b[m\x1b[1;32mmain\x1b[m\x1b[33m)\x1b[m first\n\
+            \x1b[31m|\x1b[m\x1b[2J\x1b]0;t\x07\ta\n";
+        let (plain, colors) = from_ansi(text);
+        let plain = String::from_utf8(plain).unwrap();
+        assert_eq!(
+            plain, "* 1a2b3c4 (HEAD -> main) first\n|]0;t\x07  a\n",
+            "only the escape characters go; tabs expanded"
+        );
+        let mut h = colors.unwrap();
+        let first = h.line(0, &lines(&plain)).unwrap().to_vec();
+        let color_of = |segs: &[(Color, String)], word: &str| {
+            segs.iter().find(|(_, s)| s.contains(word)).map(|(c, _)| *c)
+        };
+        assert_ne!(color_of(&first, "1a2b3c4"), color_of(&first, "main"));
+        assert_ne!(color_of(&first, "HEAD"), color_of(&first, "main"));
+        assert_eq!(
+            color_of(&first, "first"),
+            Some(crate::config::theme().text),
+            "uncolored text"
+        );
+        let joined: String = first.iter().map(|(_, s)| s.as_str()).collect();
+        assert_eq!(joined, "* 1a2b3c4 (HEAD -> main) first");
+    }
+
+    #[test]
+    fn sgr_text_colors() {
+        assert_eq!(sgr("1;32", None), Some(ansi16(2)));
+        assert_eq!(sgr("", Some((1, 2, 3))), None);
+        assert_eq!(sgr("39", Some((1, 2, 3))), None);
+        assert_eq!(sgr("38;5;196", None), Some((255, 0, 0)));
+        assert_eq!(sgr("38;5;244", None), Some((128, 128, 128)));
+        assert_eq!(sgr("38;2;10;20;300", None), Some((10, 20, 255)));
+        assert_eq!(sgr("48;5;10", None), None, "background only");
+        assert_eq!(sgr("48;2;1;2;3;91", None), Some(ansi16(9)));
+        assert_eq!(sgr("38;5", Some((1, 2, 3))), Some((1, 2, 3)), "incomplete");
     }
 
     #[test]

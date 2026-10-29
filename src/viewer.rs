@@ -412,6 +412,18 @@ impl Viewer {
         Self::build(path, size, data, Charset::Utf8, binary, MAX_BYTES as usize)
     }
 
+    /// Text with ANSI colors (git's graph), shown in those colors and
+    /// without the escape sequences.
+    pub fn from_ansi(path: PathBuf, data: &[u8]) -> Self {
+        let (plain, colors) = crate::highlight::from_ansi(data);
+        let mut v = Self::from_bytes(path, plain.len() as u64, plain);
+        if v.mode == ViewMode::Text {
+            v.colors_on = colors.is_some();
+            v.colors = colors;
+        }
+        v
+    }
+
     /// `data` shown as `charset` text, or as hex when it is `binary`.
     /// `limit` is the read limit, which sets the lines' memory budget.
     fn build(

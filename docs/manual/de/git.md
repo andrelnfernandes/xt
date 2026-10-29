@@ -13,12 +13,15 @@ Befehl:
 - **S**tatus, **L**og, **D**iff (gegenüber HEAD: vorgemerkte und nicht
   vorgemerkte Änderungen zusammen, farbig dargestellt) und **B**lame werden im
   [Betrachter](viewer.md) mit Suchfunktion geöffnet;
+- **G**raph: `git log --graph --decorate --oneline --all`, die
+  letzten 1000 Commits aller Zweige, in den Farben von Git selbst (eine pro
+  Zweiglinie), ebenfalls im Betrachter;
 - **A**dd (vormerken) und **U**nstage (Vormerkung aufheben);
 - **C**ommit öffnet den eigenen Editor von Git, genau wie `git commit`.
 
 Die Befehle wirken auf die markierten Dateien der Liste, andernfalls auf die
-aktuelle Datei; im Baum auf das aktuelle Verzeichnis. Status umfasst immer das
-gesamte Repository. Für push, pull und andere Befehle, die das Netzwerk nutzen,
+aktuelle Datei; im Baum auf das aktuelle Verzeichnis. Status und Graph umfassen immer
+das gesamte Repository. Für push, pull und andere Befehle, die das Netzwerk nutzen,
 verwenden Sie [Ausführen](execute.md) (`X`), z. B. `git push`.
 
 ## Status in der Dateiliste
