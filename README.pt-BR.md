@@ -260,22 +260,51 @@ tópicos: [a janela da árvore](docs/manual/tree.md),
 
 ## Roteiro
 
-- [x] Fase 0 — tela clássica, árvore navegável, janela de arquivos
-- [x] Fase 1 — Filespec, Showall/Branch, viewer texto/hex, log com progresso
-- [x] Fase 2 — tagging, copy/move/delete/rename, makedir, permissões, re-log
-- [x] Fase 3 — janela dividida (F8), Log, Compare, ZIP/TAR, inotify, Edit,
-  eXecute, histórico nos prompts
-- [x] Fase 4 — configuração, temas, teclas configuráveis, ajuda (F1),
-  histórico persistente, build de release e instalação
+### Feito
+
+- O núcleo do XTree (fases 0 a 4): a tela clássica, a árvore e a janela de
+  arquivos, Filespec, Showall e Branch, marcações e operações em grupo, a
+  janela dividida, Compare, arquivos compactados, Edit e eXecute,
+  configuração, temas, teclas configuráveis, a ajuda e o histórico
+  persistente.
+- Além dele: o terminal integrado, máquinas remotas via SSH (navegar, copiar
+  delas, o terminal delas), armazenamento em nuvem via rclone, Git, a visão
+  Usage, favoritos, Oops, arquivos binários num editor hexadecimal à sua
+  escolha, ícones Nerd Fonts, a ajuda em seis línguas e uma versão
+  experimental para Windows.
+- O visualizador: codificações detectadas sozinhas, arquivos comprimidos,
+  limite de tamanho configurável, quebra de linha, números de linha, ir para
+  a linha e proteção contra caracteres ocultos de direção do texto.
+
+### Próximos passos
+
+- **Máquinas remotas (SSH):** hoje o lado remoto é somente leitura. Primeiro
+  vem a escrita (copiar para ela, mover, excluir, renomear, criar diretórios,
+  permissões, datas), depois Edit e Abrir (por uma cópia temporária que volta
+  ao salvar), eXecute e Git via ssh, e atualização periódica.
+- **Visualizador:** modo tabela para DBF (com arquivos memo) e CSV, e SDF
+  como extra; um visualizador que lê em janelas, como o `less`, sem limite de
+  tamanho para arquivos não comprimidos; logs (acompanhar, ir para o fim,
+  filtrar linhas, cores por nível); SQLite; e, opcionais e isolados,
+  conversores externos como o `pdftotext` ou o `exiftool`.
+- **Uso do disco:** ações dentro da visão Usage (marcar, excluir, Prune,
+  visualizar), depois um treemap opcional, agrupamento por tipo e exportação.
+- **Arquivos duplicados:** nesta máquina (por tamanho, depois pelo conteúdo),
+  no Google Drive pelos checksums que ele já guarda, e pastas inteiras
+  duplicadas.
+- **Do ZTreeWin:** os itens de "O que o Xylem ainda não tem" na
+  [comparação com o ZTreeWin](docs/manual/pt/ztreewin.md), como o JFC, o
+  Global, o mouse e salvar o log.
+- **Endurecimento:** as sobras da revisão de segurança, listadas no
+  [BACKLOG.md](BACKLOG.md) (em inglês).
 
 ### Para depois
 
-- pacote `.deb` (falta definir licença e mantenedor)
-- versão para Windows: compila e passa nos testes (veja
-  [Windows](docs/manual/windows.md)); falta usar no dia a dia.
-  Talvez macOS
-- os itens de "Not implemented" da
-  [comparação com o ZTreeWin](docs/manual/ztreewin.md)
+- Windows: compila e passa nos testes (veja
+  [Windows](docs/manual/windows.md)), mas não é prioridade enquanto existir o
+  ZTreeWin. Talvez macOS.
+- pacote `.deb` (falta definir licença e mantenedor).
+- Adiados por opção: macros, chown e Graft.
 - **O Xylem numa janela própria**, mais para frente: a mesma tela desenhada
   numa janela própria em vez de um terminal (um backend do ratatui que
   desenha numa janela, por exemplo com wgpu), com fonte e ícone próprios.

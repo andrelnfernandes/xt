@@ -53,7 +53,7 @@ externos vêm por último, como opção.
 
 | # | Subprojeto | Quem lê o arquivo | Depende de | Status |
 |---|---|---|---|---|
-| 1 | Codificações (UTF-8, UTF-16, CP850, CP437, 1252), `.gz/.xz/.zst/.bz2` soltos, limite de tamanho configurável | Rust, dentro do Xylem | — | **spec em andamento:** [viewer-encoding.md](viewer-encoding.md) |
+| 1 | Codificações (UTF-8, UTF-16, CP850, CP437, 1252), `.gz/.xz/.zst/.bz2` soltos, limite de tamanho configurável | Rust, dentro do Xylem | — | **feito** (PRs #44 a #49); spec em [viewer-encoding.md](viewer-encoding.md) |
 | 2 | Modo tabela + DBF (com memo `.DBT`/`.FPT`) e CSV; SDF como extra | Rust, dentro do Xylem | 1 | não iniciado |
 | 3 | Viewer em janelas, como o `less`: lê sob demanda, monta o índice de linhas em segundo plano, carrega de forma assíncrona e Esc cancela | — | 1 | não iniciado |
 | 4 | Logs: follow, ir para o fim, filtro de linhas, cor por nível, ANSI só SGR | Rust, dentro do Xylem | 3 | não iniciado |
@@ -118,10 +118,12 @@ es, de, fr e zh) e precisa acompanhar cada mudança.
 
 ## Como retomar (para quem continuar o trabalho)
 
-- **Onde estamos:** subprojeto 1. O spec
+- **Onde estamos:** subprojeto 1 concluído e no `main` (PRs #44 a #49, de
+  2026-10-27). O próximo é o subprojeto 2 (modo tabela), ainda sem spec.
+  Histórico do subprojeto 1: o spec
   ([viewer-encoding.md](viewer-encoding.md)) foi aprovado pelo autor e o
   plano de implementação ([viewer-encoding-plan.md](viewer-encoding-plan.md))
-  está em execução.
+  foi executado.
   - **PR 1 (guarda bidi, Tarefas 1 a 4): implementado** no branch
     `bidi-guard`, ainda sem push nem PR.
   - **PR 2 (módulo `decompress` e correção do Alt+F5, Tarefas 5 a 7):

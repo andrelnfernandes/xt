@@ -250,22 +250,49 @@ and the man page (`xy --man`). Some topics:
 
 ## Roadmap
 
-- [x] Phase 0 — classic screen, navigable tree, file window
-- [x] Phase 1 — Filespec, Showall/Branch, text/hex viewer, log with progress
-- [x] Phase 2 — tagging, copy/move/delete/rename, makedir, permissions, re-log
-- [x] Phase 3 — split window (F8), Log, Compare, ZIP/TAR, inotify, Edit,
-  eXecute, history in prompts
-- [x] Phase 4 — configuration, themes, configurable keys, help (F1),
-  persistent history, release build and installation
+### Done
+
+- The XTree core (phases 0 to 4): the classic screen, the tree and the file
+  window, Filespec, Showall and Branch, tags and group operations, the split
+  window, Compare, archives, Edit and eXecute, configuration, themes,
+  configurable keys, the help and persistent history.
+- Beyond it: the built-in terminal, remote machines over SSH (browsing,
+  copying from them, their terminal), cloud storage through rclone, Git, the
+  Usage view, bookmarks, Oops, binary files in a hex editor of your choice,
+  Nerd Fonts icons, the help in six languages and an experimental Windows
+  build.
+- The viewer: encodings found by itself, compressed files, a configurable
+  size limit, soft wrap, line numbers, goto line, and protection against
+  hidden text direction characters.
+
+### Next
+
+- **Remote machines (SSH):** today the remote side is read-only. Next comes
+  writing to it (copy to it, move, delete, rename, make directories,
+  permissions, dates), then Edit and Open (through a temporary copy that
+  goes back when saved), eXecute and Git over ssh, and periodic refresh.
+- **Viewer:** a table mode for DBF (with memo files) and CSV, and SDF as an
+  extra; a viewer that reads in windows, like `less`, with no size limit for
+  uncompressed files; logs (follow, jump to the end, filter lines, colors by
+  level); SQLite; and, optional and isolated, external converters such as
+  `pdftotext` or `exiftool`.
+- **Disk usage:** actions inside the Usage view (tag, delete, prune, view),
+  then an optional treemap, grouping by type and export.
+- **Duplicate files:** on this machine (by size, then by content), on Google
+  Drive through the checksums it already keeps, and whole duplicated folders.
+- **From ZTreeWin:** the items in "What Xylem does not have yet" in the
+  [comparison with ZTreeWin](docs/manual/ztreewin.md), such as JFC, Global,
+  the mouse and saving the log.
+- **Hardening:** the leftovers of the security pass, listed in
+  [BACKLOG.md](BACKLOG.md).
 
 ### For later
 
-- `.deb` package (license and maintainer still to be decided)
-- Windows version: builds and passes the tests (see
-  [Windows](docs/manual/windows.md)); still to be tried in daily use.
-  Maybe macOS
-- the items under "Not implemented" in the
-  [comparison with ZTreeWin](docs/manual/ztreewin.md)
+- Windows: it builds and passes the tests (see
+  [Windows](docs/manual/windows.md)), but it is not a priority while
+  ZTreeWin exists. Maybe macOS.
+- `.deb` package (license and maintainer still to be decided).
+- Postponed by choice: macros, chown and Graft.
 - **Xylem in its own window**, further ahead: the same screen drawn in a
   window of its own instead of a terminal (a ratatui backend that renders
   to a window, e.g. on wgpu), with its own font and icon. It would need no
