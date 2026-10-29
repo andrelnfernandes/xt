@@ -122,13 +122,13 @@ x86_64 or ARM64 (static, runs on any distribution) or Windows x86_64.
 Extract it and put `xy` (`xy.exe`) somewhere on your `PATH`, e.g.:
 
 ```bash
-tar xzf xy-v0.4.0-x86_64-unknown-linux-musl.tar.gz
-install -m 755 xy-v0.4.0-x86_64-unknown-linux-musl/xy ~/.local/bin/
+tar xzf xy-v0.5.0-x86_64-unknown-linux-musl.tar.gz
+install -m 755 xy-v0.5.0-x86_64-unknown-linux-musl/xy ~/.local/bin/
 ```
 
 Each archive has a `.sha256` next to it, to check with `sha256sum -c`.
 
-**Package (.deb or .rpm):** the releases after 0.4.0 also have packages for
+**Package (.deb or .rpm):** the releases from 0.5.0 on also have packages for
 Debian, Ubuntu and their derivatives (`.deb`) and for Fedora, RHEL, openSUSE
 and theirs (`.rpm`), for x86_64 and ARM64 (`arm64`/`aarch64` in the name).
 Besides `xy`, they install the menu entry, the icons and the man page:
