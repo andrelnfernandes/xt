@@ -28,6 +28,8 @@ When ssh asks for something, the question shows in the footer:
 
 `Esc` while connecting cancels. With a key and the agent, nothing is asked.
 
+![ssh asking for deploy@webserver's password in Xylem's footer](../screenshots/remote-password.png)
+
 ## What works
 
 The tree, the file window, [Filespec](filespec.md), Branch, Showall, tags,
@@ -40,6 +42,8 @@ here).
 as SFTP keeps them); with the screen split, it suggests this machine's window
 as the destination. Alt+C (with paths) works too, with paths starting at the
 remote window's root.
+
+![Split screen: three backups tagged on the remote machine, on the left, about to be copied into a folder of this machine, on the right](../screenshots/remote.png)
 
 For now the remote side is **read-only**: Move, Delete, Rename, Makedir,
 Attributes, dates, Edit, eXecute and copying *to* the remote machine are
@@ -55,6 +59,8 @@ starting in the window's directory; in a local window, the local shell, as
 before (each one keeps running while the other is on screen). On Linux and
 macOS the remote shell reuses the connection already made, so the password is
 not asked again; on Windows, ssh asks for it in the terminal.
+
+![The remote machine's shell under its tree, after cd logs: the tree has followed it to logs](../screenshots/remote-terminal.png)
 
 The tree follows the remote shell's `cd` when the shell reports its directory
 with the OSC 7 sequence. Many systems do it already; for bash, add this to

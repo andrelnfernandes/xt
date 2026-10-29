@@ -76,3 +76,56 @@ PS1='\[\e[1;32m\]user@host\[\e[0m\]:\[\e[1;34m\]\w\[\e[0m\]$ '
 alias ls='ls --color=auto'
 HISTCONTROL=ignoreboth
 RC
+# The remote machine (remote shots): deploy@webserver's home, served by
+# fake_ssh.py.
+R="$out/home/deploy"
+mkdir -p "$R/backups" "$R/logs" "$R/scripts" "$R/site/css" "$R/site/img" "$R/site/js"
+for d in 21 22 23 24 25 26 27; do
+  mk "$R/backups/db-2026-10-$d.sql.gz" $((3500000 + d * 41000)) "2026-10-$d 03:00"
+done
+mk "$R/logs/access.log" 2411520 "2026-10-28 09:41"
+mk "$R/logs/access.log.1" 5830656 "2026-10-27 23:59"
+mk "$R/logs/error.log" 18342 "2026-10-28 08:12"
+mk "$R/site/index.html" 7104 "2026-10-20 18:22"
+mk "$R/site/about.html" 4388 "2026-10-20 18:22"
+mk "$R/site/css/style.css" 9216 "2026-10-20 18:22"
+mk "$R/site/js/app.js" 14592 "2026-10-20 18:22"
+mk "$R/site/img/logo.svg" 3127 "2026-09-02 11:05"
+mk "$R/site/img/hero.jpg" 486210 "2026-09-02 11:05"
+cat > "$R/scripts/backup.sh" <<'SH'
+#!/bin/sh
+# Nightly database backup, kept for a week.
+set -e
+pg_dump shop | gzip > ~/backups/db-$(date +%F).sql.gz
+find ~/backups -name 'db-*.sql.gz' -mtime +7 -delete
+SH
+cat > "$R/scripts/deploy.sh" <<'SH'
+#!/bin/sh
+# Publishes the site built on the laptop.
+set -e
+rsync -a --delete ~/site/ /var/www/shop/
+systemctl reload nginx
+SH
+cat > "$R/docker-compose.yml" <<'YML'
+services:
+  db:
+    image: postgres:17
+    volumes: [ "pgdata:/var/lib/postgresql/data" ]
+  web:
+    image: nginx:1.27
+    ports: [ "80:80" ]
+volumes:
+  pgdata:
+YML
+touch -d "2026-10-26 22:15" "$R/scripts/backup.sh" "$R/scripts/deploy.sh" "$R/docker-compose.yml"
+chmod 755 "$R/scripts/backup.sh" "$R/scripts/deploy.sh"
+cat > "$R/.profile" <<'RC'
+. ~/.bashrc
+RC
+# The prompt says where it is, and the tree follows its cd (OSC 7).
+cat > "$R/.bashrc" <<'RC'
+PS1='\[\e[1;33m\]deploy@webserver\[\e[0m\]:\[\e[1;34m\]\w\[\e[0m\]$ '
+PROMPT_COMMAND='printf "\033]7;file://webserver%s\007" "$PWD"'
+alias ls='ls --color=auto'
+RC
+find "$R" -type d -exec chmod 755 {} +

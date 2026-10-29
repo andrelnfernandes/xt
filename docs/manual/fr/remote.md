@@ -32,6 +32,8 @@ Lorsque ssh demande quelque chose, la question s'affiche dans le pied de page :
 
 `Esc` pendant la connexion annule. Avec une clé et l'agent, rien n'est demandé.
 
+![ssh demandant le mot de passe de deploy@webserver dans le pied de page de Xylem](../../screenshots/remote-password.png)
+
 ## Ce qui fonctionne
 
 L'arborescence, la fenêtre de fichiers, [Filespec](filespec.md), Branch,
@@ -44,6 +46,8 @@ identifiants numériques d'utilisateur et de groupe envoyés par SFTP),
 seconde près, telles que SFTP les conserve) ; avec l'écran partagé, la fenêtre
 de votre machine est proposée comme destination. Alt+C (avec chemins) fonctionne
 aussi, avec des chemins partant de la racine de la fenêtre distante.
+
+![Écran partagé : trois sauvegardes marquées sur la machine distante, à gauche, sur le point d'être copiées dans un dossier de cette machine, à droite](../../screenshots/remote.png)
 
 Pour l'instant, le côté distant est en **lecture seule** : Déplacer, Supprimer,
 Renommer, Créer un répertoire, Attributs, dates, Éditer, eXécuter et la copie
@@ -61,6 +65,8 @@ shell local, comme avant (chacun continue de tourner pendant que l'autre est à
 l'écran). Sous Linux et macOS, le shell distant réutilise la connexion déjà
 établie, de sorte que le mot de passe n'est pas redemandé ; sous Windows, ssh le
 demande dans le terminal.
+
+![Le shell de la machine distante sous son arborescence, après cd logs : l'arborescence l'a suivi jusqu'à logs](../../screenshots/remote-terminal.png)
 
 L'arborescence suit les `cd` du shell distant lorsque celui-ci signale son
 répertoire à l'aide de la séquence OSC 7. Beaucoup de systèmes le font déjà ;

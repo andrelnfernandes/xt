@@ -34,6 +34,8 @@ Wenn ssh etwas abfragt, erscheint die Frage in der Fußzeile:
 `Esc` während des Verbindungsaufbaus bricht ab. Mit Schlüssel und Agent erfolgt
 keine Rückfrage.
 
+![ssh fragt in der Fußzeile von Xylem nach dem Passwort für deploy@webserver](../../screenshots/remote-password.png)
+
 ## Was funktioniert
 
 Der Baum, das Dateifenster, [Filespec](filespec.md), Branch, Showall,
@@ -47,6 +49,8 @@ Zeitstempeln (sekundengenau, wie SFTP sie liefert); bei geteiltem Bildschirm
 wird das Fenster dieses Rechners als Ziel vorgeschlagen. Alt+C (mit Pfaden)
 funktioniert ebenfalls, wobei die Pfade an der Wurzel des entfernten Fensters
 beginnen.
+
+![Geteilter Bildschirm: links drei markierte Backups auf dem entfernten Rechner, gleich in einen Ordner dieses Rechners, rechts, kopiert](../../screenshots/remote.png)
 
 Derzeit ist die entfernte Seite **schreibgeschützt**: Verschieben, Löschen,
 Umbenennen, Verzeichnis erstellen, Berechtigungen, Datum ändern, Bearbeiten,
@@ -66,6 +70,8 @@ gewohnt die lokale Shell (jede läuft weiter, während die andere sichtbar ist).
 Unter Linux und macOS nutzt die entfernte Shell die bereits bestehende
 Verbindung mit, sodass das Passwort nicht erneut abgefragt wird; unter Windows
 fragt ssh im Terminal danach.
+
+![Die Shell des entfernten Rechners unter seinem Verzeichnisbaum, nach cd logs: der Baum ist ihr nach logs gefolgt](../../screenshots/remote-terminal.png)
 
 Der Baum folgt dem `cd` der entfernten Shell, wenn diese ihr Verzeichnis über
 die Sequenz OSC 7 meldet. Viele Systeme tun dies bereits; für bash fügen Sie
