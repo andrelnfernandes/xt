@@ -55,7 +55,7 @@ as a link is what `cp -a` and `rsync -l` do).
   last bytes, then contents), D2 through rclone using the MD5 that Google
   Drive already has, D3 extras (whole duplicated folders).
 - **Xylem in its own window**, further ahead: see "For later" in the README.
-- Postponed by choice: macros, chown, Graft, `.deb` package, macOS.
+- Postponed by choice: macros, chown, Graft, macOS.
 - **New file viewers** ([docs/plans/viewers.md](docs/plans/viewers.md)):
   charsets and compressed files, table mode (DBF, CSV, SDF), windowed
   viewer, logs, SQLite, external converters; six subprojects, security

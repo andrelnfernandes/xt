@@ -128,6 +128,21 @@ install -m 755 xy-v0.4.0-x86_64-unknown-linux-musl/xy ~/.local/bin/
 
 Each archive has a `.sha256` next to it, to check with `sha256sum -c`.
 
+**Package (.deb or .rpm):** the releases after 0.4.0 also have packages for
+Debian, Ubuntu and their derivatives (`.deb`) and for Fedora, RHEL, openSUSE
+and theirs (`.rpm`), for x86_64 and ARM64 (`arm64`/`aarch64` in the name).
+Besides `xy`, they install the menu entry, the icons and the man page:
+
+```bash
+sudo apt install ./xylem-fm_*_amd64.deb     # Debian, Ubuntu
+sudo dnf install ./xylem-fm-*.x86_64.rpm    # Fedora, RHEL (zypper on openSUSE)
+```
+
+The package is called `xylem-fm`, as on crates.io. It comes from the
+Releases page, not from a repository, so it is not updated by itself: install
+the next one the same way. To remove it, `sudo apt remove xylem-fm` or
+`sudo dnf remove xylem-fm`.
+
 **With Cargo** (needs Rust, via [rustup](https://rustup.rs)), from
 [crates.io](https://crates.io/crates/xylem-fm), where Xylem is called
 `xylem-fm` (the name `xylem` was taken); the command is `xy`:
@@ -147,10 +162,10 @@ cargo install --path .
 The binary goes to `~/.cargo/bin/xy` (which rustup already puts on your `PATH`).
 To update, run the same command again; to remove it, `cargo uninstall xylem-fm`.
 
-**Menu entry (Linux, optional):** to have Xylem in your desktop's
-application menu, opening in a terminal, run this in a clone of the
-repository. `xy` must be on the `PATH` your desktop sees (`~/.local/bin`
-usually is; `~/.cargo/bin` not always).
+**Menu entry (Linux, optional; the packages already have it):** to have
+Xylem in your desktop's application menu, opening in a terminal, run this in
+a clone of the repository. `xy` must be on the `PATH` your desktop sees
+(`~/.local/bin` usually is; `~/.cargo/bin` not always).
 
 ```bash
 for s in 16 32 48 64 128 256 512; do
@@ -160,9 +175,9 @@ install -Dm644 docs/icons/xylem.svg ~/.local/share/icons/hicolor/scalable/apps/x
 install -Dm644 packaging/linux/xylem.desktop ~/.local/share/applications/xylem.desktop
 ```
 
-**Man page (optional):** in a terminal, `xy --man` shows it; redirected, it
-prints the source to install (the release archives for Linux also include it
-as `xy.1`):
+**Man page (optional; the packages already have it):** in a terminal,
+`xy --man` shows it; redirected, it prints the source to install (the
+release archives for Linux also include it as `xy.1`):
 
 ```bash
 mkdir -p ~/.local/share/man/man1 && xy --man > ~/.local/share/man/man1/xy.1
@@ -291,7 +306,6 @@ and the man page (`xy --man`). Some topics:
 - Windows: it builds and passes the tests (see
   [Windows](docs/manual/windows.md)), but it is not a priority while
   ZTreeWin exists. Maybe macOS.
-- `.deb` package (license and maintainer still to be decided).
 - Postponed by choice: macros, chown and Graft.
 - **Xylem in its own window**, further ahead: the same screen drawn in a
   window of its own instead of a terminal (a ratatui backend that renders

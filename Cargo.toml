@@ -75,3 +75,63 @@ tempfile = "3.27.0"
 lto = true
 codegen-units = 1
 strip = true
+
+# The .deb and .rpm packages, built by packaging/linux/packages.sh
+# (cargo-deb and cargo-generate-rpm) from the static musl binary, so they
+# depend on no library (cargo-deb warns that it found no $auto
+# dependencies, and leaves Depends out). target/release/xy.1.gz is the man
+# page, which the script generates with `xy --man` before packaging.
+[package.metadata.deb]
+maintainer = "Andre L N Fernandes <16240275+andrelnfernandes@users.noreply.github.com>"
+copyright = "Andre L N Fernandes"
+license-file = ["LICENSE", "0"]
+section = "utils"
+priority = "optional"
+extended-description = """\
+Xylem (the command is xy) is a text-mode file manager inspired by XTree \
+and ZTreeWin: the tree and the file window, tags and group operations, \
+archives, a split window, a built-in terminal, remote machines over SSH, \
+cloud storage through rclone and Git."""
+recommends = "openssh-client"
+suggests = "git, rclone"
+assets = [
+    ["target/release/xy", "usr/bin/", "755"],
+    ["target/release/xy.1.gz", "usr/share/man/man1/", "644"],
+    ["packaging/linux/xylem.desktop", "usr/share/applications/", "644"],
+    ["docs/icons/xylem.svg", "usr/share/icons/hicolor/scalable/apps/", "644"],
+    ["docs/icons/xylem-16.png", "usr/share/icons/hicolor/16x16/apps/xylem.png", "644"],
+    ["docs/icons/xylem-32.png", "usr/share/icons/hicolor/32x32/apps/xylem.png", "644"],
+    ["docs/icons/xylem-48.png", "usr/share/icons/hicolor/48x48/apps/xylem.png", "644"],
+    ["docs/icons/xylem-64.png", "usr/share/icons/hicolor/64x64/apps/xylem.png", "644"],
+    ["docs/icons/xylem-128.png", "usr/share/icons/hicolor/128x128/apps/xylem.png", "644"],
+    ["docs/icons/xylem-256.png", "usr/share/icons/hicolor/256x256/apps/xylem.png", "644"],
+    ["docs/icons/xylem-512.png", "usr/share/icons/hicolor/512x512/apps/xylem.png", "644"],
+    ["README.md", "usr/share/doc/xylem-fm/", "644"],
+    ["README.pt-BR.md", "usr/share/doc/xylem-fm/", "644"],
+]
+
+[package.metadata.generate-rpm]
+auto-req = "no"
+assets = [
+    { source = "target/release/xy", dest = "/usr/bin/xy", mode = "755" },
+    { source = "target/release/xy.1.gz", dest = "/usr/share/man/man1/xy.1.gz", mode = "644", doc = true },
+    { source = "packaging/linux/xylem.desktop", dest = "/usr/share/applications/xylem.desktop", mode = "644" },
+    { source = "docs/icons/xylem.svg", dest = "/usr/share/icons/hicolor/scalable/apps/xylem.svg", mode = "644" },
+    { source = "docs/icons/xylem-16.png", dest = "/usr/share/icons/hicolor/16x16/apps/xylem.png", mode = "644" },
+    { source = "docs/icons/xylem-32.png", dest = "/usr/share/icons/hicolor/32x32/apps/xylem.png", mode = "644" },
+    { source = "docs/icons/xylem-48.png", dest = "/usr/share/icons/hicolor/48x48/apps/xylem.png", mode = "644" },
+    { source = "docs/icons/xylem-64.png", dest = "/usr/share/icons/hicolor/64x64/apps/xylem.png", mode = "644" },
+    { source = "docs/icons/xylem-128.png", dest = "/usr/share/icons/hicolor/128x128/apps/xylem.png", mode = "644" },
+    { source = "docs/icons/xylem-256.png", dest = "/usr/share/icons/hicolor/256x256/apps/xylem.png", mode = "644" },
+    { source = "docs/icons/xylem-512.png", dest = "/usr/share/icons/hicolor/512x512/apps/xylem.png", mode = "644" },
+    { source = "LICENSE", dest = "/usr/share/licenses/xylem-fm/LICENSE", mode = "644", doc = true },
+    { source = "README.md", dest = "/usr/share/doc/xylem-fm/README.md", mode = "644", doc = true },
+    { source = "README.pt-BR.md", dest = "/usr/share/doc/xylem-fm/README.pt-BR.md", mode = "644", doc = true },
+]
+
+[package.metadata.generate-rpm.recommends]
+openssh-clients = "*"
+
+[package.metadata.generate-rpm.suggests]
+git = "*"
+rclone = "*"
