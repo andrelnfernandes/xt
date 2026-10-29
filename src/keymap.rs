@@ -26,6 +26,11 @@ const COMMANDS: &[(&str, Command, &str)] = &[
         "collapse directory (or go to parent)",
     ),
     (
+        "release",
+        Command::Release,
+        "release the branch from memory (unlog it)",
+    ),
+    (
         "expand_all",
         Command::ExpandAll,
         "log and expand the whole branch",
@@ -443,7 +448,7 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("right", Tree, "expand"),
     ("plus", Tree, "expand"),
     ("left", Tree, "collapse"),
-    ("minus", Tree, "collapse"),
+    ("minus", Tree, "release"),
     ("*", Tree, "expand_all"),
     ("esc", Tree, "back"),
     ("c", Tree, "compare"),

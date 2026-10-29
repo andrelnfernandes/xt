@@ -40,7 +40,7 @@ die Ausnahmen stehen unter „Abweichende Tasten" am Ende.
 ## Was Xylem noch fehlt
 
 - **Baum:** Global (G), Graft (Alt+G), Mirror (Alt+M), Freigeben/Aus dem
-  Speicher entladen (Alt+R, `-`, Ctrl+Backspace), Ausblenden (Alt+H), Wash
+  Speicher entladen (Alt+R, Ctrl+Backspace), Ausblenden (Alt+H), Wash
   (Alt+W), Volume (Ctrl+V), F5/F6 (Unterverzeichnisebenen ausblenden), nach
   Attribut markieren (Alt+T/U), Treespec im Bearbeitungsmodus (F5,
   Platzhalter) und spezielle Ordner (F6), direkte Suche mit Eingabezeile (`|`)
@@ -160,7 +160,6 @@ Die Tastenbelegung folgt ZTreeWin, mit diesen Ausnahmen:
 | Konfiguration | Alt+F10 | F12 oder Alt+F10 (unter GNOME maximiert Alt+F10 das Fenster und erreicht Xylem nicht) |
 | Lesezeichen | F11 | F11, Alt+B oder einfaches Anführungszeichen `'` (in GNOME Terminal schaltet F11 das Vollbild um) |
 | Markierte verschieben | Ctrl+M | Ctrl+M in Terminals mit Kitty-Protokoll; in anderen `F9` `M` (oder Alt+M und F6) |
-| `-` im Baum | entfernt den Zweig aus dem Speicher | klappt nur zu (bleibt eingelesen) |
 | F2 | (nichts) | liest das Verzeichnis neu ein, genau wie F3 |
 | F9 | Anwendungsmenü (nicht implementiert) | Ctrl-/Alt-Menüs |
 | F12 | Makros (nicht implementiert) | Konfiguration |

@@ -40,7 +40,7 @@ dans « Touches différentes », à la fin.
 ## Ce que Xylem n'a pas encore
 
 - **Arborescence :** Global (G), Graft (Alt+G), Mirror (Alt+M), Release/décharger
-  de la mémoire (Alt+R, `-`, Ctrl+Backspace), Hide (Alt+H), Wash (Alt+W), Volume
+  de la mémoire (Alt+R, Ctrl+Backspace), Hide (Alt+H), Wash (Alt+W), Volume
   (Ctrl+V), F5/F6 (masquer des niveaux de sous-répertoires), marquer par
   attribut (Alt+T/U), Treespec en mode édition (F5, jokers) et dossiers spéciaux
   (F6), recherche directe avec invite (`|`) et mode actif, changement de lecteur
@@ -162,7 +162,6 @@ Les touches suivent celles de ZTreeWin. Les exceptions :
 | Configuration | Alt+F10 | F12 ou Alt+F10 (sous GNOME, Alt+F10 maximise la fenêtre et n'atteint jamais Xylem) |
 | Signets | F11 | F11, Alt+B ou apostrophe `'` (dans GNOME Terminal, F11 bascule le plein écran) |
 | Déplacer les fichiers marqués | Ctrl+M | Ctrl+M dans les terminaux avec le protocole kitty ; dans les autres, `F9` `M` (ou Alt+M puis F6) |
-| `-` dans l'arborescence | décharge la branche de la mémoire | replie seulement (reste lue en mémoire) |
 | F2 | (rien) | relit le répertoire, comme F3 |
 | F9 | menu d'applications (non implémenté) | menus Ctrl/Alt |
 | F12 | macros (non implémenté) | configuration |

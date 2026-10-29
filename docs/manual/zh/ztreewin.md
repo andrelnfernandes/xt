@@ -14,7 +14,7 @@ Xylem 并不打算取代 ZTreeWin。它之所以存在，是因为我想在 Linu
 
 ## Xylem 尚未具备的功能
 
-- **目录树：** Global (G)、Graft (Alt+G)、Mirror (Alt+M)、从内存中释放/卸载（Alt+R、`-`、Ctrl+Backspace）、隐藏 (Alt+H)、清理空闲空间 Wash (Alt+W)、卷标 Volume (Ctrl+V)、F5/F6（隐藏子目录层级）、按属性标记（Alt+T/U）、编辑模式下的 Treespec（F5、通配符）与特殊文件夹（F6）、带提示符的先行输入搜索（`|`）与活动模式、盘符切换（`<` 与 `>`）。
+- **目录树：** Global (G)、Graft (Alt+G)、Mirror (Alt+M)、从内存中释放/卸载（Alt+R、Ctrl+Backspace）、隐藏 (Alt+H)、清理空闲空间 Wash (Alt+W)、卷标 Volume (Ctrl+V)、F5/F6（隐藏子目录层级）、按属性标记（Alt+T/U）、编辑模式下的 Treespec（F5、通配符）与特殊文件夹（F6）、带提示符的先行输入搜索（`|`）与活动模式、盘符切换（`<` 与 `>`）。
 - **文件：** 在新终端窗口中打开 (Alt+O)、当前文件的批处理 (Alt+B)、JFC（J，比较两个文件的内容）、创建快捷方式 sHortcut (H)、打印 Print (P)、修改所有者/组 (chown)、Megaview（文件窗口中的 Ctrl+F7）、在两个窗口间合并已标记文件 (Ctrl+F6)、部分取消标记 Partial Untag (Ctrl+F8)。
 - **通用：** 宏 (F12)、应用程序菜单 (F9)、退出到临时 shell (Ctrl+Q)、保存与加载已载入目录列表（Zlist，Ctrl/Alt+Z）、按名称与属性着色（ZCOLORS.INI）、鼠标支持、ZTreeWin 命令行选项、视频模式命令（Alt+F6–F9）。
 
@@ -82,7 +82,6 @@ Xylem 的按键基本遵循 ZTreeWin 的设计。例外情况如下：
 | 配置 | Alt+F10 | F12 或 Alt+F10（在 GNOME 中，Alt+F10 会最大化窗口而无法传给 Xylem） |
 | 书签 | F11 | F11、Alt+B 或单引号 `'`（在 GNOME Terminal 中，F11 会切换全屏） |
 | 移动已标记文件 | Ctrl+M | 在支持 kitty 协议的终端中为 Ctrl+M；其他终端中按 `F9` `M`（或按 Alt+M 后按 F6） |
-| 目录树中的 `-` | 从内存中卸载该分支 | 仅折叠目录（仍保留在内存中） |
 | F2 | （无功能） | 重新读取目录，与 F3 相同 |
 | F9 | 应用程序菜单（未实现） | 切换 Ctrl/Alt 菜单 |
 | F12 | 宏（未实现） | 打开配置界面 |

@@ -36,7 +36,7 @@ are under "Different keys", at the end.
 
 ## What Xylem does not have yet
 
-- **Tree:** Global (G), Graft (Alt+G), Mirror (Alt+M), Release/unload from memory (Alt+R, `-`,
+- **Tree:** Global (G), Graft (Alt+G), Mirror (Alt+M), Release/unload from memory (Alt+R,
   Ctrl+Backspace), Hide (Alt+H), Wash (Alt+W), Volume
   (Ctrl+V), F5/F6 (hide subdirectory levels),
   tag by attribute (Alt+T/U),
@@ -152,7 +152,6 @@ The keys follow ZTreeWin's. The exceptions:
 | Configuration | Alt+F10 | F12 or Alt+F10 (on GNOME, Alt+F10 maximizes the window and never reaches Xylem) |
 | Bookmarks | F11 | F11, Alt+B, or single quote `'` (on GNOME Terminal, F11 toggles fullscreen) |
 | Move tagged | Ctrl+M | Ctrl+M in terminals with the kitty protocol; in others, `F9` `M` (or Alt+M and F6) |
-| `-` in the tree | unloads the branch from memory | only collapses (stays logged) |
 | F2 | (nothing) | rereads the directory, same as F3 |
 | F9 | applications menu (not implemented) | Ctrl/Alt menus |
 | F12 | macros (not implemented) | configuration |

@@ -541,6 +541,17 @@ impl App {
                 self.after_change();
                 self.message = Some(format!("Relogged {}", self.tree.path(id).display()));
             }
+            Command::Release => {
+                let id = self.current();
+                let lost = self.tree.release(id);
+                self.after_change();
+                let path = self.tree.path(id).display().to_string();
+                self.message = Some(match lost {
+                    0 => format!("Released {path}"),
+                    1 => format!("Released {path} (1 tag dropped)"),
+                    n => format!("Released {path} ({n} tags dropped)"),
+                });
+            }
             Command::Tag | Command::Untag => {
                 let tag = cmd == Command::Tag;
                 if in_files {

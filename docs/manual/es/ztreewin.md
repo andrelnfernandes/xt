@@ -39,7 +39,7 @@ excepciones están en "Teclas diferentes", al final.
 ## Lo que Xylem todavía no tiene
 
 - **Árbol:** Global (G), Graft (Alt+G), Mirror (Alt+M), liberar/descargar de la
-  memoria (Alt+R, `-`, Ctrl+Backspace), Hide (Alt+H), Wash (Alt+W), Volume
+  memoria (Alt+R, Ctrl+Backspace), Hide (Alt+H), Wash (Alt+W), Volume
   (Ctrl+V), F5/F6 (ocultar niveles de subdirectorios), marcar por atributo
   (Alt+T/U), Treespec en modo de edición (F5, comodines) y carpetas especiales
   (F6), búsqueda directa con entrada (`|`) y modo activo, cambio de unidad (`<`
@@ -160,7 +160,6 @@ Las teclas siguen las de ZTreeWin. Las excepciones:
 | Configuración | Alt+F10 | F12 o Alt+F10 (en GNOME, Alt+F10 maximiza la ventana y nunca llega a Xylem) |
 | Marcadores | F11 | F11, Alt+B o comilla simple `'` (en GNOME Terminal, F11 alterna la pantalla completa) |
 | Mover marcados | Ctrl+M | Ctrl+M en terminales con el protocolo de kitty; en otras, `F9` `M` (o Alt+M y F6) |
-| `-` en el árbol | descarga la rama de la memoria | solo contrae (sigue registrada) |
 | F2 | (nada) | vuelve a leer el directorio, igual que F3 |
 | F9 | menú de aplicaciones (no implementado) | menús Ctrl/Alt |
 | F12 | macros (no implementadas) | configuración |

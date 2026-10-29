@@ -10,7 +10,8 @@ dem Cursor auf.
 |---|---|
 | ↑ ↓ PgUp PgDn Home End | Cursor bewegen |
 | → oder `+` | Verzeichnis aufklappen |
-| ← oder `-` | Verzeichnis zuklappen (oder zum übergeordneten Verzeichnis) |
+| ← | Verzeichnis zuklappen (oder zum übergeordneten Verzeichnis) |
+| `-` | Zweig aus dem Speicher freigeben: alles darunter Eingelesene wird verworfen, samt Markierungen, und das Verzeichnis neu eingelesen |
 | Backspace | zum übergeordneten Verzeichnis wechseln |
 | Space | eine Zeile nach unten |
 | Shift+Buchstabe, 0–9 | nächstes Verzeichnis mit diesem Anfangsbuchstaben |
