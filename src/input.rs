@@ -13,6 +13,8 @@ pub enum Command {
     End,
     Expand,
     Collapse,
+    /// `-`: releases the branch from memory (unlogs it).
+    Release,
     /// Logs and expands the whole branch.
     ExpandAll,
     /// Switches between the tree and the file window.

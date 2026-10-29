@@ -9,7 +9,8 @@ La ventana de archivos debajo lista los archivos del directorio bajo el cursor.
 |---|---|
 | ↑ ↓ PgUp PgDn Home End | mover el cursor |
 | → o `+` | expandir el directorio |
-| ← o `-` | contraerlo (o ir al directorio padre) |
+| ← | contraerlo (o ir al directorio padre) |
+| `-` | liberar la rama de la memoria: lo leído debajo se descarta, con las marcas, y el directorio se vuelve a leer |
 | Backspace | ir al directorio padre |
 | Space | bajar una línea |
 | Shift+letra, 0–9 | siguiente directorio que empieza por ese carácter |

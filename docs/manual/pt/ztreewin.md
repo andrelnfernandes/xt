@@ -38,7 +38,7 @@ diferentes", no fim.
 ## O que o Xylem ainda não tem
 
 - **Árvore:** Global (G), Graft (Alt+G), Mirror (Alt+M), Release/descarregar da
-  memória (Alt+R, `-`, Ctrl+Backspace), Hide (Alt+H), Wash (Alt+W), Volume
+  memória (Alt+R, Ctrl+Backspace), Hide (Alt+H), Wash (Alt+W), Volume
   (Ctrl+V), F5/F6 (ocultar níveis de subdiretórios), marcar por atributo
   (Alt+T/U), Treespec em modo de edição (F5, curingas) e pastas especiais (F6),
   busca ao digitar com prompt (`|`) e modo ativo, troca de unidade (`<` e `>`).
@@ -156,7 +156,6 @@ As teclas seguem as do ZTreeWin. As exceções:
 | Configuração | Alt+F10 | F12 ou Alt+F10 (no GNOME, Alt+F10 maximiza a janela e nunca chega ao Xylem) |
 | Favoritos | F11 | F11, Alt+B ou aspas simples `'` (no GNOME Terminal, F11 alterna a tela cheia) |
 | Mover marcados | Ctrl+M | Ctrl+M em terminais com o protocolo do kitty; nos demais, `F9` `M` (ou Alt+M e F6) |
-| `-` na árvore | descarrega o ramo da memória | apenas recolhe (continua lido na memória) |
 | F2 | (nada) | relê o diretório, igual a F3 |
 | F9 | menu de aplicações (não implementado) | menus Ctrl/Alt |
 | F12 | macros (não implementado) | configuração |

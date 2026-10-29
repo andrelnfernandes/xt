@@ -81,9 +81,15 @@ impl Picker {
             | Command::Home
             | Command::End
             | Command::Expand
-            | Command::Collapse),
+            | Command::Collapse
+            | Command::Release),
         ) = keymap.lookup(key, Focus::Tree)
         {
+            // Nothing to release in the picker: `-` only collapses.
+            let cmd = match cmd {
+                Command::Release => Command::Collapse,
+                cmd => cmd,
+            };
             self.pane_mut().apply_tree(cmd);
         }
         Outcome::Stay

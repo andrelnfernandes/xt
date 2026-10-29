@@ -174,6 +174,50 @@ fn ctrl_t_in_tree_tags_all_logged_matching_files() {
     assert_eq!(tagged(&app), ["a.rs", "c.rs"]);
 }
 
+fn logged_tagged(app: &App) -> usize {
+    app.logged_matching_files()
+        .iter()
+        .filter(|&&f| app.file(f).tagged)
+        .count()
+}
+
+#[test]
+fn minus_releases_the_branch_and_its_tags() {
+    let (_tmp, mut app) = sample();
+    app.apply(Command::ExpandAll);
+    ctrl(&mut app, 't');
+    assert_eq!(logged_tagged(&app), 4);
+
+    press(&mut app, KeyCode::Down); // sub
+    press(&mut app, KeyCode::Char('-'));
+    assert!(
+        app.message
+            .as_deref()
+            .unwrap()
+            .ends_with("(2 tags dropped)")
+    );
+    assert_eq!(app.tree_state.selected(), Some(1), "cursor stays on sub");
+    assert!(tagged(&app).is_empty(), "sub/c.rs was read again");
+    assert_eq!(app.logged_matching_files().len(), 3, "sub/deep unlogged");
+    assert_eq!(logged_tagged(&app), 2, "a.rs and b.txt keep their tags");
+
+    // Ctrl+T reaches only what is logged; * logs sub/deep again.
+    press(&mut app, KeyCode::Char('*'));
+    assert_eq!(app.logged_matching_files().len(), 4);
+    assert_eq!(logged_tagged(&app), 2);
+}
+
+#[test]
+fn left_only_collapses_and_keeps_tags() {
+    let (_tmp, mut app) = sample();
+    app.apply(Command::ExpandAll);
+    ctrl(&mut app, 't');
+    press(&mut app, KeyCode::Down); // sub
+    press(&mut app, KeyCode::Left);
+    press(&mut app, KeyCode::Right);
+    assert_eq!(logged_tagged(&app), 4);
+}
+
 #[test]
 fn copy_tagged_files_to_directory() {
     let (tmp, mut app) = sample();

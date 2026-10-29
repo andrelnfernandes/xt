@@ -9,7 +9,8 @@ janela de arquivos logo abaixo lista os arquivos do diretório sob o cursor.
 |---|---|
 | ↑ ↓ PgUp PgDn Home End | move o cursor |
 | → ou `+` | expande o diretório |
-| ← ou `-` | recolhe o diretório (ou vai para o diretório pai) |
+| ← | recolhe o diretório (ou vai para o diretório pai) |
+| `-` | libera o ramo da memória: o que foi lido abaixo dele é descartado, com as marcas, e o diretório é lido de novo |
 | Backspace | vai para o diretório pai |
 | Space | desce uma linha |
 | Shift+letra, 0–9 | próximo diretório começando com essa letra ou dígito |

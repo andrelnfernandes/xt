@@ -394,6 +394,33 @@ impl Tree {
         self.nodes[id].expanded = false;
     }
 
+    /// Releases (unlogs) the branch of `id`, as `-` in ZTreeWin: what was
+    /// read below it is dropped and `id` is read again, as right after a
+    /// Log (its files untagged, its subdirectories not logged). Returns how
+    /// many tags were lost. A virtual tree cannot be read again: there it
+    /// only collapses.
+    pub fn release(&mut self, id: NodeId) -> usize {
+        self.nodes[id].expanded = false;
+        if self.is_virtual {
+            return 0;
+        }
+        let mut lost = 0;
+        // The nodes below are left loose in the arena, emptied.
+        for n in self.subtree(id) {
+            let node = &mut self.nodes[n];
+            lost += node.files.iter().filter(|f| f.tagged).count();
+            node.files = Vec::new();
+            node.scanned = false;
+            node.error = None;
+            if n != id {
+                node.children = Vec::new();
+            }
+        }
+        self.nodes[id].children.clear();
+        self.scan(id);
+        lost
+    }
+
     /// Expands the whole branch below `id` at once.
     #[cfg(test)]
     pub fn expand_all(&mut self, id: NodeId) {
@@ -732,6 +759,29 @@ mod tests {
             .map(|f| f.name.to_str().unwrap())
             .collect();
         assert_eq!(files, ["A.txt", "z.txt"]);
+    }
+
+    #[test]
+    fn release_drops_the_branch_and_reads_it_again() {
+        let (_tmp, mut tree) = sample();
+        tree.expand_all(ROOT);
+        let b = tree.node(ROOT).children[1];
+        let deep = tree.node(b).children[0];
+        tree.file_mut(b, 0).tagged = true;
+        tree.file_mut(ROOT, 0).tagged = true;
+
+        assert_eq!(tree.release(b), 1);
+        let node = tree.node(b);
+        assert!(node.scanned && !node.expanded);
+        assert!(!node.files[0].tagged, "b/inside was read again");
+        let fresh = node.children[0];
+        assert_ne!(fresh, deep, "the old nodes are left loose");
+        assert_eq!(names(&tree, &[fresh]), ["deep"]);
+        assert!(!tree.node(fresh).scanned && tree.node(deep).files.is_empty());
+        assert!(tree.node(ROOT).files[0].tagged, "outside the branch");
+        // Collapsed, with the "+" of a directory that has subdirectories.
+        let prefixes: Vec<_> = tree.visible_rows().into_iter().map(|r| r.prefix).collect();
+        assert_eq!(prefixes, ["", "├──", "└─+"]);
     }
 
     #[test]

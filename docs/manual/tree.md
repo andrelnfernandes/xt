@@ -9,7 +9,8 @@ file window below it lists the files of the directory under the cursor.
 |---|---|
 | ↑ ↓ PgUp PgDn Home End | move the cursor |
 | → or `+` | expand the directory |
-| ← or `-` | collapse it (or go to the parent) |
+| ← | collapse it (or go to the parent) |
+| `-` | release the branch from memory: what was read below it is dropped, tags included, and the directory is read again |
 | Backspace | go to the parent directory |
 | Space | down one line |
 | Shift+letter, 0–9 | next directory starting with it |

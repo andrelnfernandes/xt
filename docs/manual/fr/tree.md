@@ -10,7 +10,8 @@ curseur.
 |---|---|
 | ↑ ↓ PgUp PgDn Home End | déplacer le curseur |
 | → ou `+` | déplier le répertoire |
-| ← ou `-` | le replier (ou aller au parent) |
+| ← | le replier (ou aller au parent) |
+| `-` | libérer la branche de la mémoire : ce qui a été lu en dessous est oublié, marques comprises, et le répertoire est relu |
 | Backspace | aller au répertoire parent |
 | Space | descendre d'une ligne |
 | Shift+lettre, 0–9 | répertoire suivant commençant par ce caractère |
