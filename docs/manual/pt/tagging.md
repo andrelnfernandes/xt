@@ -10,6 +10,7 @@ aberto).
 |---|---|---|
 | `T` / `U` | marca / desmarca os arquivos do diretório | marca / desmarca o arquivo e desce |
 | Ctrl+T / Ctrl+U | marca / desmarca tudo o que foi lido (que corresponda ao Filespec) | marca / desmarca toda a lista |
+| Ctrl+S | Showall só dos arquivos marcados | |
 | `I` | inverte as marcações do diretório | inverte as marcações da lista |
 | Ctrl+F7 / F8 / F9 | marca / desmarca / inverte os arquivos lidos do ramo | |
 

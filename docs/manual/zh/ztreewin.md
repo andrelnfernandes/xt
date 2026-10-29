@@ -10,12 +10,12 @@ Xylem 并不打算取代 ZTreeWin。它之所以存在，是因为我想在 Linu
 
 ## 相同的工作方式
 
-按需载入的目录树（`+`、`*`）、文件窗口、Filespec、Branch、Showall、标记（T、U、I、Ctrl+T/U）、包含 Ctrl（已标记）与 Alt（已标记且保留路径）版本的复制/移动/删除/重命名、新建目录、删除目录、Prune、权限属性、查看器、编辑、执行 (eXecute)、比较（目录与分支）、排序、Log、分屏窗口（F8 与 Tab）、重新载入（F3）、打开（`O`）、自动刷新、浏览与解压归档文件、提示行历史记录、书签、帮助（F1）以及配置界面。按键尽可能与 ZTreeWin 保持一致；例外情况见文末的“按键差异”。
+按需载入的目录树（`+`、`*`）、文件窗口、Filespec、Branch、Showall（也可只显示已标记文件，Ctrl+S）、标记（T、U、I、Ctrl+T/U）、包含 Ctrl（已标记）与 Alt（已标记且保留路径）版本的复制/移动/删除/重命名、新建目录、删除目录、Prune、权限属性、查看器、编辑、执行 (eXecute)、比较（目录与分支）、排序、Log、分屏窗口（F8 与 Tab）、重新载入（F3）、打开（`O`）、自动刷新、浏览与解压归档文件、提示行历史记录、书签、帮助（F1）以及配置界面。按键尽可能与 ZTreeWin 保持一致；例外情况见文末的“按键差异”。
 
 ## Xylem 尚未具备的功能
 
 - **目录树：** Global (G)、Graft (Alt+G)、Mirror (Alt+M)、从内存中释放/卸载（Alt+R、Ctrl+Backspace）、隐藏 (Alt+H)、清理空闲空间 Wash (Alt+W)、卷标 Volume (Ctrl+V)、F5/F6（隐藏子目录层级）、按属性标记（Alt+T/U）、编辑模式下的 Treespec（F5、通配符）与特殊文件夹（F6）、带提示符的先行输入搜索（`|`）与活动模式、盘符切换（`<` 与 `>`）。
-- **文件：** 在新终端窗口中打开 (Alt+O)、当前文件的批处理 (Alt+B)、JFC（J，比较两个文件的内容）、创建快捷方式 sHortcut (H)、打印 Print (P)、修改所有者/组 (chown)、Megaview（文件窗口中的 Ctrl+F7）、在两个窗口间合并已标记文件 (Ctrl+F6)、部分取消标记 Partial Untag (Ctrl+F8)。
+- **文件：** 在新终端窗口中打开 (Alt+O)、当前文件的批处理 (Alt+B)、JFC（J，比较两个文件的内容）、创建快捷方式 sHortcut (H)、打印 Print (P)、修改所有者/组 (chown)、Megaview（文件窗口中的 Ctrl+F7）、在两个窗口间合并已标记文件 (Ctrl+F6)、部分取消标记 Partial Untag (Ctrl+F8)、Showall 以外的 Tags-Only 模式（Ctrl+Enter 与 Ctrl+F4，目录树中的 Ctrl+B）。
 - **通用：** 宏 (F12)、应用程序菜单 (F9)、退出到临时 shell (Ctrl+Q)、保存与加载已载入目录列表（Zlist，Ctrl/Alt+Z）、按名称与属性着色（ZCOLORS.INI）、鼠标支持、ZTreeWin 命令行选项、视频模式命令（Alt+F6–F9）。
 
 其中一些可以用其他程序代替；参见下文的“Xylem 交给其他程序的部分”。

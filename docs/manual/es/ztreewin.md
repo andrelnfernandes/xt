@@ -27,14 +27,15 @@ algunos detalles; si algo aquí está desactualizado, abre una issue.
 ## La misma forma de trabajar
 
 Árbol con lectura bajo demanda (`+`, `*`), ventana de archivos, Filespec,
-Branch, Showall, marcas (T, U, I, Ctrl+T/U), Copiar/Mover/Eliminar/Renombrar con
-las versiones Ctrl (marcados) y Alt (marcados con rutas), crear directorio,
-eliminar directorio, Prune, Atributos, Visor, Editar, eJecutar, Comparar
-(directorio y rama), Ordenar, Log, pantalla dividida (F8 y Tab), releer (F3),
-Abrir (`O`), actualización automática, exploración y extracción de archivos
-comprimidos, historial en las entradas, marcadores, ayuda (F1) y pantalla de
-configuración. Las teclas son las de ZTreeWin siempre que es posible; las
-excepciones están en "Teclas diferentes", al final.
+Branch, Showall (también solo de los marcados, Ctrl+S), marcas (T, U, I,
+Ctrl+T/U), Copiar/Mover/Eliminar/Renombrar con las versiones Ctrl (marcados) y
+Alt (marcados con rutas), crear directorio, eliminar directorio, Prune,
+Atributos, Visor, Editar, eJecutar, Comparar (directorio y rama), Ordenar, Log,
+pantalla dividida (F8 y Tab), releer (F3), Abrir (`O`), actualización
+automática, exploración y extracción de archivos comprimidos, historial en las
+entradas, marcadores, ayuda (F1) y pantalla de configuración. Las teclas son las
+de ZTreeWin siempre que es posible; las excepciones están en "Teclas
+diferentes", al final.
 
 ## Lo que Xylem todavía no tiene
 
@@ -48,7 +49,8 @@ excepciones están en "Teclas diferentes", al final.
   archivo actual (Alt+B), JFC (J, comparar el contenido de dos archivos),
   sHortcut (H), Imprimir (P), propietario/grupo (chown), Megaview (Ctrl+F7 en la
   ventana de archivos), combinar archivos marcados entre ventanas (Ctrl+F6),
-  desmarcado parcial (Ctrl+F8).
+  desmarcado parcial (Ctrl+F8), Tags-Only fuera de Showall (Ctrl+Enter y
+  Ctrl+F4, Ctrl+B en el árbol).
 - **General:** macros (F12), menú de aplicaciones (F9), salir a la shell
   (Ctrl+Q), guardar y cargar el registro (Zlist, Ctrl/Alt+Z), colores por nombre
   y atributo (ZCOLORS.INI), ratón, opciones de línea de comandos de ZTreeWin,

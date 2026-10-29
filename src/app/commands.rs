@@ -525,6 +525,14 @@ impl App {
                 self.open_prompt(PromptKind::Filespec, "FILESPEC: ".into(), &text);
             }
             Command::Showall => self.set_view(FileView::Showall),
+            Command::ShowallTagged => {
+                let refs = self.logged_matching_files();
+                if refs.iter().any(|&f| self.file(f).tagged) {
+                    self.set_view_tagged(FileView::Showall);
+                } else {
+                    self.message = Some("No tagged files match the filespec".into());
+                }
+            }
             Command::Branch => {
                 let id = self.view_root();
                 self.start_job(LogJob::new(id, false), AfterLog::OpenBranch(id));

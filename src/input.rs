@@ -102,6 +102,8 @@ pub enum Command {
     Back,
     Filespec,
     Showall,
+    /// Ctrl+S in the tree: Showall of the tagged files only.
+    ShowallTagged,
     Branch,
     View,
     /// Rereads the current directory from disk.

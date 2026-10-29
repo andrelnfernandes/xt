@@ -49,6 +49,11 @@ const COMMANDS: &[(&str, Command, &str)] = &[
     ("back", Command::Back, "back to tree / close archive"),
     ("filespec", Command::Filespec, "filespec: filter files"),
     ("showall", Command::Showall, "show all logged files"),
+    (
+        "showall_tagged",
+        Command::ShowallTagged,
+        "show the tagged logged files",
+    ),
     ("branch", Command::Branch, "show all files in the branch"),
     ("view", Command::View, "view file (text/hex)"),
     (
@@ -469,6 +474,7 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("alt+f5", Files, "open_archive"),
     ("ctrl+o", Files, "open_tagged"),
     ("ctrl+s", Files, "search_tagged"),
+    ("ctrl+s", Tree, "showall_tagged"),
     ("\\", Any, "treespec"),
     // Not in ZTreeWin (there "/" is the same as "?"), but "/" is how
     // searching starts in less, vim and most Linux tools.

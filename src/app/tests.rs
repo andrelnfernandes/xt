@@ -219,6 +219,43 @@ fn left_only_collapses_and_keeps_tags() {
 }
 
 #[test]
+fn ctrl_s_in_tree_shows_only_the_tagged_files() {
+    let (_tmp, mut app) = sample();
+    ctrl(&mut app, 's');
+    assert_eq!(
+        app.message.as_deref(),
+        Some("No tagged files match the filespec")
+    );
+    assert_eq!(app.focus, Focus::Tree);
+
+    app.apply(Command::ExpandAll);
+    press(&mut app, KeyCode::Enter);
+    press(&mut app, KeyCode::Char('t')); // a.rs
+    press(&mut app, KeyCode::Esc);
+    press(&mut app, KeyCode::End); // sub/deep
+    press(&mut app, KeyCode::Char('t')); // sub/deep/a.rs
+    ctrl(&mut app, 's');
+    assert_eq!(app.view, FileView::Showall);
+    assert!(app.tags_only);
+    assert_eq!(names(&app), ["a.rs", "a.rs"]);
+
+    // Untagged files stay until the list is rebuilt, as in ZTreeWin.
+    press(&mut app, KeyCode::Char('u'));
+    assert_eq!(names(&app).len(), 2);
+    app.refresh_files();
+    assert_eq!(names(&app), ["a.rs"]);
+    // With no tags left, the list goes back to all the files.
+    press(&mut app, KeyCode::Home);
+    press(&mut app, KeyCode::Char('u'));
+    app.refresh_files();
+    assert!(!app.tags_only);
+    assert_eq!(names(&app).len(), 4);
+
+    press(&mut app, KeyCode::Esc);
+    assert!(!app.tags_only && app.view == FileView::Dir);
+}
+
+#[test]
 fn copy_tagged_files_to_directory() {
     let (tmp, mut app) = sample();
     press(&mut app, KeyCode::Enter);

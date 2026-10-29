@@ -119,6 +119,9 @@ pub struct Pane {
     pub tree_state: ListState,
     pub focus: Focus,
     pub view: FileView,
+    /// Tags-Only mode, as in ZTreeWin: the list shows only the tagged files.
+    /// Files untagged meanwhile stay until the list is rebuilt.
+    pub tags_only: bool,
     /// Files listed in the file window, already filtered.
     pub files: Vec<FileRef>,
     pub file_state: ListState,
@@ -197,6 +200,7 @@ impl Pane {
             tree_state: ListState::default().with_selected(Some(0)),
             focus: Focus::Tree,
             view: FileView::Dir,
+            tags_only: false,
             files: Vec::new(),
             file_state: ListState::default().with_selected(Some(0)),
             filespec: Filespec::default(),
@@ -560,7 +564,17 @@ impl Pane {
     }
 
     pub fn set_view(&mut self, view: FileView) {
+        self.open_view(view, false);
+    }
+
+    /// Opens `view` with only the tagged files (Tags-Only mode).
+    pub fn set_view_tagged(&mut self, view: FileView) {
+        self.open_view(view, true);
+    }
+
+    fn open_view(&mut self, view: FileView, tags_only: bool) {
         self.view = view;
+        self.tags_only = tags_only;
         self.focus = Focus::Files;
         self.file_state.select(Some(0));
         self.refresh_files();
@@ -574,6 +588,7 @@ impl Pane {
             .flatten()
             .map(|f| f.dir);
         self.view = FileView::Dir;
+        self.tags_only = false;
         self.focus = Focus::Tree;
         match target {
             Some(dir) => {
@@ -657,10 +672,16 @@ impl Pane {
         for (rank, dir) in dirs.into_iter().enumerate() {
             for (idx, f) in self.tree.node(dir).files.iter().enumerate() {
                 let shown = self.tree.show_hidden || !f.is_hidden();
-                if shown && self.filespec.matches_entry(f) {
+                let tagged = f.tagged || !self.tags_only;
+                if shown && tagged && self.filespec.matches_entry(f) {
                     files.push((FileRef { dir, idx }, rank));
                 }
             }
+        }
+        // With no tags left, Tags-Only gives way to all the files (ZTreeWin).
+        if self.tags_only && files.is_empty() {
+            self.tags_only = false;
+            return self.refresh_files();
         }
         let sort = self.sort;
         sort::sort_by(&mut files, &sort, |&(f, rank)| {
