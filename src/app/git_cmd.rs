@@ -86,7 +86,8 @@ impl App {
             return;
         };
         let Some(action) = git::Action::from_key(c) else {
-            self.message = Some("Git: Status, Log, Diff, Blame, Add, Unstage or Commit".into());
+            self.message =
+                Some("Git: Status, Log, Graph, Diff, Blame, Add, Unstage or Commit".into());
             return;
         };
         let dir = self.current_path();
@@ -102,7 +103,7 @@ impl App {
         }
         match action {
             // The whole repository: what matters is the general picture.
-            git::Action::Status => paths.clear(),
+            git::Action::Status | git::Action::Graph => paths.clear(),
             git::Action::Blame if self.focus == Focus::Tree || paths.len() != 1 => {
                 self.message = Some("Blame works on one file".into());
                 return;
@@ -121,8 +122,11 @@ impl App {
                 Ok(r) => {
                     let size = r.text.len() as u64;
                     self.tagged_view = None;
-                    let v = Viewer::from_bytes(r.title, size, r.text);
-                    self.viewer = Some(v.colored_as(Path::new(r.colors_of)));
+                    self.viewer = Some(if r.colors_of == highlight::ANSI {
+                        Viewer::from_ansi(r.title, &r.text)
+                    } else {
+                        Viewer::from_bytes(r.title, size, r.text).colored_as(Path::new(r.colors_of))
+                    });
                 }
                 Err(e) => self.message = Some(format!("Git: {e}")),
             },

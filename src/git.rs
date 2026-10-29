@@ -13,12 +13,16 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 /// The menu (Ctrl+G), in display order; the first letter chooses.
-pub const MENU: &[&str] = &["Status", "Log", "Diff", "Blame", "Add", "Unstage", "Commit"];
+pub const MENU: &[&str] = &[
+    "Status", "Log", "Graph", "Diff", "Blame", "Add", "Unstage", "Commit",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
     Status,
     Log,
+    /// `git log --graph` of the whole repository, in git's colors.
+    Graph,
     Diff,
     Blame,
     Add,
@@ -31,6 +35,7 @@ impl Action {
         Some(match c.to_ascii_lowercase() {
             's' => Action::Status,
             'l' => Action::Log,
+            'g' => Action::Graph,
             'd' => Action::Diff,
             'b' => Action::Blame,
             'a' => Action::Add,
@@ -44,7 +49,7 @@ impl Action {
     pub fn shows_output(self) -> bool {
         matches!(
             self,
-            Action::Status | Action::Log | Action::Diff | Action::Blame
+            Action::Status | Action::Log | Action::Graph | Action::Diff | Action::Blame
         )
     }
 }
@@ -115,6 +120,26 @@ pub fn report(action: Action, root: &Path, paths: &[PathBuf]) -> io::Result<Repo
     let (title, (_, mut text)) = match action {
         Action::Status => ("git status", run(root, &["status"], paths)?),
         Action::Log => ("git log", run(root, &["log", "-n", "1000"], paths)?),
+        // git's own colors (one per branch line), read by the viewer; no
+        // gpg even with log.showSignature on.
+        Action::Graph => (
+            "git log --graph",
+            run(
+                root,
+                &[
+                    "log",
+                    "--graph",
+                    "--decorate",
+                    "--oneline",
+                    "--all",
+                    "--color=always",
+                    "--no-show-signature",
+                    "-n",
+                    "1000",
+                ],
+                paths,
+            )?,
+        ),
         // Against HEAD: what is staged and what is not, together.
         Action::Diff if has_head(root) => ("git diff", run(root, &["diff", "HEAD"], paths)?),
         Action::Diff => ("git diff", run(root, &["diff", "--cached"], paths)?),
@@ -130,6 +155,7 @@ pub fn report(action: Action, root: &Path, paths: &[PathBuf]) -> io::Result<Repo
         colors_of: match action {
             Action::Diff => "git.diff",
             Action::Status => crate::highlight::GIT_STATUS,
+            Action::Graph => crate::highlight::ANSI,
             _ => "",
         },
     })
@@ -472,6 +498,11 @@ mod tests {
         assert!(String::from_utf8_lossy(&diff.text).contains("+two"));
         let log = report(Action::Log, root, &[]).unwrap();
         assert!(String::from_utf8_lossy(&log.text).contains("first"));
+        let graph = report(Action::Graph, root, &[]).unwrap();
+        assert_eq!(graph.colors_of, crate::highlight::ANSI);
+        let text = String::from_utf8_lossy(&graph.text);
+        assert!(text.starts_with('*') && text.contains("first"), "{text}");
+        assert!(text.contains('\u{1b}'), "git's colors");
         let blame = report(Action::Blame, root, &[root.join("a.txt")]).unwrap();
         assert!(String::from_utf8_lossy(&blame.text).contains("one"));
         let status = report(Action::Status, root, &[]).unwrap();

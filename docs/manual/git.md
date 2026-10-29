@@ -10,12 +10,15 @@ Ctrl+G opens the Git menu in the footer; the next letter chooses:
 
 - **S**tatus, **L**og, **D**iff (against HEAD: staged and unstaged together,
   with colors) and **B**lame open in the [viewer](viewer.md), with search;
+- **G**raph: `git log --graph --decorate --oneline --all`,
+  the last 1000 commits of every branch, in Git's own colors (one per branch
+  line), also in the viewer;
 - **A**dd and **U**nstage;
 - **C**ommit opens Git's own editor, as `git commit` does.
 
 The commands act on the tagged files of the list, otherwise on the current
-file; in the tree, on the current directory. Status always covers the whole
-repository. For push, pull and other commands that use the network, use
+file; in the tree, on the current directory. Status and Graph always cover the
+whole repository. For push, pull and other commands that use the network, use
 [eXecute](execute.md) (`X`), e.g. `git push`.
 
 ## Status in the file list
