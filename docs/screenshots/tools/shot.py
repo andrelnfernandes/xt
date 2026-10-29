@@ -1,7 +1,8 @@
 """Runs Xylem in a pseudo-terminal, sends keys and saves the screen as a PNG,
 or, for OUT.gif, every step as a frame of an animation.
 
-Usage: shot.py OUT.png|OUT.gif XY ROOT [STEP...], where a step is:
+Usage: shot.py OUT.png|OUT.gif XY ROOT [STEP...], where ROOT is a folder or
+a remote address (user@host:, then Xylem starts in $SHOT_CWD) and a step is:
   KEYS            keys to send, with escapes (e.g. '\\x1bx' for Alt+X)
   type:TEXT       TEXT typed one character at a time (one frame each)
   send:KEYS       keys sent without a frame
@@ -38,7 +39,7 @@ stream = pyte.ByteStream(screen)
 pid, fd = pty.fork()
 if pid == 0:
     os.environ["TERM"] = "xterm-256color"
-    os.chdir(root)
+    os.chdir(root if os.path.isdir(root) else os.environ["SHOT_CWD"])
     os.execv(xy, [xy, root])
 fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", ROWS, COLS, 0, 0))
 

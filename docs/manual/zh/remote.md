@@ -20,11 +20,15 @@ Xylem 直接调用系统自带的 `ssh`，因此您在终端中能用的配置�
 
 连接过程中按 `Esc` 可取消。如果配置了密钥和 ssh-agent，则无需任何手动输入。
 
+![ssh 在 Xylem 底栏询问 deploy@webserver 的密码](../../screenshots/remote-password.png)
+
 ## 支持的功能
 
 目录树、文件窗口、[Filespec](filespec.md)、Branch、Showall、标记、[查看器](viewer.md)、[Ctrl+S 与 Ctrl+V](search.md)、自动预览 (Autoview)、Info（Alt+I）、各种显示模式（所有者模式显示 SFTP 返回的用户 ID 和组 ID）、[比较](compare.md) 以及打开（`O` 会下载副本并在本机打开）。
 
 **复制 (Copy)** 可将远程文件下载到本机，并保留其权限和修改日期（精确到秒，与 SFTP 一致）；在分屏状态下，会默认建议将本机窗口作为目标目录。Alt+C（保留路径）同样可用，路径从远程窗口的根目录算起。
+
+![分屏：左侧远程机器上已标记三个备份文件，即将复制到右侧本机的文件夹中](../../screenshots/remote.png)
 
 目前远程端为 **只读** 模式：移动、删除、重命名、新建目录、权限属性、修改日期、编辑、执行命令以及将文件复制 *到* 远程主机暂不支持。按 F3 重新读取目录；远程目录不会自动刷新。
 
@@ -33,6 +37,8 @@ Xylem 直接调用系统自带的 `ssh`，因此您在终端中能用的配置�
 ## 远程主机上的终端
 
 在远程窗口中按 **Alt+X** 会在该远程机器上打开一个 shell（`ssh -t`），初始位于当前窗口所在的远程目录；在本地窗口中按 Alt+X 则像以前一样打开本地 shell（切换窗口时，两个 shell 都会在后台保持运行）。在 Linux 和 macOS 上，远程 shell 会复用已建立的 SSH 连接，因此无需再次输入密码；在 Windows 上，ssh 会在终端内提示输入密码。
+
+![远程机器的 shell 位于其目录树下方，执行 cd logs 后，目录树也跟随定位到 logs](../../screenshots/remote-terminal.png)
 
 当远程 shell 通过 OSC 7 序列上报其当前目录时，目录树会自动跟随远程 shell 的 `cd` 移动。许多系统默认已配置好此功能；对于 bash，可在 **远程主机上** 的 `~/.bashrc` 中添加以下内容：
 

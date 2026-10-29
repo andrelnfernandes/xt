@@ -32,6 +32,8 @@ Quando o ssh pergunta algo, a pergunta aparece no rodapé:
 
 `Esc` durante a conexão cancela. Com chave e agente, nada é perguntado.
 
+![O ssh pedindo a senha de deploy@webserver no rodapé do Xylem](../../screenshots/remote-password.png)
+
 ## O que funciona
 
 A árvore, a janela de arquivos, [Filespec](filespec.md), Branch, Showall,
@@ -44,6 +46,8 @@ cópia e a abre aqui).
 de segundos, como o SFTP mantém); com a tela dividida, sugere a janela desta
 máquina como destino. Alt+C (com caminhos) também funciona, com os caminhos
 começando na raiz da janela remota.
+
+![Tela dividida: três backups marcados na máquina remota, à esquerda, prestes a serem copiados para uma pasta desta máquina, à direita](../../screenshots/remote.png)
 
 Por enquanto, o lado remoto é **somente leitura**: Mover, Excluir, Renomear,
 Criar diretório, Atributos, datas, Edit, eXecute e copiar *para* a máquina
@@ -60,6 +64,8 @@ começando no diretório da janela; em uma janela local, abre o shell local, com
 antes (cada um continua rodando enquanto o outro está na tela). No Linux e no
 macOS, o shell remoto reutiliza a conexão já estabelecida, de modo que a senha
 não é pedida novamente; no Windows, o ssh a pede no terminal.
+
+![O shell da máquina remota sob a árvore dela, depois de cd logs: a árvore acompanhou até logs](../../screenshots/remote-terminal.png)
 
 A árvore acompanha o `cd` do shell remoto quando o shell informa seu diretório
 com a sequência OSC 7. Muitos sistemas já fazem isso; para o bash, adicione

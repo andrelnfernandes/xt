@@ -5,7 +5,9 @@
 #
 # The sample tree is mounted at /home, so that paths read
 # /home/user/projects, only inside a private namespace (unshare): nothing
-# is created outside your home directory.
+# is created outside your home directory. The remote shots reach
+# deploy@webserver (/home/deploy in the sample) through fake_ssh.py, which
+# stands in for ssh: no SSH server is needed.
 #
 # Needs: unshare (util-linux), git, DejaVu Sans Mono and a Python with pyte
 # and Pillow, e.g.
@@ -34,6 +36,9 @@ mkdir /mnt/real /mnt/tmp
 mount --bind "$real" /mnt/real
 mount --bind "$WORK/root/home" /home
 T=$(inside "$TOOLS"); X=$(inside "$REPO"); W=$(inside "$WORK"); PY=$(inside "$PYTHON")
+# The remote shots reach deploy@webserver through fake_ssh.py, not ssh.
+printf "#!/bin/sh\nexec \"%s\" -I \"%s/fake_ssh.py\" \"\$@\"\n" "$PY" "$T" > /mnt/tmp/ssh
+chmod +x /mnt/tmp/ssh
 D="\033[B"; U="\033[A"
 down() { n=$1; s=""; while [ $n -gt 0 ]; do s="$s$D"; n=$((n-1)); done; printf %s "$s"; }
 up() { n=$1; s=""; while [ $n -gt 0 ]; do s="$s$U"; n=$((n-1)); done; printf %s "$s"; }
@@ -43,6 +48,7 @@ run() { name=$1; cfg=$2; shift 2
   case $name in demo) file=docs/demo.gif;; demo-*) file=docs/screenshots/$name.gif;; *) file=docs/screenshots/$name.png;; esac
   HOME=/home/user SHELL=/bin/bash XDG_CONFIG_HOME=$W/root/config/$cfg \
   XDG_STATE_HOME=/mnt/tmp/state XDG_CACHE_HOME=/mnt/tmp/cache \
+  XY_SSH=/mnt/tmp/ssh FAKE_SSH_HOME=/home/deploy FAKE_SSH_ASK=$ask SHOT_CWD=/home/user/projects \
   "$PY" -I "$T/shot.py" "$X/$file" "$X/target/release/xy" "${root:-/home/user/projects}" "$@"
   echo "$file"; }
 run tree classic "*" sleep:1 "$(down 12)"
@@ -78,4 +84,18 @@ run demo-nord nord hold:1.5 "*" hold:1 "\033x" hold:1 "type:cd xylem/src" hold:.
   "\033x" hold:1 "$(up 9)" hold:.8 b hold:1.2 "$D" hold:.4 t hold:.5 "$D" hold:.3 "$D" hold:.4 \
   t hold:.5 t hold:1.5 "send:\033x" "\014" hold:.6 "type:wc -c " hold:.4 "\033o" hold:1 \
   "\r" hold:2.5 "\033x" hold:3
+# A remote machine: xy deploy@webserver:
+root=deploy@webserver:
+# Three backups copied here (Ctrl+C), into the folder picked on the right.
+copy() { run "$1" "$2" sleep:2 "*" sleep:1 "\033[19~" sleep:1 "\t" "$D" "\t" "$D" "\r" t t t "\003"; }
+# The terminal there (Alt+X), the tree following its cd.
+terminal() { run "$1" "$2" sleep:2 "*" sleep:1 "\033x" sleep:1.5 "cd logs && du -h *\r" sleep:1; }
+copy remote classic
+terminal remote-terminal classic
+# ssh asking for the password, in the footer.
+ask=1; run remote-password classic sleep:2 "send:s3cr3t"; ask=
+copy remote-nord nord
+terminal remote-terminal-dark dark
+# The password shot leaves ssh and xy --askpass waiting for an answer.
+pkill -f "$T/fake_ssh.py|$X/target/release/xy --askpass" || true
 ' sh "$HOME" "$TOOLS" "$REPO" "$WORK" "$PYTHON" "$@"
