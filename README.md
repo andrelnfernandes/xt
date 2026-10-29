@@ -20,8 +20,8 @@ me, the best text-mode file manager there is. I wrote Xylem because I missed
 something as good as it running on Linux: the existing alternatives seem
 abandoned or have drifted too far from the classic look and feel.
 
-As much as I like ZTreeWin, its development is extremely slow. That is why Xylem
-will probably get a Windows version too.
+Xylem also builds for Windows, because Rust makes that easy, but a Windows
+version is not a priority: on Windows there is ZTreeWin.
 
 Xylem follows ZTreeWin's keys and way of working whenever possible; the
 differences are listed in [Comparison with ZTreeWin](docs/manual/ztreewin.md).

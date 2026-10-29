@@ -21,11 +21,11 @@ Xylem por sentir falta de algo tão bom quanto ele rodando no Linux: as versões
 que existem parecem abandonadas ou se afastaram demais do visual e do jeito
 clássicos.
 
-Apesar de gostar muito do ZTreeWin, a evolução dele é extremamente lenta. Por
-isso, provavelmente o Xylem também terá uma versão para Windows.
+O Xylem também compila para Windows, porque o Rust torna isso fácil, mas uma
+versão para Windows não é prioridade: no Windows existe o ZTreeWin.
 
 O Xylem segue as teclas e o jeito de trabalhar do ZTreeWin sempre que possível;
-as diferenças estão descritas em [Comparação com o ZTreeWin](docs/manual/ztreewin.md) (em inglês).
+as diferenças estão descritas em [Comparação com o ZTreeWin](docs/manual/pt/ztreewin.md).
 
 ## Segurança: arquivos hostis
 
