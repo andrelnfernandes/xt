@@ -76,11 +76,11 @@ lto = true
 codegen-units = 1
 strip = true
 
-# The .deb and .rpm packages, built by the release workflow (cargo-deb and
-# cargo-generate-rpm) from the static musl binary, so they depend on no
-# library (cargo-deb warns that it found no $auto dependencies, and leaves
-# Depends out). target/release/xy.1.gz is the man page, which the workflow
-# generates with `xy --man` before packaging.
+# The .deb and .rpm packages, built by packaging/linux/packages.sh
+# (cargo-deb and cargo-generate-rpm) from the static musl binary, so they
+# depend on no library (cargo-deb warns that it found no $auto
+# dependencies, and leaves Depends out). target/release/xy.1.gz is the man
+# page, which the script generates with `xy --man` before packaging.
 [package.metadata.deb]
 maintainer = "Andre L N Fernandes <16240275+andrelnfernandes@users.noreply.github.com>"
 copyright = "Andre L N Fernandes"

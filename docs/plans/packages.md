@@ -6,13 +6,19 @@ e tirar o "`.deb` adiado" do BACKLOG e do roadmap.
 
 ## O que foi feito
 
-- `release.yml`, job `build`, passo "Packages (Linux)": nos dois alvos musl
-  (x86_64 e ARM64) roda `cargo-deb` 3.8.0 e `cargo-generate-rpm` 0.21.0
-  (versões fixas, com `--locked`) sobre o binário já compilado e sobe os
-  pacotes, cada um com o seu `.sha256`, para a release.
+- `packaging/linux/packages.sh <alvo>`: roda `cargo-deb` 3.8.0 e
+  `cargo-generate-rpm` 0.21.0 (versões fixas, com `--locked`) sobre o
+  binário de release já compilado e deixa os pacotes, cada um com o seu
+  `.sha256`, em `target/packages/`. É o mesmo script no release e no CI.
+- `release.yml`, job `build`, passo "Packages (Linux)": roda o script nos
+  dois alvos musl (x86_64 e ARM64) e sobe os pacotes para a release.
+- `ci.yml`, job `packages` (em todo push e PR, só x86_64): monta os pacotes,
+  instala o `.deb` no runner (Ubuntu) e o `.rpm` num container
+  `fedora:latest`, roda `xy --version`, confere a página de manual e o
+  `.desktop` e remove; os pacotes ficam como artefato do run.
 - `Cargo.toml`: `[package.metadata.deb]` e `[package.metadata.generate-rpm]`
   com o mesmo conteúdo nos dois: `/usr/bin/xy`, a página de manual
-  (`xy --man`, gerada no passo e comprimida), o `.desktop`, os ícones
+  (`xy --man`, gerada pelo script e comprimida), o `.desktop`, os ícones
   (hicolor, de 16 a 512 e o SVG), a licença e os READMEs.
 - Nome do pacote: `xylem-fm`, como no crates.io (`xylem` e `xy` já existem
   lá; evita colidir com nomes de outras distribuições).
@@ -35,5 +41,3 @@ O alvo ARM64 só roda no CI.
 - Distribuições oficiais (Debian, Fedora): exigem padrinho/revisão e que cada
   crate de que o Xylem depende também esteja empacotado nelas. Caminho longo;
   em geral alguém da distribuição assume o pacote.
-- Um passo no CI que monte os pacotes em todo PR, para um erro no metadata
-  não aparecer só na hora do release.

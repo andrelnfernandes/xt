@@ -41,6 +41,49 @@ jobs:
           name: xy-windows-x86_64
           path: target/release/xy.exe
 
+  packages:
+    # The .deb and the .rpm, built as the release builds them (x86_64 only),
+    # so that a mistake in their metadata shows up here and not on the tag.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: x86_64-unknown-linux-musl
+
+      - name: Build
+        run: cargo build --release --locked --target x86_64-unknown-linux-musl
+      - name: Packages
+        run: sh packaging/linux/packages.sh x86_64-unknown-linux-musl
+
+      # Installed for real and run: the .deb here, the .rpm in Fedora.
+      - name: Install the .deb
+        run: |
+          dpkg-deb --info target/packages/*.deb
+          sudo apt-get install -y --no-install-recommends ./target/packages/*.deb
+          xy --version
+          test -f /usr/share/man/man1/xy.1.gz
+          test -f /usr/share/applications/xylem.desktop
+          sudo apt-get remove -y xylem-fm
+      - name: Install the .rpm
+        run: |
+          docker run --rm -v "$PWD/target/packages:/packages:ro" fedora:latest sh -euc '
+            dnf install -y -q --setopt=install_weak_deps=False /packages/*.rpm
+            xy --version
+            test -f /usr/share/man/man1/xy.1.gz
+            test -f /usr/share/applications/xylem.desktop
+            dnf remove -y -q xylem-fm'
+
+      - name: Upload the packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: packages-x86_64
+          path: target/packages/
+
   audit:
     runs-on: ubuntu-latest
     steps:

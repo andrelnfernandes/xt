@@ -80,22 +80,9 @@ jobs:
 
       - name: Packages (Linux)
         if: runner.os != 'Windows'
-        # What goes in them is in [package.metadata.deb] and
-        # [package.metadata.generate-rpm] in Cargo.toml.
         run: |
-          cargo install cargo-deb --locked --version 3.8.0
-          cargo install cargo-generate-rpm --locked --version 0.21.0
-          dir=target/${{ matrix.target }}/release
-          "$dir/xy" --man | gzip -9n > "$dir/xy.1.gz"
-          mkdir packages
-          cargo deb --no-build --no-strip --target ${{ matrix.target }} -o packages/
-          cargo generate-rpm --target ${{ matrix.target }} -o packages/
-          cd packages
-          for f in *.deb *.rpm; do
-            sha256sum "$f" > "$f.sha256"
-            ASSETS="$ASSETS packages/$f packages/$f.sha256"
-          done
-          echo "ASSETS=$ASSETS" >> "$GITHUB_ENV"
+          sh packaging/linux/packages.sh ${{ matrix.target }}
+          echo "ASSETS=$ASSETS $(echo target/packages/*)" >> "$GITHUB_ENV"
 
       - name: Archive (Windows)
         if: runner.os == 'Windows'
