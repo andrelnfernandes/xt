@@ -10,6 +10,7 @@ directorio, o la vista Branch o Showall abierta).
 |---|---|---|
 | `T` / `U` | marcar / desmarcar los archivos del directorio | marcar / desmarcar el archivo y bajar |
 | Ctrl+T / Ctrl+U | marcar / desmarcar todo lo registrado (que coincida con el Filespec) | marcar / desmarcar toda la lista |
+| Ctrl+S | Showall solo de los archivos marcados | |
 | `I` | invertir las marcas del directorio | invertir las marcas de la lista |
 | Ctrl+F7 / F8 / F9 | marcar / desmarcar / invertir los archivos registrados de la rama | |
 

@@ -608,6 +608,11 @@ fn draw_files(
         FileView::Branch(_) => "Branch",
         FileView::Showall => "Showall",
     };
+    let kind = if pane.tags_only {
+        format!("{kind} (tagged)")
+    } else {
+        kind.to_string()
+    };
     let title = format!(
         " {}{kind}: {} ({}) {} ",
         crate::icons::view_icon(pane.view, icons).unwrap_or_default(),
@@ -1417,6 +1422,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                         "Delete",
                         "Move",
                         "Rename",
+                        "Showall",
                         "Tag",
                         "Untag",
                         "Yank",
@@ -1441,7 +1447,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                     (
                         "",
                         if tree {
-                            "on tagged files here · Tag/Untag: all logged · Yank: paths to clipboard"
+                            "on tagged files here · Showall/Tag/Untag: all logged · Yank: paths to clipboard"
                         } else {
                             "on tagged files in list · Copy/Move: no paths · Yank: paths to clipboard"
                         },
@@ -2936,6 +2942,23 @@ mod tests {
         let screen = draw_text(&mut app);
         assert!(screen.contains("\u{f0645} Branch: "), "{screen}");
         assert!(!screen.contains('\u{e725}'));
+    }
+
+    #[test]
+    fn tags_only_title_says_tagged() {
+        let tmp = crate::testing::tempdir();
+        std::fs::write(tmp.path().join("a"), "a").unwrap();
+        std::fs::write(tmp.path().join("b"), "b").unwrap();
+        let mut app = App::new(tmp.path().to_path_buf());
+        app.panes[0]
+            .tree
+            .file_mut(crate::model::tree::ROOT, 0)
+            .tagged = true;
+        app.panes[0].set_view_tagged(FileView::Showall);
+        let spec = app.panes[0].filespec.text().to_string();
+        let screen = draw_text(&mut app);
+        let title = format!("Showall (tagged): {spec} (1)");
+        assert!(screen.contains(&title), "{screen}");
     }
 
     #[test]

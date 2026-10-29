@@ -37,6 +37,9 @@ autres répertoires nécessitent toujours F3.
 
 - `B` (Branch) : les fichiers de toute la branche, en la lisant d'abord.
 - `S` (Showall) : les fichiers de tout ce qui a été lu.
+- Ctrl+S : Showall des seuls fichiers marqués (le mode Tags-Only de ZTreeWin).
+  Les fichiers démarqués y restent jusqu'à ce que la liste soit relue (F3) ;
+  sans plus aucune marque, tous les fichiers réapparaissent.
 - `F` ([Filespec](filespec.md)) : quels fichiers afficher, par nom, date et taille.
 
 Dans Branch et Showall, `\` va au répertoire du fichier sélectionné.

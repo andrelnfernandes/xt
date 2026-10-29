@@ -27,15 +27,16 @@ geändert haben; wenn hier etwas veraltet ist, eröffnen Sie bitte ein Issue.
 ## Dieselbe Arbeitsweise
 
 Baum mit bedarfsweisem Einlesen (`+`, `*`), Dateifenster, Filespec, Branch,
-Showall, Markierungen (T, U, I, Ctrl+T/U), Kopieren/Verschieben/Löschen/Umbenennen
-samt den Varianten mit Ctrl (markierte Dateien) und Alt (markierte Dateien mit
-Pfaden), Verzeichnis erstellen, Verzeichnis löschen, Prune, Attribute,
-Betrachter, Bearbeiten, Ausführen (eXecute), Vergleichen (Verzeichnis und
-Zweig), Sortieren, Log, geteiltes Fenster (F8 und Tab), neu einlesen (F3),
-Öffnen (`O`), automatische Aktualisierung, Durchsuchen und Entpacken von
-Archiven, Verlauf in Eingabezeilen, Lesezeichen, Hilfe (F1) und ein
-Konfigurationsbildschirm. Die Tasten sind, wo immer möglich, die von ZTreeWin;
-die Ausnahmen stehen unter „Abweichende Tasten" am Ende.
+Showall (auch nur der markierten Dateien, Ctrl+S), Markierungen (T, U, I,
+Ctrl+T/U), Kopieren/Verschieben/Löschen/Umbenennen samt den Varianten mit Ctrl
+(markierte Dateien) und Alt (markierte Dateien mit Pfaden), Verzeichnis
+erstellen, Verzeichnis löschen, Prune, Attribute, Betrachter, Bearbeiten,
+Ausführen (eXecute), Vergleichen (Verzeichnis und Zweig), Sortieren, Log,
+geteiltes Fenster (F8 und Tab), neu einlesen (F3), Öffnen (`O`), automatische
+Aktualisierung, Durchsuchen und Entpacken von Archiven, Verlauf in
+Eingabezeilen, Lesezeichen, Hilfe (F1) und ein Konfigurationsbildschirm. Die
+Tasten sind, wo immer möglich, die von ZTreeWin; die Ausnahmen stehen unter
+„Abweichende Tasten" am Ende.
 
 ## Was Xylem noch fehlt
 
@@ -49,7 +50,8 @@ die Ausnahmen stehen unter „Abweichende Tasten" am Ende.
   Datei (Alt+B), JFC (J, Inhalt zweier Dateien vergleichen), Verknüpfung
   erstellen (H), Drucken (P), Eigentümer/Gruppe (chown), Megaview (Ctrl+F7 im
   Dateifenster), markierte Dateien zwischen Fenstern zusammenführen (Ctrl+F6),
-  teilweises Aufheben von Markierungen (Ctrl+F8).
+  teilweises Aufheben von Markierungen (Ctrl+F8), Tags-Only außerhalb von
+  Showall (Ctrl+Enter und Ctrl+F4, Ctrl+B im Baum).
 - **Allgemein:** Makros (F12), Anwendungsmenü (F9), Beenden und zur Shell
   (Ctrl+Q), Speichern und Laden des eingelesenen Zustands (Zlist, Ctrl/Alt+Z),
   Farben nach Name und Attribut (ZCOLORS.INI), Mausbedienung,

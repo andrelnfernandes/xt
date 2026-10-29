@@ -37,6 +37,9 @@ laufender Operationen); andere Verzeichnisse benötigen weiterhin F3.
 
 - `B` (Branch): die Dateien des gesamten Zweigs, nachdem dieser eingelesen wurde.
 - `S` (Showall): die Dateien aller eingelesenen Verzeichnisse.
+- Ctrl+S: Showall nur der markierten Dateien (der Tags-Only-Modus von
+  ZTreeWin). Dort entmarkierte Dateien bleiben in der Liste, bis sie neu
+  eingelesen wird (F3); ohne Markierungen erscheinen wieder alle Dateien.
 - `F` ([Filespec](filespec.md)): welche Dateien nach Name, Datum und Größe angezeigt werden.
 
 In Branch und Showall springt `\` zum Verzeichnis der ausgewählten Datei.

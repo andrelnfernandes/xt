@@ -27,15 +27,15 @@ certains détails ; si quelque chose ici n'est plus à jour, ouvrez une issue.
 ## La même manière de travailler
 
 Arborescence avec lecture à la demande (`+`, `*`), fenêtre de fichiers,
-Filespec, Branch, Showall, marquage (T, U, I, Ctrl+T/U),
-Copier/Déplacer/Supprimer/Renommer avec les variantes Ctrl (fichiers marqués) et
-Alt (fichiers marqués avec chemins), Créer un répertoire, Supprimer un
-répertoire, Prune, Attributs, Visionneuse, Éditer, eXécuter, Comparer
-(répertoire et branche), Trier, Log, écran partagé (F8 et Tab), relecture (F3),
-Ouvrir (`O`), rafraîchissement automatique, navigation et extraction d'archives,
-historique dans les invites, signets, aide (F1) et écran de configuration. Les
-touches sont celles de ZTreeWin chaque fois que possible ; les exceptions sont
-dans « Touches différentes », à la fin.
+Filespec, Branch, Showall (aussi des seuls fichiers marqués, Ctrl+S), marquage
+(T, U, I, Ctrl+T/U), Copier/Déplacer/Supprimer/Renommer avec les variantes Ctrl
+(fichiers marqués) et Alt (fichiers marqués avec chemins), Créer un répertoire,
+Supprimer un répertoire, Prune, Attributs, Visionneuse, Éditer, eXécuter,
+Comparer (répertoire et branche), Trier, Log, écran partagé (F8 et Tab),
+relecture (F3), Ouvrir (`O`), rafraîchissement automatique, navigation et
+extraction d'archives, historique dans les invites, signets, aide (F1) et écran
+de configuration. Les touches sont celles de ZTreeWin chaque fois que possible ;
+les exceptions sont dans « Touches différentes », à la fin.
 
 ## Ce que Xylem n'a pas encore
 
@@ -49,7 +49,8 @@ dans « Touches différentes », à la fin.
   fichier courant (Alt+B), JFC (J, comparer le contenu de deux fichiers),
   sHortcut (H), Print (P), propriétaire/groupe (chown), Megaview (Ctrl+F7 dans
   la fenêtre de fichiers), fusionner les fichiers marqués entre fenêtres
-  (Ctrl+F6), Partial Untag (Ctrl+F8).
+  (Ctrl+F6), Partial Untag (Ctrl+F8), Tags-Only hors de Showall (Ctrl+Enter
+  et Ctrl+F4, Ctrl+B dans l'arborescence).
 - **Général :** macros (F12), menu d'applications (F9), Quitter vers un shell
   (Ctrl+Q), enregistrement et chargement du log (Zlist, Ctrl/Alt+Z), couleurs
   par nom et attribut (ZCOLORS.INI), souris, options de ligne de commande de

@@ -25,15 +25,15 @@ aqui estiver desatualizado, abra uma issue.
 
 ## O mesmo jeito de trabalhar
 
-Árvore com leitura sob demanda (`+`, `*`), janela de arquivos, Filespec,
-Branch, Showall, marcações (T, U, I, Ctrl+T/U), Copiar/Mover/Excluir/Renomear
-com as versões Ctrl (marcados) e Alt (marcados com caminhos), Criar diretório,
-Excluir diretório, Prune, Atributos, Visualizador, Edit, eXecute, Comparar
-(diretório e ramo), Ordenar, Log, tela dividida (F8 e Tab), reler (F3), Abrir
-(`O`), atualização automática, navegação e extração de arquivos compactados,
-histórico nos prompts, favoritos, ajuda (F1) e tela de configuração. As teclas
-são as do ZTreeWin sempre que possível; as exceções estão em "Teclas
-diferentes", no fim.
+Árvore com leitura sob demanda (`+`, `*`), janela de arquivos, Filespec, Branch,
+Showall (também só dos marcados, Ctrl+S), marcações (T, U, I, Ctrl+T/U),
+Copiar/Mover/Excluir/Renomear com as versões Ctrl (marcados) e Alt (marcados com
+caminhos), Criar diretório, Excluir diretório, Prune, Atributos, Visualizador,
+Edit, eXecute, Comparar (diretório e ramo), Ordenar, Log, tela dividida (F8 e
+Tab), reler (F3), Abrir (`O`), atualização automática, navegação e extração de
+arquivos compactados, histórico nos prompts, favoritos, ajuda (F1) e tela de
+configuração. As teclas são as do ZTreeWin sempre que possível; as exceções
+estão em "Teclas diferentes", no fim.
 
 ## O que o Xylem ainda não tem
 
@@ -45,7 +45,8 @@ diferentes", no fim.
 - **Arquivos:** Abrir em nova janela de terminal (Alt+O), Batch do arquivo
   atual (Alt+B), JFC (J, comparar o conteúdo de dois arquivos), sHortcut (H),
   Print (P), dono/grupo (chown), Megaview (Ctrl+F7 na janela de arquivos),
-  mesclar arquivos marcados entre janelas (Ctrl+F6), Partial Untag (Ctrl+F8).
+  mesclar arquivos marcados entre janelas (Ctrl+F6), Partial Untag (Ctrl+F8),
+  Tags-Only fora do Showall (Ctrl+Enter e Ctrl+F4, Ctrl+B na árvore).
 - **Geral:** macros (F12), menu de aplicações (F9), Sair e abrir shell
   (Ctrl+Q), salvar e carregar o log (Zlist, Ctrl/Alt+Z), cores por nome e
   atributo (ZCOLORS.INI), mouse, opções de linha de comando do ZTreeWin,

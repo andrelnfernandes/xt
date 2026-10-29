@@ -10,6 +10,7 @@ Liste** (des Verzeichnisses oder der geöffneten Branch- bzw. Showall-Ansicht).
 |---|---|---|
 | `T` / `U` | Dateien des Verzeichnisses markieren / Markierung aufheben | Datei markieren / Markierung aufheben und nach unten gehen |
 | Ctrl+T / Ctrl+U | alles Eingelesene (passend zum Filespec) markieren / Markierung aufheben | gesamte Liste markieren / Markierung aufheben |
+| Ctrl+S | Showall nur der markierten Dateien | |
 | `I` | Markierungen des Verzeichnisses umkehren | Markierungen der Liste umkehren |
 | Ctrl+F7 / F8 / F9 | eingelesene Dateien des Zweigs markieren / Markierung aufheben / umkehren | |
 

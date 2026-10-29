@@ -25,14 +25,15 @@ something here is out of date, please open an issue.
 
 ## The same way of working
 
-Tree with on-demand log (`+`, `*`), file window, Filespec, Branch,
-Showall, tags (T, U, I, Ctrl+T/U), Copy/Move/Delete/Rename with the
-Ctrl (tagged) and Alt (tagged with paths) versions, Make dir, Delete dir, Prune,
-Attributes, View, Edit, eXecute, Compare (directory and branch), Sort, Log,
-split window (F8 and Tab), relog (F3), Open (`O`), automatic refresh, browsing and
-extraction of archives, history in prompts, bookmarks, help (F1) and a
-configuration screen. The keys are ZTreeWin's whenever possible; the exceptions
-are under "Different keys", at the end.
+Tree with on-demand log (`+`, `*`), file window, Filespec, Branch, Showall (also
+of the tagged files only, Ctrl+S), tags (T, U, I, Ctrl+T/U),
+Copy/Move/Delete/Rename with the Ctrl (tagged) and Alt (tagged with paths)
+versions, Make dir, Delete dir, Prune, Attributes, View, Edit, eXecute, Compare
+(directory and branch), Sort, Log, split window (F8 and Tab), relog (F3), Open
+(`O`), automatic refresh, browsing and extraction of archives, history in
+prompts, bookmarks, help (F1) and a configuration screen. The keys are
+ZTreeWin's whenever possible; the exceptions are under "Different keys", at the
+end.
 
 ## What Xylem does not have yet
 
@@ -45,7 +46,8 @@ are under "Different keys", at the end.
 - **Files:** Open in a new terminal window (Alt+O), Batch of the current file (Alt+B),
   JFC (J, compare the contents of two files), sHortcut (H), Print (P),
   owner/group (chown), Megaview (Ctrl+F7 in the file window), merge tagged files between
-  windows (Ctrl+F6), Partial Untag (Ctrl+F8).
+  windows (Ctrl+F6), Partial Untag (Ctrl+F8), Tags-Only outside Showall
+  (Ctrl+Enter and Ctrl+F4, Ctrl+B in the tree).
 - **General:** macros (F12), applications menu (F9), Quit and shell (Ctrl+Q), saving and
   loading the log (Zlist, Ctrl/Alt+Z), colors by name and attribute
   (ZCOLORS.INI), mouse, ZTreeWin command-line options, video

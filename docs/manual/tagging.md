@@ -10,6 +10,7 @@ Showall).
 |---|---|---|
 | `T` / `U` | tag / untag the files of the directory | tag / untag the file and move down |
 | Ctrl+T / Ctrl+U | tag / untag everything logged (that matches the Filespec) | tag / untag the whole list |
+| Ctrl+S | Showall of the tagged files only | |
 | `I` | invert the directory's tags | invert the list's tags |
 | Ctrl+F7 / F8 / F9 | tag / untag / invert the logged files of the branch | |
 

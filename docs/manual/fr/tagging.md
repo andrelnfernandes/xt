@@ -10,6 +10,7 @@ répertoire, ou la vue Branch ou Showall ouverte).
 |---|---|---|
 | `T` / `U` | marquer / démarquer les fichiers du répertoire | marquer / démarquer le fichier et descendre |
 | Ctrl+T / Ctrl+U | marquer / démarquer tout ce qui est lu (et correspond au Filespec) | marquer / démarquer toute la liste |
+| Ctrl+S | Showall des seuls fichiers marqués | |
 | `I` | inverser les marques du répertoire | inverser les marques de la liste |
 | Ctrl+F7 / F8 / F9 | marquer / démarquer / inverser les fichiers lus de la branche | |
 
