@@ -113,7 +113,7 @@ Sie sie mit `X`). Eine bereits vorhandene Datei wird nicht überschrieben.
 
 ## Batch im Betrachter
 
-Bei einer im [Betrachter](viewer.md) geöffneten Tabelle oder einem Text schreibt **Ctrl+B** eine Zeile pro Datensatz aus der ganzen Datei: über die 50.000 Zeilen des Bildschirms hinaus, mit vollständigen Werten, genau wie in der Datei. Der aktive Filter gilt (der SQL-Filter bei Tabellen, der [Zeilenfilter](filter.md) bei Text). Eine Tabelle wird dafür neu gelesen; Text kommt so, wie der Betrachter ihn gelesen hat, bis zum Größenlimit. Es fragt nach der Datei, dann nach der Maske, und zeigt vor dem Schreiben die ersten Zeilen: **Enter** schreibt, **Esc** gibt auf. Während des Schreibens bricht Esc ab und entfernt die unvollständige Datei. Eine vorhandene Datei wird nicht überschrieben.
+Bei einer im [Betrachter](viewer.md) geöffneten Tabelle oder einem Text schreibt **Ctrl+B** eine Zeile pro Datensatz aus der ganzen Datei: über die 50.000 Zeilen des Bildschirms hinaus, mit vollständigen Werten, genau wie in der Datei. Der aktive Filter gilt (der SQL-Filter bei Tabellen, der [Zeilenfilter](filter.md) bei Text). Eine Tabelle wird dafür neu gelesen; Text kommt so, wie der Betrachter ihn gelesen hat, bis zum Größenlimit, und die Vorschau warnt, wenn das nicht die ganze Datei ist. Es fragt nach der Datei, dann nach der Maske, und zeigt vor dem Schreiben die ersten Zeilen: **Enter** schreibt, **Esc** gibt auf. Während des Schreibens bricht Esc ab und entfernt die unvollständige Datei. Eine vorhandene Datei wird nicht überschrieben.
 
 | Feld | Wert |
 |---|---|
@@ -145,6 +145,10 @@ Die Werte stammen aus einer möglicherweise feindlichen Datei und können in etw
 - Der Filter einer Tabelle gilt für die ganze Datei, nach den Regeln des Bildschirms: `code = 7` findet auch eine Zelle mit `007`, die als `007` herauskommt. Die Datei kann also Zeilen enthalten, die der auf 50.000 begrenzte Bildschirm nicht zeigt.
 - Eine `.sh` beginnt mit `#!/bin/sh`, wird aber **nicht ausführbar gemacht**: Lesen Sie sie vor dem Ausführen. `.bat` und `.cmd` werden abgelehnt, weil `cmd` `%VAR%` auch in Anführungszeichen auflöst.
 - Vorschau und Abschlussmeldung warnen vor Werten mit Steuer- oder Textrichtungszeichen und in einer CSV vor Werten, die wie eine Formel beginnen. Die Vorschau zählt nur, was sie angesehen hat.
+
+### Ganze Datensätze
+
+Lassen Sie bei einer Datei `.json`, `.jsonl`, `.ndjson`, `.csv`, `.tsv`, `.xml`, `.html` oder `.htm` die Maske **leer**, um ganze Datensätze nach den Regeln des Formats zu schreiben: ein JSON-Array von Objekten, ein Objekt pro Zeile, eine Tabelle mit Kopfzeile, ein `<record>` pro Datensatz oder eine Seite mit einer Tabelle. Um nur einige Felder zu schreiben, beginnen Sie die Maske mit `@`: `@id, name, #`. Text liefert `line_number`, `line` und die Gruppen des Filters. Die Felder werden in den ersten 1.000 Datensätzen ermittelt: Ein JSON-Lines-Schlüssel, der erst später auftaucht, bleibt außen vor, und die Abschlussmeldung weist darauf hin.
 
 ## Verlauf
 

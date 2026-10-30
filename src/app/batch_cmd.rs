@@ -2,12 +2,11 @@
 //! would be written, and writes it in the background.
 
 use super::*;
-use crate::viewer::batch::{self, Escape, Job, Mask, Preview, Source};
+use crate::viewer::batch::{self, Job, Output, Preview, Source};
 
 /// A Batch waiting for the user's look at what it would write.
 pub struct BatchPreview {
     pub source: Source,
-    pub mask: Mask,
     pub file: PathBuf,
     pub preview: Preview,
 }
@@ -60,8 +59,13 @@ impl App {
             Ok(source) => source.field_hint(columns),
             Err(_) => String::new(),
         };
+        let whole = if batch::holds_records(&file) {
+            "; empty = whole records, @a,b = those fields"
+        } else {
+            ""
+        };
         let label = format!(
-            "BATCH line per record (%{{{hint}}}) into {}: ",
+            "BATCH line per record (%{{{hint}}}{whole}) into {}: ",
             fit_name(&file)
         );
         self.open_prompt(PromptKind::ViewerBatchMask { file }, label, "");
@@ -70,21 +74,20 @@ impl App {
     pub(crate) fn viewer_batch_mask(&mut self, file: PathBuf, text: &str) {
         let Some(v) = &self.viewer else { return };
         let (open_path, open_size) = (v.path.clone(), v.size);
-        let mask = Mask::parse(text, Escape::for_file(&file), &open_path, open_size);
-        let found = mask.and_then(|mask| {
+        let output = Output::parse(text, &file, &open_path, open_size);
+        let found = output.and_then(|output| {
             let source = v.batch_source()?;
-            let preview = crate::panic_guard::catch(|| batch::preview(&source, &mask))
+            let preview = crate::panic_guard::catch(|| batch::preview(&source, output))
                 .unwrap_or_else(|| Err("the file could not be read".into()))?;
-            Ok((source, mask, preview))
+            Ok((source, preview))
         });
         match found {
-            Ok((_, _, preview)) if preview.scanned == 0 => {
+            Ok((_, preview)) if preview.scanned == 0 => {
                 self.viewer_note("Batch: no records".into());
             }
-            Ok((source, mask, preview)) => {
+            Ok((source, preview)) => {
                 self.batch_preview = Some(BatchPreview {
                     source,
-                    mask,
                     file,
                     preview,
                 });
@@ -97,7 +100,7 @@ impl App {
         match key.code {
             KeyCode::Enter => {
                 if let Some(p) = self.batch_preview.take() {
-                    self.batch_job = Some(Job::start(p.source, p.mask, p.file));
+                    self.batch_job = Some(Job::start(p.source, p.preview.output, p.file));
                 }
             }
             KeyCode::Esc => {
@@ -142,7 +145,10 @@ impl App {
                 if let Some(dir) = file.parent() {
                     self.rescan_everywhere(&[dir]);
                 }
-                let mut note = format!("Wrote {} lines to {}", done.records, file.display());
+                let mut note = format!("Wrote {} records to {}", done.records, file.display());
+                if done.cut {
+                    note.push_str(". Only the part of the file the viewer read was written");
+                }
                 if let Some(warning) = done.stats.warning() {
                     note.push_str(&format!(". {warning}"));
                 }

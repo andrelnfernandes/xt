@@ -2913,7 +2913,7 @@ fn batch_in_the_viewer_writes_the_filtered_records() {
     );
     assert_eq!(
         app.viewer.as_ref().unwrap().note,
-        Some(format!("Wrote 2 lines to {}", out.display()))
+        Some(format!("Wrote 2 records to {}", out.display()))
     );
 }
 

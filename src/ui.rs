@@ -2278,6 +2278,12 @@ fn draw_batch_preview(frame: &mut Frame, preview: &app::BatchPreview, area: Rect
         format!("{scanned} records looked at; the rest are read when writing")
     };
     let mut lines = vec![Line::styled(count, Style::new().fg(t.key))];
+    if found.cut {
+        lines.push(Line::styled(
+            "The viewer read only part of this file: the rest will not be written",
+            Style::new().fg(t.error),
+        ));
+    }
     if let Some(warning) = found.stats.warning() {
         lines.push(Line::styled(warning, Style::new().fg(t.error)));
     }
