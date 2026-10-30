@@ -204,7 +204,8 @@ mkdir -p ~/.local/share/man/man1 && xy --man > ~/.local/share/man/man1/xy.1
 - **Achar coisas:** Filespec por nome, data e tamanho, Treespec para digitar um
   caminho, bookmarks, e Ctrl+S para buscar texto nos arquivos marcados.
 - **Olhar dentro:** um visualizador de texto e hex com busca, filtro de linhas
-  com expressões regulares e cores de sintaxe, Autoview ao lado da lista,
+  com expressões regulares e cores de sintaxe, um modo tabela com filtro SQL
+  para planilhas, CSV, JSON Lines, DBF, SQLite e Parquet, Autoview ao lado da lista,
   arquivos ZIP, 7z e TAR abertos como diretórios, e modos de exibição que
   mostram o dono ou o que cada arquivo é.
 - **Para onde vai o espaço:** a visão Usage (Alt+W) lista as pastas e os
@@ -297,7 +298,10 @@ nativos: se você lê um desses idiomas, [sugestões são bem-vindas](docs/manua
   experimental para Windows.
 - O visualizador: codificações detectadas sozinhas, arquivos comprimidos,
   limite de tamanho configurável, quebra de linha, números de linha, ir para
-  a linha e proteção contra caracteres ocultos de direção do texto.
+  a linha, filtro de linhas, proteção contra caracteres ocultos de direção do
+  texto e um [modo tabela](docs/manual/pt/viewer.md) com filtro SQL para
+  planilhas (XLSX, ODS), CSV, JSON Lines, DBF com seus arquivos memo, SQLite e
+  Parquet.
 
 ### Próximos passos
 
@@ -305,10 +309,9 @@ nativos: se você lê um desses idiomas, [sugestões são bem-vindas](docs/manua
   vem a escrita (copiar para ela, mover, excluir, renomear, criar diretórios,
   permissões, datas), depois Edit e Abrir (por uma cópia temporária que volta
   ao salvar), eXecute e Git via ssh, e atualização periódica.
-- **Visualizador:** modo tabela para DBF (com arquivos memo) e CSV, e SDF
-  como extra; um visualizador que lê em janelas, como o `less`, sem limite de
-  tamanho para arquivos não comprimidos; logs (acompanhar, ir para o fim,
-  filtrar linhas, cores por nível); SQLite; e, opcionais e isolados,
+- **Visualizador:** SDF no modo tabela, como extra; um visualizador que lê em
+  janelas, como o `less`, sem limite de tamanho para arquivos não comprimidos;
+  logs (acompanhar, ir para o fim, cores por nível); e, opcionais e isolados,
   conversores externos como o `pdftotext` ou o `exiftool`.
 - **Uso do disco:** ações dentro da visão Usage (marcar, excluir, Prune,
   visualizar), depois um treemap opcional, agrupamento por tipo e exportação.

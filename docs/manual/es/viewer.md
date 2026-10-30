@@ -3,6 +3,7 @@
 `V` abre el archivo en el visor (Autoview, F7, lo muestra junto a la lista). Los
 archivos binarios se abren en hexadecimal. Los archivos que superan el límite de tamaño
 muestran solo el principio.
+Las hojas de cálculo, CSV, DBF, SQLite y Parquet se abren como tabla (véase Modo tabla).
 
 | Tecla | Qué hace |
 |---|---|
@@ -13,11 +14,12 @@ muestran solo el principio.
 | `C` | activar o desactivar colores de sintaxis |
 | `W` | activar o desactivar el ajuste de línea |
 | `#` o `L` | activar o desactivar números de línea (en modo texto) |
-| `g` o `:` | saltar a una línea (o desplazamiento de byte en hexadecimal) |
+| `g` o `:` | saltar a una línea (un desplazamiento de byte en hexadecimal, una fila en modo tabla) |
 | `&` | muestra solo las líneas que coinciden, texto simple o regex ([filtrar líneas](filter.md)); en modo tabla, el filtro SQL |
 | `E` | editar el archivo; al volver a Xylem, el visor muestra el contenido nuevo en el mismo lugar (archivos binarios solo con un editor en [`[editors]`](execute.md)) |
 | `D` | con Git activado: qué cambió desde el último commit, y volver ([Git](git.md)) |
-| `T` / `U` | marcar / desmarcar el archivo |
+| `T` | tabla o texto, en un archivo que se abrió como tabla |
+| `U` | en la vista de los archivos marcados (Ctrl+V): desmarcar el archivo |
 | `y` o Ctrl+Insert | copiar la ruta del archivo al portapapeles |
 | Esc | cerrar |
 
@@ -80,6 +82,65 @@ Autoview muestra la nota en su título. En modo hexadecimal (`H`) se ven los byt
 Para un `.tar.gz` (o `.tar.xz`...), la nota dice `TAR archive: Alt+F5 opens it as a folder` (Alt+F5 lo abre como una carpeta).
 
 Para ver los bytes comprimidos, desactive `viewer_decompress` (**J** en la página 2 de la [configuración](configuration.md)).
+
+## Modo tabla
+
+Algunos archivos se abren como una cuadrícula en vez de texto. Xylem decide por la extensión, y solo para archivos sin comprimir en este disco: un archivo de una máquina remota o dentro de un paquete se muestra como contenido normal, con la nota `Tables are shown only for files on this disk`.
+
+| Formato | Extensiones | Nombres de las columnas |
+|---|---|---|
+| CSV, TSV | `.csv` `.tsv` `.tab` | la primera fila, cuando al menos la mitad no son números; si no, A, B, C... |
+| JSON Lines | `.jsonl` `.ndjson` | las claves de los objetos |
+| Hojas de cálculo | `.xlsx` `.xls` `.xlsb` `.ods` | A, B, C... (la primera fila es una fila más) |
+| dBase, Clipper, FoxPro | `.dbf`, con su archivo memo `.dbt` | los nombres de los campos |
+| SQLite | `.db` `.sqlite` `.sqlite3` | las columnas de la tabla |
+| Parquet | `.parquet` | las columnas del archivo |
+
+El separador del CSV (coma, punto y coma, tabulación o barra vertical) se detecta por el principio del archivo.
+
+| Tecla | Qué hace |
+|---|---|
+| ↑ ↓ | fila anterior o siguiente |
+| ← → | columna anterior o siguiente |
+| PgUp PgDn | una página de filas hacia arriba o hacia abajo |
+| Home End | primera o última columna |
+| `[` `]` | hoja anterior o siguiente de una hoja de cálculo, o tabla de una base SQLite, dando la vuelta; esto borra el filtro |
+| `g` o `:` | saltar a una fila, contando solo las que el filtro dejó |
+| `\` o `&` | el filtro SQL |
+| `T` | ir al texto del archivo y volver |
+| `H` | de la tabla al texto, luego hexadecimal, luego de vuelta a la tabla |
+
+El marco muestra `TABLE [2/5]` cuando hay más de una hoja o tabla, y la línea inferior dónde está el cursor: `Cell B7 (Row 7 of 120)`. La última línea de la cuadrícula trae el contenido completo de la celda y el filtro en uso. La búsqueda (`F`, `B`, `/`) no mira dentro de la cuadrícula y no encuentra nada ahí; funciona en modo texto.
+
+### El filtro SQL
+
+`\` o `&` pide una condición, como el `WHERE` de SQL (la palabra `WHERE` es opcional), y muestra solo las filas que la cumplen. El prompt empieza con el filtro actual; déjelo vacío para volver a ver todas las filas. Una nota dice `Filter matched N rows` o `SQL error: ...`; tras un error, el filtro anterior sigue activo.
+
+```
+age >= 30 AND name LIKE 'Ali%'
+WHERE status IN ('open', 'late') OR total > 1000.50
+NOT (city = 'Rio' OR city IS NULL)
+B ILIKE '%silva%'
+```
+
+| Operador | Qué hace |
+|---|---|
+| `=` `!=` `<>` `<` `<=` `>` `>=` | comparan |
+| `AND` `OR` `NOT` y paréntesis | combinan condiciones (`AND` va antes que `OR`) |
+| `LIKE` `ILIKE` | coinciden con un patrón, `%` para cualquier texto y `_` para un carácter; `ILIKE` no distingue mayúsculas |
+| `IN (...)` `NOT IN (...)` | está, o no está, en la lista |
+| `IS NULL` `IS NOT NULL` | la celda está, o no está, vacía |
+
+Las palabras clave pueden ir en mayúsculas o minúsculas.
+
+- **Columnas:** el nombre de la columna, en mayúsculas o minúsculas y sin comillas, o su letra, de `A` a `Z`. La letra sirve para llegar a un nombre con espacios o símbolos. Una columna que no existe cuenta como vacía, sin error.
+- **Valores:** texto entre comillas simples o dobles (`\'` para una comilla dentro de él), números, `TRUE`, `FALSE` y `NULL`. Lo que va entre comillas es siempre texto, nunca una columna.
+- **Celdas:** el tipo viene del aspecto de la celda. Vacía es `NULL`, `true` y `false` son booleanos, los números son números y el resto es texto. Por eso escriba `code = 7`, no `code = '7'`: un texto y un número nunca son iguales, y una celda con `007` es el número 7. Las comparaciones de texto distinguen mayúsculas de minúsculas.
+- **Tamaño:** un filtro tiene como máximo 1024 bytes y 128 términos.
+
+### Límites
+
+Una tabla guarda como máximo 50 000 filas y 256 columnas. Lo que pasa de ahí no se lee: no aparece, el filtro no lo ve y nada en la pantalla lo avisa. Una celda muestra como máximo 2048 caracteres y luego `…`. Los caracteres de control y de dirección del texto aparecen como `·`.
 
 ## Tablas en bibliotecas C
 
