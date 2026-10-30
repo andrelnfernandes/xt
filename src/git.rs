@@ -7,7 +7,8 @@
 //!
 //! A repository's own `.git` can name commands, and one that was downloaded or
 //! extracted comes with its `.git`. Looking at it must not run them, so what
-//! only reads goes through `reading`.
+//! only reads goes through `reading`, unless the repository is in a folder the
+//! user trusts (`git_trusted`, empty by default).
 
 use std::collections::{HashMap, HashSet};
 use std::ffi::{OsStr, OsString};
@@ -90,6 +91,57 @@ fn git(root: &Path) -> Command {
     cmd
 }
 
+/// The folder an entry of `git_trusted` means: a full path or one under `~`.
+/// Anything else would depend on where Xylem happens to be.
+fn trusted_folder(entry: &str) -> Option<PathBuf> {
+    let entry = entry.trim();
+    let under_home = match entry.strip_prefix('~') {
+        Some("") => Some(""),
+        Some(rest) => rest.strip_prefix(std::path::is_separator as fn(char) -> bool),
+        None => None,
+    };
+    match under_home {
+        Some(rest) => Some(crate::platform::home_dir()?.join(rest)),
+        None => Some(PathBuf::from(entry)).filter(|path| path.is_absolute()),
+    }
+}
+
+/// The entries that are not a full path or one under `~`.
+pub fn invalid_trusted(entries: &[String]) -> Option<&str> {
+    entries
+        .iter()
+        .find(|entry| trusted_folder(entry).is_none())
+        .map(String::as_str)
+}
+
+/// What deserves a word about these entries: a folder that does not exist
+/// trusts nothing, and the home or the root hold all that gets downloaded.
+pub fn trusted_warning(entries: &[String]) -> Option<String> {
+    let home = crate::platform::home_dir().and_then(|h| dunce::canonicalize(h).ok());
+    entries.iter().find_map(|entry| {
+        let Some(Ok(folder)) = trusted_folder(entry).map(dunce::canonicalize) else {
+            return Some(format!("{entry} does not exist, so it trusts nothing"));
+        };
+        (folder.parent().is_none() || Some(&folder) == home.as_ref()).then(|| {
+            format!("Careful: {entry} holds what you download, and all of it would be trusted")
+        })
+    })
+}
+
+/// Whether `root` is inside a trusted folder. Both are resolved first, so that
+/// a link to somewhere else does not bring that place in, and it goes by whole
+/// names: `~/work` does not trust `~/work-downloads`.
+pub fn is_trusted(root: &Path, entries: &[String]) -> bool {
+    let Ok(root) = dunce::canonicalize(root) else {
+        return false;
+    };
+    entries
+        .iter()
+        .filter_map(|entry| trusted_folder(entry))
+        .filter_map(|folder| dunce::canonicalize(folder).ok())
+        .any(|folder| root.starts_with(folder))
+}
+
 /// `git` for what only reads: nothing the repository names is run. The hooks
 /// run when the index is written, and what would write it is an optional lock;
 /// the options of each command do the rest (see `report`). Clean filters cannot
@@ -152,64 +204,55 @@ pub struct Report {
     pub colors_of: &'static str,
 }
 
-/// Status, Log, Diff or Blame of `paths` (files, or a directory).
-pub fn report(action: Action, root: &Path, paths: &[PathBuf]) -> io::Result<Report> {
+/// Status, Log, Diff or Blame of `paths` (files, or a directory). In a `trusted`
+/// repository, git is left to follow all of its configuration.
+pub fn report(action: Action, root: &Path, paths: &[PathBuf], trusted: bool) -> io::Result<Report> {
     // These read the files, and git would pass them through the filters.
-    if matches!(action, Action::Status | Action::Diff | Action::Blame) && has_own_filters(root) {
+    if !trusted
+        && matches!(action, Action::Status | Action::Diff | Action::Blame)
+        && has_own_filters(root)
+    {
         return Err(io::Error::other(
-            "this repository defines filters that git would run; if you trust it, use a terminal",
+            "this repository defines filters that git would run; \
+             if you trust it, add its folder to the trusted Git folders (F12)",
         ));
     }
-    const DIFF: [&str; 3] = [
+    const DIFF_GUARDS: &[&str] = &[
         "--no-ext-diff",
         "--no-textconv",
         "--ignore-submodules=dirty",
     ];
-    let run = run_reading;
-    let (title, (_, mut text)) = match action {
-        Action::Status => (
-            "git status",
-            run(root, &["status", "--ignore-submodules=dirty"], paths)?,
-        ),
-        Action::Log => (
-            "git log",
-            run(root, &["log", "--no-show-signature", "-n", "1000"], paths)?,
-        ),
+    // What to run, and what keeps it from running what the repository names.
+    let (title, args, guards): (&str, &[&str], &[&str]) = match action {
+        Action::Status => ("git status", &["status"], &["--ignore-submodules=dirty"]),
+        Action::Log => ("git log", &["log", "-n", "1000"], &["--no-show-signature"]),
         // git's own colors (one per branch line), read by the viewer; no
         // gpg even with log.showSignature on.
         Action::Graph => (
             "git log --graph",
-            run(
-                root,
-                &[
-                    "log",
-                    "--graph",
-                    "--decorate",
-                    "--oneline",
-                    "--all",
-                    "--color=always",
-                    "--no-show-signature",
-                    "-n",
-                    "1000",
-                ],
-                paths,
-            )?,
+            &[
+                "log",
+                "--graph",
+                "--decorate",
+                "--oneline",
+                "--all",
+                "--color=always",
+                "--no-show-signature",
+                "-n",
+                "1000",
+            ],
+            &[],
         ),
         // Against HEAD: what is staged and what is not, together.
-        Action::Diff if has_head(root) => (
-            "git diff",
-            run(root, &["diff", DIFF[0], DIFF[1], DIFF[2], "HEAD"], paths)?,
-        ),
-        Action::Diff => (
-            "git diff",
-            run(
-                root,
-                &["diff", DIFF[0], DIFF[1], DIFF[2], "--cached"],
-                paths,
-            )?,
-        ),
-        Action::Blame => ("git blame", run(root, &["blame", "--no-textconv"], paths)?),
+        Action::Diff if has_head(root) => ("git diff", &["diff", "HEAD"], DIFF_GUARDS),
+        Action::Diff => ("git diff", &["diff", "--cached"], DIFF_GUARDS),
+        Action::Blame => ("git blame", &["blame"], &["--no-textconv"]),
         _ => unreachable!("{action:?} does not make a report"),
+    };
+    let (_, mut text) = if trusted {
+        run(root, args, paths)?
+    } else {
+        run_reading(root, &[args, guards].concat(), paths)?
     };
     if text.is_empty() {
         text = b"(nothing to show)\n".to_vec();
@@ -278,8 +321,8 @@ impl StatusCache {
     }
 
     /// Makes sure the repositories of `dirs` are read and current. Called
-    /// before drawing.
-    pub fn refresh(&mut self, dirs: impl IntoIterator<Item = PathBuf>) {
+    /// before drawing. `trusted` is the `git_trusted` option.
+    pub fn refresh(&mut self, dirs: impl IntoIterator<Item = PathBuf>, trusted: &[String]) {
         let mut wanted = HashSet::new();
         for dir in dirs {
             let root = self
@@ -301,7 +344,7 @@ impl StatusCache {
                 }
             };
             if due {
-                let status = read_status(&root);
+                let status = read_status(&root, is_trusted(&root, trusted));
                 self.repos.insert(root, status);
             }
         }
@@ -330,24 +373,28 @@ impl StatusCache {
 /// Reads the status by itself, just because the user walked into the
 /// directory, so it must not run commands that the repository names: see
 /// `reading`. Clean filters cannot be turned off, so a repository that defines
-/// its own is left without markers.
-fn read_status(root: &Path) -> RepoStatus {
+/// its own is left without markers, unless it is `trusted`.
+fn read_status(root: &Path, trusted: bool) -> RepoStatus {
     let mut status = RepoStatus {
         files: HashMap::new(),
         untracked_dirs: HashSet::new(),
         read_at: Instant::now(),
         stale: false,
     };
-    if has_own_filters(root) {
+    if !trusted && has_own_filters(root) {
         return status;
     }
-    let args = [
-        "status",
-        "--porcelain=v1",
-        "-z",
-        "--ignore-submodules=dirty",
-    ];
-    let Ok((true, out)) = run_reading(root, &args, &[]) else {
+    let args = ["status", "--porcelain=v1", "-z"];
+    let read = if trusted {
+        run(root, &args, &[])
+    } else {
+        run_reading(
+            root,
+            &[&args[..], &["--ignore-submodules=dirty"]].concat(),
+            &[],
+        )
+    };
+    let Ok((true, out)) = read else {
         return status;
     };
     parse_status(&out, &mut status.files, &mut status.untracked_dirs);
@@ -529,14 +576,14 @@ mod tests {
         let touch = format!("touch '{}'", marker.display());
         git_ok(&root, &["config", "core.fsmonitor", &touch]);
         let mut cache = StatusCache::default();
-        cache.refresh([root.clone()]);
+        cache.refresh([root.clone()], &[]);
         assert_eq!(cache.marker(&root.join("a.txt")), Some(*b" M"));
 
         git_ok(&root, &["config", "filter.evil.clean", &touch]);
         fs::write(root.join(".gitattributes"), "* filter=evil\n").unwrap();
         cache.invalidate();
         std::thread::sleep(MIN_INTERVAL);
-        cache.refresh([root.clone()]);
+        cache.refresh([root.clone()], &[]);
         assert_eq!(cache.marker(&root.join("a.txt")), None, "not read");
         assert!(!marker.exists());
     }
@@ -643,16 +690,16 @@ mod tests {
             let root = self.root.as_path();
             let reads: [(&str, &dyn Fn()); 6] = [
                 ("markers", &|| {
-                    StatusCache::default().refresh([root.to_path_buf()])
+                    StatusCache::default().refresh([root.to_path_buf()], &[])
                 }),
-                ("status", &|| drop(report(Action::Status, root, &[]))),
-                ("log", &|| drop(report(Action::Log, root, &[]))),
-                ("graph", &|| drop(report(Action::Graph, root, &[]))),
+                ("status", &|| drop(report(Action::Status, root, &[], false))),
+                ("log", &|| drop(report(Action::Log, root, &[], false))),
+                ("graph", &|| drop(report(Action::Graph, root, &[], false))),
                 ("diff", &|| {
-                    drop(report(Action::Diff, root, std::slice::from_ref(&a)))
+                    drop(report(Action::Diff, root, std::slice::from_ref(&a), false))
                 }),
                 ("blame", &|| {
-                    drop(report(Action::Blame, root, std::slice::from_ref(&a)))
+                    drop(report(Action::Blame, root, std::slice::from_ref(&a), false))
                 }),
             ];
             let mut ran = Vec::new();
@@ -775,11 +822,11 @@ mod tests {
             (Action::Diff, std::slice::from_ref(&a)),
             (Action::Blame, std::slice::from_ref(&a)),
         ] {
-            let error = report(action, root, paths).err().expect("no report");
+            let error = report(action, root, paths, false).err().expect("no report");
             assert!(error.to_string().contains("filters"), "{error}");
         }
-        assert!(report(Action::Log, root, &[]).is_ok());
-        assert!(report(Action::Graph, root, &[]).is_ok());
+        assert!(report(Action::Log, root, &[], false).is_ok());
+        assert!(report(Action::Graph, root, &[], false).is_ok());
     }
 
     /// `hostile` with a submodule `sub`, whose `a.txt` changed.
@@ -835,6 +882,106 @@ mod tests {
         assert_eq!(hostile.reads_that_ran_it(), [""; 0], "its diff");
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn a_trusted_repository_follows_all_of_its_configuration() {
+        let hostile = Hostile::new();
+        let clean = format!("{}; cat", hostile.touch);
+        hostile.config("filter.evil.clean", &clean);
+        fs::write(hostile.root.join(".gitattributes"), "* filter=evil\n").unwrap();
+        let trust = [hostile.root.to_str().unwrap().to_string()];
+        let (root, a) = (hostile.root.as_path(), hostile.root.join("a.txt"));
+
+        hostile.touch_changed();
+        let status = report(Action::Status, root, &[], is_trusted(root, &trust)).unwrap();
+        assert!(String::from_utf8_lossy(&status.text).contains("a.txt"));
+        assert!(hostile.marker.exists(), "its filter ran");
+
+        fs::remove_file(&hostile.marker).unwrap();
+        hostile.touch_changed();
+        let mut cache = StatusCache::default();
+        cache.refresh([root.to_path_buf()], &trust);
+        assert_eq!(cache.marker(&a), Some(*b" M"));
+        assert!(hostile.marker.exists(), "its filter ran for the markers");
+
+        // Without the trust, as everywhere else.
+        fs::remove_file(&hostile.marker).unwrap();
+        assert_eq!(hostile.reads_that_ran_it(), [""; 0]);
+    }
+
+    #[test]
+    fn trust_goes_by_whole_folders() {
+        let tmp = crate::testing::tempdir();
+        let base = dunce::canonicalize(tmp.path()).unwrap();
+        let work = base.join("work");
+        let repo = work.join("deep/repo");
+        let sibling = base.join("work-downloads");
+        fs::create_dir_all(&repo).unwrap();
+        fs::create_dir_all(&sibling).unwrap();
+        let entry = |path: &Path| vec![path.to_str().unwrap().to_string()];
+
+        assert!(!is_trusted(&repo, &[]), "empty: nothing is trusted");
+        assert!(is_trusted(&repo, &entry(&work)));
+        assert!(is_trusted(&work, &entry(&work)));
+        assert!(is_trusted(&repo, &entry(&repo)));
+        assert!(!is_trusted(&sibling, &entry(&work)), "only by the prefix");
+        assert!(!is_trusted(&work, &entry(&repo)), "only below it");
+        assert!(!is_trusted(&repo, &entry(&base.join("missing"))));
+        assert!(
+            is_trusted(
+                &repo,
+                &[entry(&sibling)[0].clone(), entry(&work)[0].clone()]
+            ),
+            "any of them"
+        );
+        assert!(!is_trusted(&base.join("missing"), &entry(&base)));
+        for relative in ["work", ".", "..", "", "~other", "./work"] {
+            assert!(!is_trusted(&repo, &[relative.to_string()]), "{relative}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_does_not_carry_trust_with_it() {
+        use std::os::unix::fs::symlink;
+        let tmp = crate::testing::tempdir();
+        let base = dunce::canonicalize(tmp.path()).unwrap();
+        let (work, downloads) = (base.join("work"), base.join("downloads"));
+        fs::create_dir_all(&work).unwrap();
+        fs::create_dir_all(downloads.join("repo")).unwrap();
+        symlink(downloads.join("repo"), work.join("repo")).unwrap();
+        let entry = [work.to_str().unwrap().to_string()];
+        assert!(!is_trusted(&work.join("repo"), &entry), "a link out of it");
+
+        // A trusted folder that is itself a link is where it points to.
+        symlink(&work, base.join("link")).unwrap();
+        let entry = [base.join("link").to_str().unwrap().to_string()];
+        assert!(is_trusted(&work, &entry));
+    }
+
+    #[test]
+    fn entries_of_the_home_and_wrong_ones_are_told() {
+        let entries = |e: &[&str]| e.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let home = crate::platform::home_dir().unwrap();
+        assert_eq!(trusted_folder("~"), Some(home.clone()));
+        assert_eq!(trusted_folder("~/a"), Some(home.join("a")));
+        assert_eq!(trusted_folder("~a"), None);
+        assert_eq!(trusted_folder("a/b"), None);
+        assert_eq!(invalid_trusted(&entries(&["~/a", "b"])), Some("b"));
+        assert_eq!(invalid_trusted(&entries(&["~/a"])), None);
+
+        let tmp = crate::testing::tempdir();
+        let here = tmp.path().to_str().unwrap();
+        assert_eq!(trusted_warning(&entries(&[here])), None);
+        let missing = tmp.path().join("missing");
+        let warning = trusted_warning(&entries(&[missing.to_str().unwrap()])).unwrap();
+        assert!(warning.contains("does not exist"), "{warning}");
+        if home.exists() {
+            let warning = trusted_warning(&entries(&["~"])).unwrap();
+            assert!(warning.contains("Careful"), "{warning}");
+        }
+    }
+
     #[test]
     fn markers_follow_the_repository() {
         let tmp = sample();
@@ -842,7 +989,7 @@ mod tests {
         assert_eq!(repo_root(&root.join("new")), Some(root.clone()));
 
         let mut cache = StatusCache::default();
-        cache.refresh([root.clone()]);
+        cache.refresh([root.clone()], &[]);
         assert!(cache.in_repo(&root));
         assert_eq!(cache.marker(&root.join("a.txt")), Some(*b" M"));
         assert_eq!(cache.marker(&root.join("c.txt")), Some(*b"A "));
@@ -853,7 +1000,7 @@ mod tests {
             .unwrap();
         cache.invalidate();
         std::thread::sleep(MIN_INTERVAL);
-        cache.refresh([root.clone()]);
+        cache.refresh([root.clone()], &[]);
         assert_eq!(cache.marker(&root.join("a.txt")), Some(*b"M "));
 
         change(Action::Unstage, &root, &[root.join("a.txt")])
@@ -861,11 +1008,11 @@ mod tests {
             .unwrap();
         cache.invalidate();
         std::thread::sleep(MIN_INTERVAL);
-        cache.refresh([root.clone()]);
+        cache.refresh([root.clone()], &[]);
         assert_eq!(cache.marker(&root.join("a.txt")), Some(*b" M"));
 
         let outside = crate::testing::tempdir();
-        cache.refresh([outside.path().to_path_buf()]);
+        cache.refresh([outside.path().to_path_buf()], &[]);
         assert!(!cache.in_repo(outside.path()));
         assert_eq!(cache.marker(&root.join("a.txt")), None, "no longer shown");
     }
@@ -874,20 +1021,20 @@ mod tests {
     fn reports() {
         let tmp = sample();
         let root = tmp.path();
-        let diff = report(Action::Diff, root, &[root.join("a.txt")]).unwrap();
+        let diff = report(Action::Diff, root, &[root.join("a.txt")], false).unwrap();
         assert_eq!(diff.title, Path::new("git diff"));
         assert_eq!(diff.colors_of, "git.diff");
         assert!(String::from_utf8_lossy(&diff.text).contains("+two"));
-        let log = report(Action::Log, root, &[]).unwrap();
+        let log = report(Action::Log, root, &[], false).unwrap();
         assert!(String::from_utf8_lossy(&log.text).contains("first"));
-        let graph = report(Action::Graph, root, &[]).unwrap();
+        let graph = report(Action::Graph, root, &[], false).unwrap();
         assert_eq!(graph.colors_of, crate::highlight::ANSI);
         let text = String::from_utf8_lossy(&graph.text);
         assert!(text.starts_with('*') && text.contains("first"), "{text}");
         assert!(text.contains('\u{1b}'), "git's colors");
-        let blame = report(Action::Blame, root, &[root.join("a.txt")]).unwrap();
+        let blame = report(Action::Blame, root, &[root.join("a.txt")], false).unwrap();
         assert!(String::from_utf8_lossy(&blame.text).contains("one"));
-        let status = report(Action::Status, root, &[]).unwrap();
+        let status = report(Action::Status, root, &[], false).unwrap();
         assert!(String::from_utf8_lossy(&status.text).contains("c.txt"));
         assert_eq!(status.colors_of, crate::highlight::GIT_STATUS);
 

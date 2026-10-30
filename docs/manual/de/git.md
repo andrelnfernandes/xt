@@ -45,7 +45,19 @@ und das Diff wird bei der Rückkehr aktualisiert.
 
 Das `.git` eines Repositorys kann Befehle nennen, die Git ausführt, und ein heruntergeladener oder entpackter Ordner kommt mit seinem `.git` (ein `git clone` bringt es nicht mit). Darum führen die Dateimarkierungen und Status, Log, Graph, Diff und Blame keinen davon aus: keine Hooks, kein `core.fsmonitor`, keine externen Diffs, Textkonvertierungen oder Signaturprüfungen. Das kostet Folgendes:
 
-- Ein Repository mit eigenen Filtern, wie bei `git-crypt`, hat hier keine Markierungen, kein Status, Diff oder Blame, mit einer Meldung, die den Grund nennt. Log und Graph funktionieren. Wenn Sie ihm vertrauen, nutzen Sie ein Terminal. Filter aus Ihrer globalen Konfiguration, etwa Git LFS, gelten als vertrauenswürdig.
+- Ein Repository mit eigenen Filtern, wie bei `git-crypt`, hat hier keine Markierungen, kein Status, Diff oder Blame, mit einer Meldung, die den Grund nennt. Log und Graph funktionieren. Filter aus Ihrer globalen Konfiguration, etwa Git LFS, gelten als vertrauenswürdig.
 - Ein Submodul mit geänderten Dateien, aber ohne neuen Commit, erscheint nicht als geändert.
 
 Add, Unstage und Commit sind Ihre eigenen Aufträge und folgen der Konfiguration des Repositorys: Sie können ausführen, was sie nennt.
+
+### Vertrauenswürdige Ordner
+
+Standardmäßig ist nichts vertrauenswürdig: Jedes Repository gilt als feindlich. Damit die Repositorys eines Ordners mit ihrer ganzen Konfiguration arbeiten, etwa mit `git-crypt` oder einem eigenen Diff-Werkzeug, tragen Sie den Ordner unter **Trusted Git folders** ein (**K** auf Seite 1 von **F12**), mit `;` zwischen den Ordnern:
+
+```
+~/projekte; /arbeit/code
+```
+
+In der Datei ist es eine Liste: `git_trusted = ["~/projekte", "/arbeit/code"]`. Ein Ordner ist ein vollständiger Pfad oder einer unter `~` und gilt für alles darin. Ein Link, der nach außen zeigt, nimmt das Vertrauen nicht mit.
+
+**Gefahr:** In einem vertrauenswürdigen Ordner genügt es, ein Repository zu betreten, damit Git mit Ihren Rechten ausführt, was es nennt. Entpacken oder laden Sie dort nie etwas von anderen, und vertrauen Sie weder `~` noch `/`, die enthalten, was Sie herunterladen.

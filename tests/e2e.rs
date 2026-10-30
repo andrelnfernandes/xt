@@ -277,6 +277,49 @@ fn batch_in_the_viewer_uses_a_template_of_the_configuration() {
 }
 
 #[test]
+fn a_repository_runs_its_filters_only_in_a_folder_added_to_the_trusted_ones() {
+    let (home, project) = sample();
+    let config = home.path().join(".config/xylem/config.toml");
+    std::fs::create_dir_all(config.parent().unwrap()).unwrap();
+    std::fs::write(&config, "[options]\ngit = true\n").unwrap();
+    let git = |args: &[&str]| {
+        let done = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&project)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(done.status.success(), "git {args:?}");
+    };
+    git(&["init", "-q"]);
+    git(&["config", "filter.own.clean", "cat"]);
+
+    let mut xy = Xy::start(home.path(), &[project.to_str().unwrap()]);
+    xy.wait_for("b.txt");
+    xy.press("\x07"); // Ctrl+G
+    xy.press("s");
+    xy.wait_for("defines filters");
+
+    xy.press("\x1b[24~"); // F12
+    xy.wait_for("Trusted Git folders");
+    xy.wait_for("(none: all are hostile)");
+    xy.press("k");
+    xy.wait_for("DANGER");
+    xy.press("~/project\r");
+    xy.wait_for("~/project");
+    xy.press("\x1b[13~"); // F3
+    xy.wait_for("Configuration saved");
+    let saved = std::fs::read_to_string(&config).unwrap();
+    assert!(saved.contains(r#"git_trusted = ["~/project"]"#), "{saved}");
+
+    xy.press("\x07");
+    xy.press("s");
+    xy.wait_for("No commits yet");
+    xy.press("\x1b");
+    xy.quit();
+}
+
+#[test]
 fn alt_q_leaves_the_directory_for_the_shell() {
     let (home, project) = sample();
     let cwd_file = home.path().join("cwd");

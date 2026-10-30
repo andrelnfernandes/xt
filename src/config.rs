@@ -111,6 +111,12 @@ auto_refresh = true
 # Git commands (Ctrl+G) and each file's Git status in the file list. Not in
 # XTree or ZTreeWin, so off by default; needs the git program.
 git = false
+# Folders whose Git repositories you trust. Every other repository is treated as
+# hostile: Xylem's Git never runs what it names (hooks, filters, external diffs),
+# since a downloaded or extracted folder brings its own .git. Inside these
+# folders, walking in is enough for Git to run all of that, so never extract or
+# download anything from others into them. Example: ["~/projects", "/work/code"].
+git_trusted = []
 # Colors of the built-in terminal (Alt+X): "native" (the colors of the
 # terminal Xylem runs in), "xylem" (background and text of Xylem's theme),
 # "solarized", "gruvbox", "nord", "dracula" or "one_dark".
@@ -240,6 +246,8 @@ pub struct Options {
     pub auto_refresh: bool,
     /// Git menu (Ctrl+G) and status markers in the file list.
     pub git: bool,
+    /// Folders whose repositories may run what they name; every other is hostile.
+    pub git_trusted: Vec<String>,
     /// Colors of the built-in terminal (Alt+X).
     pub terminal_theme: TerminalTheme,
     /// The built-in terminal's shell keeps its own history.
@@ -279,6 +287,7 @@ impl Default for Options {
             compare_ignore_1h: false,
             auto_refresh: true,
             git: false,
+            git_trusted: Vec::new(),
             terminal_theme: TerminalTheme::Native,
             terminal_history: true,
         }
@@ -329,6 +338,10 @@ impl Options {
             ("compare_ignore_1h", Value::from(self.compare_ignore_1h)),
             ("auto_refresh", Value::from(self.auto_refresh)),
             ("git", Value::from(self.git)),
+            (
+                "git_trusted",
+                Value::Array(self.git_trusted.iter().map(String::as_str).collect()),
+            ),
             ("terminal_theme", s(self.terminal_theme.as_str())),
             ("terminal_history", Value::from(self.terminal_history)),
         ]

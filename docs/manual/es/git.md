@@ -41,7 +41,19 @@ cambios; **E** sigue editando el archivo y el diff se actualiza al volver.
 
 El `.git` de un repositorio puede nombrar comandos para que Git los ejecute, y una carpeta descargada o extraída viene con su `.git` (un `git clone` no lo trae). Por eso, los marcadores de archivo y Status, Log, Graph, Diff y Blame no ejecutan ninguno: ni ganchos, `core.fsmonitor`, diffs externos, conversiones de texto o verificación de firmas. El coste:
 
-- Un repositorio que define filtros propios, como hace `git-crypt`, se queda sin marcadores, Status, Diff y Blame aquí, con un mensaje que explica el motivo. Log y Graph funcionan. Si confías en él, usa una terminal. Los filtros de tu configuración global, como Git LFS, son de confianza.
+- Un repositorio que define filtros propios, como hace `git-crypt`, se queda sin marcadores, Status, Diff y Blame aquí, con un mensaje que explica el motivo. Log y Graph funcionan. Los filtros de tu configuración global, como Git LFS, son de confianza.
 - Un submódulo con archivos modificados, pero sin commit nuevo, no aparece como modificado.
 
 Add, Unstage y Commit son peticiones tuyas y siguen la configuración del repositorio: pueden ejecutar lo que ella nombra.
+
+### Carpetas de confianza
+
+Por defecto, nada es de confianza: todo repositorio se trata como hostil. Para que los repositorios de una carpeta funcionen con toda su configuración, como `git-crypt` o una herramienta de diff tuya, añade la carpeta en **Trusted Git folders** (**K** en la página 1 de **F12**), con `;` entre carpetas:
+
+```
+~/proyectos; /trabajo/codigo
+```
+
+En el archivo, es una lista: `git_trusted = ["~/proyectos", "/trabajo/codigo"]`. Una carpeta es una ruta completa o bajo `~`, y vale para todo lo que contiene. Un enlace que apunta fuera no lleva la confianza consigo.
+
+**Peligro:** dentro de una carpeta de confianza, basta con entrar en un repositorio para que Git ejecute lo que este nombra, con tus permisos. Nunca extraigas ni descargues ahí nada de otras personas, y no confíes en `~` ni en `/`, que contienen lo que descargas.

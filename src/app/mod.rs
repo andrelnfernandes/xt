@@ -327,6 +327,8 @@ impl App {
         config::set_theme(theme);
         config::set_formats(config.options.formats());
         self.options = config.options.clone();
+        // Trust may have changed: nothing read under the old one stays.
+        self.git_status.invalidate();
         self.viewer_limit = config
             .options
             .viewer_max_size
