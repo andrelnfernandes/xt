@@ -149,6 +149,9 @@ condicionais só pagam o custo quando máscara, cabeçalho e rodapé não bastar
    Depois, o escape `:mysql`: em MySQL e MariaDB a barra invertida também escapa,
    então um valor com `\'` fecharia um literal de `:sql`. `.sql` continua com `:sql`
    por padrão, pois a extensão não diz o banco; a prévia avisa sobre esses valores.
+   E em SQL, `%f %d %n %b %e %s` dentro de uma string são recusados: `LIKE '%foo%'`
+   viraria o caminho do arquivo, sem escape para SQL. É erro, e não aviso, porque
+   nos dois casos há o que escrever no lugar: `%%` ou `%{#name}`.
 
    **5b. Templates com ambiente, macros, totais e condições (proposta):** em três
    passos, nesta ordem.

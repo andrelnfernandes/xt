@@ -135,6 +135,7 @@ The values come from a file that may be hostile and may go into something you ru
 
 - A blob comes out in hexadecimal, except in `:raw` and in `:sql`, which has its own form.
 - For MySQL and MariaDB, name `:mysql`, in a file read as `utf8mb4`: there, a backslash in a `:sql` literal can close it, and the preview warns about those values. With `NO_BACKSLASH_ESCAPES` on the server, `:sql` is the right one.
+- In SQL, `%f %d %n %b %e %s` inside a string are refused: `LIKE '%foo%'` would hold the open file's path. Write `%%` for a `%`, as in `LIKE '%%foo%%'`, or a field such as `%{#name}` for the value.
 - A filter on a table applies to all the file, with the rules of the screen: `code = 7` also finds a cell with `007`, which comes out as `007`. So the file can have rows the screen, limited to 50,000, does not show.
 - A `.sh` starts with `#!/bin/sh` but **is not made executable**: read it before running it. `.bat` and `.cmd` are refused, because `cmd` expands `%VAR%` even inside quotes.
 - The preview and the final message warn about values with control or text direction characters, and in a CSV about values that start like a formula. The preview counts only what it looked at.

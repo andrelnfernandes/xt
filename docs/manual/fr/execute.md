@@ -145,6 +145,7 @@ Les valeurs viennent d'un fichier qui peut être hostile et peuvent aller dans c
 
 - Un blob sort en hexadécimal, sauf avec `:raw` et avec `:sql`, qui a sa propre forme.
 - Pour MySQL et MariaDB, utilisez `:mysql`, dans un fichier lu en `utf8mb4` : chez eux, une barre oblique inverse dans un littéral `:sql` peut le fermer, et l'aperçu signale ces valeurs. Avec `NO_BACKSLASH_ESCAPES` sur le serveur, c'est `:sql` qui convient.
+- En SQL, `%f %d %n %b %e %s` à l'intérieur d'une chaîne sont refusés : `LIKE '%foo%'` contiendrait le chemin du fichier ouvert. Écrivez `%%` pour obtenir un `%`, comme dans `LIKE '%%foo%%'`, ou un champ comme `%{#name}` pour obtenir la valeur.
 - Le filtre d'un tableau s'applique à tout le fichier, avec les règles de l'écran : `code = 7` trouve aussi une cellule avec `007`, qui sort comme `007`. Le fichier peut donc avoir des lignes que l'écran, limité à 50 000, ne montre pas.
 - Un `.sh` commence par `#!/bin/sh` mais **ne reçoit pas le droit d'exécution** : lisez-le avant de le lancer. `.bat` et `.cmd` sont refusés, car `cmd` développe `%VAR%` même entre guillemets.
 - L'aperçu et le message final signalent les valeurs avec des caractères de contrôle ou de direction du texte et, dans un CSV, celles qui commencent comme une formule. L'aperçu ne compte que ce qu'il a examiné.

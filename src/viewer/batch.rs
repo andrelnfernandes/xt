@@ -267,6 +267,30 @@ fn file_field(name: &str, file: &Path, size: u64) -> Option<Cell<'static>> {
     )))
 }
 
+/// Where a mask's text is in SQL, to know what is inside a string. A line starts
+/// outside of one: a multi-line string is rare, and an apostrophe in text that
+/// is not SQL should not count for the rest of the file.
+#[derive(Default)]
+struct SqlText {
+    in_string: bool,
+    in_comment: bool,
+}
+
+impl SqlText {
+    fn read(&mut self, text: &str) {
+        let mut chars = text.chars().peekable();
+        while let Some(c) = chars.next() {
+            match c {
+                '\n' => *self = SqlText::default(),
+                _ if self.in_comment => {}
+                '\'' => self.in_string = !self.in_string,
+                '-' if !self.in_string && chars.peek() == Some(&'-') => self.in_comment = true,
+                _ => {}
+            }
+        }
+    }
+}
+
 /// Writes `bytes`, with each line ending in `newline`.
 fn literal_into(bytes: &[u8], newline: &[u8], out: &mut Vec<u8>) {
     for (i, piece) in bytes.split(|&b| b == b'\n').enumerate() {
@@ -299,8 +323,12 @@ impl Mask {
         let mut parts = Vec::new();
         let mut literal = Vec::new();
         let mut rest = text;
+        let mut sql = SqlText::default();
+        // The first variable of the open file inside a SQL string.
+        let mut in_string = None;
         while let Some(at) = rest.find('%') {
             literal.extend_from_slice(&rest.as_bytes()[..at]);
+            sql.read(&rest[..at]);
             let after = &rest[at + 1..];
             if let Some(inner) = after.strip_prefix('{') {
                 let Some(close) = inner.find('}') else {
@@ -337,6 +365,9 @@ impl Mask {
                 )
             {
                 let var = format!("%{c}");
+                if sql.in_string && c != '%' {
+                    in_string.get_or_insert_with(|| var.clone());
+                }
                 literal.extend(shell::batch_line(&var, file, size));
                 rest = &after[c.len_utf8()..];
             } else {
@@ -347,6 +378,23 @@ impl Mask {
         literal.extend_from_slice(rest.as_bytes());
         if !literal.is_empty() {
             parts.push(Part::Literal(literal));
+        }
+        let writes_sql = matches!(default, Escape::Sql | Escape::Mysql)
+            || parts.iter().any(|part| {
+                matches!(
+                    part,
+                    Part::Field {
+                        escape: Escape::Sql | Escape::Mysql,
+                        ..
+                    }
+                )
+            });
+        // LIKE '%foo%' would hold the file's path, with no escape for SQL.
+        if let (true, Some(var)) = (writes_sql, in_string) {
+            return Err(format!(
+                "Mask: {var} in a SQL string is the open file's: \
+                 write %{var} for a %, or a field like %{{#name}} for its value"
+            ));
         }
         Ok(Mask { parts })
     }
@@ -1592,6 +1640,38 @@ mod tests {
     fn a_mask_keeps_the_variables_of_the_open_file() {
         let m = mask("%N %S %q", Escape::Line);
         assert_eq!(m.parts, [Part::Literal(b"a.csv 10 %q".to_vec())]);
+    }
+
+    #[test]
+    fn a_variable_of_the_file_is_refused_inside_a_sql_string() {
+        let sql = |text: &str| Mask::parse(text, Escape::Sql, Path::new("/d/a.csv"), 10);
+        let error = sql("SELECT 1 WHERE x LIKE '%foo%'").unwrap_err();
+        assert!(error.starts_with("Mask: %f in a SQL string"), "{error}");
+        assert!(error.contains("write %%f for a %"), "{error}");
+        assert!(
+            sql("WHERE x = 'a' AND y = '%N'").is_err(),
+            "the second string"
+        );
+        assert!(sql("'it''s %d'").is_err(), "a doubled quote stays inside");
+
+        // What a % is meant to be, and what is not in a string.
+        let literal = |text: &str| match sql(text).unwrap().parts.as_slice() {
+            [Part::Literal(bytes)] => String::from_utf8(bytes.clone()).unwrap(),
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(literal("LIKE '%%foo%%'"), "LIKE '%foo%'");
+        assert_eq!(literal("LIKE '%a%'"), "LIKE '%a%'");
+        assert_eq!(literal("-- %N"), "-- a.csv");
+        assert_eq!(literal("-- don't\n-- %N\n"), "-- don't\n-- a.csv\n");
+        assert_eq!(literal("-- it's %N"), "-- it's a.csv");
+        assert_eq!(literal("'a'\n%N"), "'a'\na.csv");
+        assert!(sql("'%{#name}' %{x}").is_ok(), "fields have an escape");
+
+        // Only where SQL is written: a field asking for it counts too.
+        let line = |text: &str| Mask::parse(text, Escape::Line, Path::new("/d/a.csv"), 10);
+        assert!(line("'%N'").is_ok());
+        assert!(line("'%N' %{a:sql}").is_err());
+        assert!(line("'%N' %{a:mysql}").is_err());
     }
 
     #[test]

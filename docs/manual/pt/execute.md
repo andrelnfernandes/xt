@@ -140,6 +140,7 @@ Os valores vêm de um arquivo que pode ser hostil e podem ir para algo que você
 
 - Um blob sai em hexadecimal, menos em `:raw` e em `:sql`, que tem a sua forma.
 - Para MySQL e MariaDB, use `:mysql`, em um arquivo lido como `utf8mb4`: neles, uma barra invertida em um literal `:sql` pode fechá-lo, e a prévia avisa sobre esses valores. Com `NO_BACKSLASH_ESCAPES` no servidor, o certo é `:sql`.
+- Em SQL, `%f %d %n %b %e %s` dentro de uma string são recusados: `LIKE '%foo%'` ficaria com o caminho do arquivo aberto. Escreva `%%` para ter um `%`, como em `LIKE '%%foo%%'`, ou um campo como `%{#name}` para ter o valor.
 - O filtro de uma tabela vale para o arquivo todo, com as regras da tela: `code = 7` também acha uma célula com `007`, que sai como `007`. Por isso o arquivo pode ter linhas que a tela, limitada a 50.000, não mostra.
 - Um `.sh` começa com `#!/bin/sh`, mas **não recebe permissão de execução**: leia antes de rodar. `.bat` e `.cmd` são recusados, porque o `cmd` expande `%VAR%` até entre aspas.
 - A prévia e a mensagem final avisam sobre valores com caracteres de controle ou de direção do texto e, em um CSV, sobre valores que começam como fórmula. A prévia conta só o que olhou.
