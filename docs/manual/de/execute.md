@@ -123,6 +123,10 @@ Bei einer im [Betrachter](viewer.md) geöffneten Tabelle oder einem Text schreib
 | `%{#}` | die Nummer des Datensatzes unter den geschriebenen: 1, 2, 3... |
 | `%{#line}` | die Nummer der Zeile in der Datei (nur Text) |
 | `%{#path}` `%{#dir}` `%{#name}` `%{#base}` `%{#ext}` `%{#size}` | die geöffnete Datei, mit Escape wie jedes Feld; `%N` und die anderen oben haben keins, nehmen Sie in einer Seite oder einem Skript also besser diese |
+| `%{$NAME}` | eine Umgebungsvariable wie `%{$PATH}`, mit dem aktuellen Wert; die Vorschau listet die gelesenen auf, und eine nicht vorhandene ist ein Fehler |
+| `%{#date}` `%{#time}` `%{#datetime}` `%{#utc}` | jetzt, lokal (`#datetime` mit Zeitzone) oder UTC: in allen Datensätzen gleich |
+| `%{#year}` `%{#month}` `%{#day}` `%{#weekday}` `%{#weekday_name}` `%{#epoch}` | Teile davon: Wochentag 1 ist Montag, der Name ist englisch, Epoch in Sekunden seit 1970 |
+| `%{#user}` `%{#host}` `%{#template}` `%{#output}` | wer erzeugt, auf welchem Rechner, mit welcher Vorlage, und die geschriebene Datei |
 | `%f %d %n %b %e %s` | die geöffnete Datei, wie beim Batch oben |
 | `%%` | ein `%` |
 
@@ -170,6 +174,10 @@ Für Text um die Datensätze herum speichern Sie eine Vorlage als `~/.config/xyl
 ```
 
 `%%header` und `%%footer` sind optional und erlauben nur den Text der Vorlage und die Felder der geöffneten Datei. `%%record` wird einmal pro Datensatz geschrieben und darf mehrere Zeilen haben; ohne Abschnitte ist die ganze Datei der Datensatz. Die Escapes richten sich wie bei einer Maske nach der Ausgabedatei, eine Vorlage für eine Seite sollte also in eine `.html` geschrieben werden. Ein unbekannter oder doppelter Abschnitt oder ein Datensatzfeld in Kopf oder Fuß ist ein Fehler in der Vorschau. Die Vorschau zeigt die letzten 3 Zeilen des Kopfes. Ohne Datensätze wird nichts geschrieben.
+
+Im Fuß ist `%{count}` die Anzahl der geschriebenen Datensätze. Der Kopf kann das nicht enthalten, weil er vor dem Lesen geschrieben wird.
+
+In einer `.sh` schreibt `%{$HOME}` den aktuellen Wert, während `$HOME` beim Ausführen des Skripts gelesen wird. Eine Vorlage von jemand anderem ist dessen Skript: Sie könnte `%{$GEHEIM:url}` in einen Befehl schreiben, achten Sie also darauf, was laut Vorschau gelesen wird.
 
 ## Verlauf
 

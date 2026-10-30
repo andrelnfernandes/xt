@@ -2296,6 +2296,15 @@ fn draw_batch_preview(frame: &mut Frame, preview: &app::BatchPreview, area: Rect
     if let Some(warning) = found.stats.warning() {
         lines.push(Line::styled(warning, Style::new().fg(t.error)));
     }
+    if !found.environment.is_empty() {
+        lines.push(Line::styled(
+            format!(
+                "Reads from the environment: {}",
+                found.environment.join(", ")
+            ),
+            Style::new().fg(t.error),
+        ));
+    }
     lines.push(Line::raw(""));
     lines.extend(found.lines.iter().map(|l| Line::raw(l.clone())));
     let title = format!(" Batch: {} ", app::fit_name(&preview.file));

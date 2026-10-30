@@ -252,7 +252,7 @@ fn batch_in_the_viewer_uses_a_template_of_the_configuration() {
     std::fs::create_dir_all(&templates).unwrap();
     std::fs::write(
         templates.join("page.tpl"),
-        "%%header\n<h1>%{#name}</h1>\n%%record\n<p>%{line}</p>\n%%footer\n<hr>\n",
+        "%%header\n<h1>%{#name} %{$LANG}</h1>\n%%record\n<p>%{line}</p>\n%%footer\n<hr>%{count}\n",
     )
     .unwrap();
     let out = project.join("out.html");
@@ -268,11 +268,12 @@ fn batch_in_the_viewer_uses_a_template_of_the_configuration() {
     xy.wait_for(":page");
     xy.press(":page\r");
     xy.wait_for("<p>&lt;x&gt;</p>");
+    xy.wait_for("Reads from the environment: LANG");
     xy.press("\r");
     xy.wait_for("Wrote 1 records");
     assert_eq!(
         std::fs::read_to_string(&out).unwrap(),
-        "<h1>0.txt</h1>\n<p>&lt;x&gt;</p>\n<hr>\n"
+        "<h1>0.txt C.UTF-8</h1>\n<p>&lt;x&gt;</p>\n<hr>1\n"
     );
 }
 

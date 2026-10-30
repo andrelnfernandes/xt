@@ -120,6 +120,10 @@ Con una tabla o un texto abierto en el [visor](viewer.md), **Ctrl+B** escribe un
 | `%{#}` | el número del registro entre los escritos: 1, 2, 3... |
 | `%{#line}` | el número de la línea en el archivo (solo en texto) |
 | `%{#path}` `%{#dir}` `%{#name}` `%{#base}` `%{#ext}` `%{#size}` | el archivo abierto, con escape como cualquier campo; `%N` y los otros de arriba no lo tienen, así que prefiere estos en una página o un script |
+| `%{$NOMBRE}` | una variable de entorno, como `%{$PATH}`, con el valor de ahora; la vista previa lista las leídas, y una que no existe es un error |
+| `%{#date}` `%{#time}` `%{#datetime}` `%{#utc}` | ahora, local (`#datetime` con la zona horaria) o UTC: igual en todos los registros |
+| `%{#year}` `%{#month}` `%{#day}` `%{#weekday}` `%{#weekday_name}` `%{#epoch}` | partes de ello: el día de la semana 1 es lunes, el nombre está en inglés, epoch en segundos desde 1970 |
+| `%{#user}` `%{#host}` `%{#template}` `%{#output}` | quién lo genera, en qué máquina, con qué plantilla, y el archivo escrito |
 | `%f %d %n %b %e %s` | el archivo abierto, como en el Batch de arriba |
 | `%%` | un `%` |
 
@@ -167,6 +171,10 @@ Para tener texto alrededor de los registros, guarda una plantilla en `~/.config/
 ```
 
 `%%header` y `%%footer` son opcionales y solo admiten el texto de la plantilla y los campos del archivo abierto. `%%record` se escribe una vez por registro y puede tener varias líneas; sin secciones, todo el archivo es el registro. Los escapes siguen al archivo de salida, como en una máscara, así que una plantilla de página debe escribirse en un `.html`. Una sección que no existe, una repetida o un campo de registro en la cabecera o el pie es un error en la vista previa. La vista previa muestra las últimas 3 líneas de la cabecera. Sin registros, no se escribe nada.
+
+En el pie, `%{count}` es cuántos registros se escribieron. La cabecera no puede tenerlo, porque se escribe antes de leerlos.
+
+En un `.sh`, `%{$HOME}` escribe el valor de ahora, mientras que `$HOME` se lee cuando el script se ejecuta. Una plantilla de otra persona es un script suyo: podría poner `%{$SECRETO:url}` en un comando, así que mira lo que la vista previa dice que lee.
 
 ## Historial
 

@@ -79,6 +79,6 @@ as a link is what `cp -a` and `rsync -l` do).
   lines), with escaping by context and structured and binary outputs. Done: the
   line filter, the record stream, and Ctrl+B in the viewer with masks and with
   JSON, CSV, XML and HTML of whole records, and template files (steps 1 to 5).
-  Next: environment variables, macros, totals and conditions in templates (5b),
+  Next: conditions and sums in templates (5b, steps 2 and 3),
   binary outputs (6) and tagging records (7). Records into `.bat`/`.cmd` wait for item 2
   of Security; the filter on screen sees 50,000 rows, while Ctrl+B sees them all.

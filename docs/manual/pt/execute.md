@@ -118,6 +118,10 @@ Com uma tabela ou um texto aberto no [visualizador](viewer.md), **Ctrl+B** escre
 | `%{#}` | o número do registro entre os escritos: 1, 2, 3... |
 | `%{#line}` | o número da linha no arquivo (só no texto) |
 | `%{#path}` `%{#dir}` `%{#name}` `%{#base}` `%{#ext}` `%{#size}` | o arquivo aberto, com escape como qualquer campo; `%N` e os outros acima não têm, então prefira estes em uma página ou um script |
+| `%{$NOME}` | uma variável de ambiente, como `%{$PATH}`, com o valor de agora; a prévia lista as lidas, e uma que não existe é erro |
+| `%{#date}` `%{#time}` `%{#datetime}` `%{#utc}` | agora, local (`#datetime` com o fuso) ou UTC: igual em todos os registros |
+| `%{#year}` `%{#month}` `%{#day}` `%{#weekday}` `%{#weekday_name}` `%{#epoch}` | partes disso: o dia da semana 1 é segunda, o nome é em inglês, epoch em segundos desde 1970 |
+| `%{#user}` `%{#host}` `%{#template}` `%{#output}` | quem gera, em qual máquina, com qual template, e o arquivo gravado |
 | `%f %d %n %b %e %s` | o arquivo aberto, como no Batch acima |
 | `%%` | um `%` |
 
@@ -165,6 +169,10 @@ Para ter texto em volta dos registros, salve um template em `~/.config/xylem/bat
 ```
 
 `%%header` e `%%footer` são opcionais e aceitam só o texto do template e os campos do arquivo aberto. `%%record` é gravado uma vez por registro e pode ter várias linhas; sem seções, o arquivo inteiro é o registro. Os escapes seguem o arquivo de saída, como em uma máscara, então um template de página deve ser gravado em um `.html`. Uma seção que não existe, uma repetida ou um campo de registro no cabeçalho ou no rodapé é erro na prévia. A prévia mostra as últimas 3 linhas do cabeçalho. Sem registros, nada é gravado.
+
+No rodapé, `%{count}` é quantos registros foram gravados. O cabeçalho não pode ter isso, pois é gravado antes de lê-los.
+
+Em um `.sh`, `%{$HOME}` grava o valor de agora, enquanto `$HOME` é lido quando o script roda. Um template de outra pessoa é um script dela: ele poderia colocar `%{$SEGREDO:url}` em um comando, então olhe o que a prévia diz que ele lê.
 
 ## Histórico
 

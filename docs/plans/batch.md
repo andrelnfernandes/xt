@@ -153,10 +153,10 @@ condicionais só pagam o custo quando máscara, cabeçalho e rodapé não bastar
    viraria o caminho do arquivo, sem escape para SQL. É erro, e não aviso, porque
    nos dois casos há o que escrever no lugar: `%%` ou `%{#name}`.
 
-   **5b. Templates com ambiente, macros, totais e condições (proposta):** em três
-   passos, nesta ordem.
+   **5b. Templates com ambiente, macros, totais e condições:** em três passos, nesta
+   ordem. O primeiro está feito; o resto é proposta.
 
-   1. **`count`, ambiente e macros:**
+   1. **`count`, ambiente e macros (feito):**
       - `%{count}` no rodapé. Totais só no rodapé, pois o cabeçalho é gravado antes
         de ler os registros.
       - `%{$NOME}` lê qualquer variável do processo, com escape. Variável inexistente

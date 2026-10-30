@@ -113,6 +113,10 @@ With a table or text open in the [viewer](viewer.md), **Ctrl+B** writes one line
 | `%{#}` | the record's number among those written: 1, 2, 3... |
 | `%{#line}` | the line's number in the file (text only) |
 | `%{#path}` `%{#dir}` `%{#name}` `%{#base}` `%{#ext}` `%{#size}` | the open file, with an escape like any field; `%N` and the others above have none, so prefer these in a page or a script |
+| `%{$NAME}` | a variable of the environment, such as `%{$PATH}`, as it is now; the preview lists those read, and one that does not exist is an error |
+| `%{#date}` `%{#time}` `%{#datetime}` `%{#utc}` | now, local (`#datetime` with its time zone) or UTC: the same in all records |
+| `%{#year}` `%{#month}` `%{#day}` `%{#weekday}` `%{#weekday_name}` `%{#epoch}` | parts of it: weekday 1 is Monday, the name is in English, epoch in seconds since 1970 |
+| `%{#user}` `%{#host}` `%{#template}` `%{#output}` | who generates it, on which machine, with which template, and the file written |
 | `%f %d %n %b %e %s` | the open file, as in Batch above |
 | `%%` | a `%` |
 
@@ -160,6 +164,10 @@ For text around the records, save a template as `~/.config/xylem/batch/name.tpl`
 ```
 
 `%%header` and `%%footer` are optional and take only the template's text and the open file's fields. `%%record` is written once per record and may have several lines; with no sections, the whole file is the record. Escapes follow the output file, as in a mask, so a template for a page should be written to a `.html`. A section that does not exist, a repeated one, or a field of a record in the header or footer is an error in the preview. The preview shows the last 3 lines of the header. With no records, nothing is written.
+
+Inside a footer, `%{count}` is how many records were written. A header cannot have it, since it is written before they are read.
+
+In a `.sh`, `%{$HOME}` writes the value of now, while `$HOME` is read when the script runs. A template from someone else is their script: it could write `%{$SECRET:url}` into a command, so look at what the preview says it reads.
 
 ## History
 

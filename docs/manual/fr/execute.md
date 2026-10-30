@@ -123,6 +123,10 @@ Avec un tableau ou un texte ouvert dans la [visionneuse](viewer.md), **Ctrl+B** 
 | `%{#}` | le numéro de l'enregistrement parmi ceux écrits : 1, 2, 3... |
 | `%{#line}` | le numéro de la ligne dans le fichier (texte seulement) |
 | `%{#path}` `%{#dir}` `%{#name}` `%{#base}` `%{#ext}` `%{#size}` | le fichier ouvert, avec un échappement comme tout champ ; `%N` et les autres ci-dessus n'en ont pas, préférez donc ceux-ci dans une page ou un script |
+| `%{$NOM}` | une variable d'environnement, comme `%{$PATH}`, avec sa valeur actuelle ; l'aperçu liste celles qui sont lues, et une variable inexistante est une erreur |
+| `%{#date}` `%{#time}` `%{#datetime}` `%{#utc}` | maintenant, en heure locale (`#datetime` avec le fuseau) ou UTC : identique dans tous les enregistrements |
+| `%{#year}` `%{#month}` `%{#day}` `%{#weekday}` `%{#weekday_name}` `%{#epoch}` | ses parties : le jour de la semaine 1 est lundi, le nom est en anglais, epoch en secondes depuis 1970 |
+| `%{#user}` `%{#host}` `%{#template}` `%{#output}` | qui génère, sur quelle machine, avec quel modèle, et le fichier écrit |
 | `%f %d %n %b %e %s` | le fichier ouvert, comme dans le Batch ci-dessus |
 | `%%` | un `%` |
 
@@ -170,6 +174,10 @@ Pour avoir du texte autour des enregistrements, enregistrez un modèle sous `~/.
 ```
 
 `%%header` et `%%footer` sont facultatifs et n'acceptent que le texte du modèle et les champs du fichier ouvert. `%%record` est écrit une fois par enregistrement et peut avoir plusieurs lignes ; sans sections, tout le fichier est l'enregistrement. Les échappements suivent le fichier de sortie, comme pour un masque : un modèle de page doit donc être écrit dans un `.html`. Une section inexistante ou répétée, ou un champ d'enregistrement dans l'en-tête ou le pied, est une erreur dans l'aperçu. L'aperçu montre les 3 dernières lignes de l'en-tête. Sans enregistrements, rien n'est écrit.
+
+Dans le pied, `%{count}` est le nombre d'enregistrements écrits. L'en-tête ne peut pas l'avoir, car il est écrit avant de les lire.
+
+Dans un `.sh`, `%{$HOME}` écrit la valeur actuelle, tandis que `$HOME` est lu à l'exécution du script. Un modèle venant d'une autre personne est son script : il pourrait mettre `%{$SECRET:url}` dans une commande, alors regardez ce que l'aperçu dit qu'il lit.
 
 ## Historique
 
