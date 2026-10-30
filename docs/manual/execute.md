@@ -112,6 +112,7 @@ With a table or text open in the [viewer](viewer.md), **Ctrl+B** writes one line
 | `%{ip}` `%{1}` `%{0}` | a group of the line filter's regular expression, by name or number; 0 is all it matched |
 | `%{#}` | the record's number among those written: 1, 2, 3... |
 | `%{#line}` | the line's number in the file (text only) |
+| `%{#path}` `%{#dir}` `%{#name}` `%{#base}` `%{#ext}` `%{#size}` | the open file, with an escape like any field; `%N` and the others above have none, so prefer these in a page or a script |
 | `%f %d %n %b %e %s` | the open file, as in Batch above |
 | `%%` | a `%` |
 
@@ -139,6 +140,23 @@ The values come from a file that may be hostile and may go into something you ru
 ### Whole records
 
 In a `.json`, `.jsonl`, `.ndjson`, `.csv`, `.tsv`, `.xml`, `.html` or `.htm` file, leave the mask **empty** to write whole records, with the rules of the format: a JSON array of objects, an object per line, a table with a header row, a `<record>` per record, or a page with a table. To write only some fields, start the mask with `@`: `@id, name, #`. Text gives `line_number`, `line` and the groups of the filter. Fields are found in the first 1,000 records: a JSON Lines key that appears only later is left out, and the final message says so.
+
+### Templates
+
+For text around the records, save a template as `~/.config/xylem/batch/name.tpl` and type `:name` as the mask; the prompt lists the ones it finds (the first four).
+
+```
+%%# a comment
+%%header
+<h1>%{#name}</h1>
+<ul>
+%%record
+<li><a href="https://x/?id=%{id:url}">%{name}</a></li>
+%%footer
+</ul>
+```
+
+`%%header` and `%%footer` are optional and take only the template's text and the open file's fields. `%%record` is written once per record and may have several lines; with no sections, the whole file is the record. Escapes follow the output file, as in a mask, so a template for a page should be written to a `.html`. A section that does not exist, a repeated one, or a field of a record in the header or footer is an error in the preview. The preview shows the last 3 lines of the header. With no records, nothing is written.
 
 ## History
 

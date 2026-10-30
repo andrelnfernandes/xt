@@ -2,7 +2,7 @@
 
 Origem: conversa de 2026-10-30, depois dos visualizadores tabulares
 ([viewer-tables.md](viewer-tables.md), [viewer-parquet.md](viewer-parquet.md)).
-Estado: etapas 1 a 4 implementadas; o restante é proposta.
+Estado: etapas 1 a 5 implementadas; o restante é proposta.
 
 ## 1. Objetivo
 
@@ -137,7 +137,15 @@ condicionais só pagam o custo quando máscara, cabeçalho e rodapé não bastar
    uma primeira leitura de até 1.000 registros; coluna de JSON Lines que surja
    depois fica de fora, com aviso no fim. Nomes de coluna não viram nomes de
    elemento XML (`<field name="...">`), pois vêm de um arquivo hostil.
-5. **Arquivos de template.**
+5. **Arquivos de template (feito):** `~/.config/xylem/batch/nome.tpl`, escolhido
+   com `:nome` na máscara. Só um nome simples vale, sem caminho: `: %{a}` continua
+   sendo máscara. Seções `%%header`, `%%record` e `%%footer`, e comentários `%%#`;
+   sem seções, o arquivo inteiro é o registro, que pode ter várias linhas. Cabeçalho
+   e rodapé não aceitam campos de registro. Campos novos `%{#path}`, `%{#dir}`,
+   `%{#name}`, `%{#base}`, `%{#ext}` e `%{#size}`, do arquivo aberto, valem também
+   nas máscaras: um `%N` em uma página seria injeção, pois não tem escape. Sem
+   separador entre registros: um array JSON sai pelo codificador nativo. Vale só
+   para o Batch de registros, não para o de arquivos marcados.
 6. **Saídas binárias:** SQLite primeiro.
 7. **Registros marcados na grade:** o equivalente ao Tag para registros. O `T`
    já alterna entre tabela e texto, então precisa de outra tecla.

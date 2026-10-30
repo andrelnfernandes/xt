@@ -122,6 +122,7 @@ Avec un tableau ou un texte ouvert dans la [visionneuse](viewer.md), **Ctrl+B** 
 | `%{ip}` `%{1}` `%{0}` | un groupe de l'expression régulière du filtre de lignes, par nom ou numéro ; 0 est tout ce qu'elle a trouvé |
 | `%{#}` | le numéro de l'enregistrement parmi ceux écrits : 1, 2, 3... |
 | `%{#line}` | le numéro de la ligne dans le fichier (texte seulement) |
+| `%{#path}` `%{#dir}` `%{#name}` `%{#base}` `%{#ext}` `%{#size}` | le fichier ouvert, avec un échappement comme tout champ ; `%N` et les autres ci-dessus n'en ont pas, préférez donc ceux-ci dans une page ou un script |
 | `%f %d %n %b %e %s` | le fichier ouvert, comme dans le Batch ci-dessus |
 | `%%` | un `%` |
 
@@ -149,6 +150,23 @@ Les valeurs viennent d'un fichier qui peut être hostile et peuvent aller dans c
 ### Enregistrements entiers
 
 Dans un fichier `.json`, `.jsonl`, `.ndjson`, `.csv`, `.tsv`, `.xml`, `.html` ou `.htm`, laissez le masque **vide** pour écrire des enregistrements entiers, selon les règles du format : un tableau JSON d'objets, un objet par ligne, un tableau avec une ligne d'en-tête, un `<record>` par enregistrement ou une page avec un tableau. Pour n'écrire que certains champs, commencez le masque par `@` : `@id, nom, #`. Le texte donne `line_number`, `line` et les groupes du filtre. Les champs sont découverts dans les 1 000 premiers enregistrements : une clé JSON Lines qui n'apparaît qu'ensuite est laissée de côté, et le message final le signale.
+
+### Modèles
+
+Pour avoir du texte autour des enregistrements, enregistrez un modèle sous `~/.config/xylem/batch/nom.tpl` et tapez `:nom` comme masque ; l'invite liste ceux qu'elle trouve (les quatre premiers).
+
+```
+%%# un commentaire
+%%header
+<h1>%{#name}</h1>
+<ul>
+%%record
+<li><a href="https://x/?id=%{id:url}">%{name}</a></li>
+%%footer
+</ul>
+```
+
+`%%header` et `%%footer` sont facultatifs et n'acceptent que le texte du modèle et les champs du fichier ouvert. `%%record` est écrit une fois par enregistrement et peut avoir plusieurs lignes ; sans sections, tout le fichier est l'enregistrement. Les échappements suivent le fichier de sortie, comme pour un masque : un modèle de page doit donc être écrit dans un `.html`. Une section inexistante ou répétée, ou un champ d'enregistrement dans l'en-tête ou le pied, est une erreur dans l'aperçu. L'aperçu montre les 3 dernières lignes de l'en-tête. Sans enregistrements, rien n'est écrit.
 
 ## Historique
 

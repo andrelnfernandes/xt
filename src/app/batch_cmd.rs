@@ -64,8 +64,18 @@ impl App {
         } else {
             ""
         };
+        let templates: Vec<String> = batch::template_names()
+            .iter()
+            .take(4)
+            .map(|name| format!(":{name}"))
+            .collect();
+        let templates = if templates.is_empty() {
+            String::new()
+        } else {
+            format!("; template {}", templates.join(" "))
+        };
         let label = format!(
-            "BATCH line per record (%{{{hint}}}{whole}) into {}: ",
+            "BATCH line per record (%{{{hint}}}{whole}{templates}) into {}: ",
             fit_name(&file)
         );
         self.open_prompt(PromptKind::ViewerBatchMask { file }, label, "");
