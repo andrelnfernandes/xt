@@ -88,6 +88,9 @@ pub struct LoadOptions {
     pub limits: Limits,
     /// Fixed charset for files that are not UTF-8 or UTF-16 (`None`: guess).
     pub fallback: Option<Charset>,
+    /// May hand the file to a parser written in C (see
+    /// [`tabular_loader::uses_c_parser`]): only when the user asks to see it.
+    pub c_parsers: bool,
 }
 
 impl LoadOptions {
@@ -101,6 +104,7 @@ impl LoadOptions {
                 time: VIEW_TIME,
             },
             fallback: None,
+            c_parsers: true,
         }
     }
 
@@ -114,6 +118,7 @@ impl LoadOptions {
                 time: AUTOVIEW_TIME,
             },
             fallback: None,
+            c_parsers: false,
         }
     }
 }
@@ -276,8 +281,15 @@ impl Viewer {
             v = v.colored_as(&name);
         }
 
+        // Autoview runs on whatever the cursor passes over, so it never
+        // reaches a parser written in C.
+        let c_refused = !load.c_parsers && tabular_loader::uses_c_parser(&path);
+        if c_refused && note.is_none() {
+            note = Some("Parquet or SQLite: V opens the table".into());
+        }
+
         // Auto-load tabular candidate files into Table mode if on disk
-        if tabular_loader::is_tabular_candidate(&path) {
+        if tabular_loader::is_tabular_candidate(&path) && !c_refused {
             let ext = path
                 .extension()
                 .and_then(|s| s.to_str())
@@ -1622,11 +1634,45 @@ mod tests {
             time: VIEW_TIME,
         },
         fallback: None,
+        c_parsers: true,
     };
 
     fn from_gz(name: &str, raw: Vec<u8>, load: LoadOptions) -> Viewer {
         let n = raw.len() as u64;
         Viewer::from_file(PathBuf::from(name), n, raw, load)
+    }
+
+    fn sqlite_file(dir: &Path) -> PathBuf {
+        let path = dir.join("data.db");
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch("CREATE TABLE t (a); INSERT INTO t VALUES (1);")
+            .unwrap();
+        path
+    }
+
+    #[test]
+    fn autoview_never_reaches_the_parsers_in_c() {
+        let tmp = crate::testing::tempdir();
+        let path = sqlite_file(tmp.path());
+        let v = Viewer::open(path.clone(), LoadOptions::autoview()).unwrap();
+        assert!(v.table.is_none());
+        assert_eq!(v.mode, ViewMode::Hex);
+        assert_eq!(
+            v.note.as_deref(),
+            Some("Parquet or SQLite: V opens the table")
+        );
+        let v = Viewer::open(path, LoadOptions::view(1 << 20)).unwrap();
+        assert!(v.table.is_some(), "V opens it");
+        assert_eq!(v.mode, ViewMode::Table);
+    }
+
+    #[test]
+    fn autoview_still_shows_tables_read_in_rust() {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("data.csv");
+        std::fs::write(&path, "a,b\n1,2\n").unwrap();
+        let v = Viewer::open(path, LoadOptions::autoview()).unwrap();
+        assert!(v.table.is_some());
     }
 
     #[test]

@@ -116,7 +116,7 @@ Abre prompt de comando inferior para filtragem e consulta:
 | **JSONL / NDJSON** | `serde_json` | Já presente nas dependências do Xylem, robusto e seguro. |
 | **DBF / Memo** | [`dbase`](https://crates.io/crates/dbase) ou parser próprio | Leitura direta do cabeçalho binário, codepages históricos e leitura de `.dbt`/`.fpt`. |
 | **SQLite** | `rusqlite` (bundled, com modo defensivo obrigatório) ou `limbo` | Suporte SQL completo em modo estritamente somente-leitura e defensivo. |
-| **Apache Parquet** | [`parquet`](https://crates.io/crates/parquet) (Apache Arrow) | Rust puro oficial, leitura em streaming de metadados e row groups. |
+| **Apache Parquet** | [`parquet`](https://crates.io/crates/parquet) (Apache Arrow) | Em Rust, leitura em streaming de metadados e row groups; o codec zstd usa a biblioteca em C (`zstd-sys`). |
 | **Mini-SQL Evaluator** | Desenho próprio em Rust puro | ~350 linhas, zero dependências extras, sem alocações descontroladas, 100% testável com `proptest`. |
 
 ---

@@ -37,6 +37,18 @@ rest).
    searched, as a huge file on disk does. The search could keep the open
    reader between steps.
 
+6. **The table loaders ignore the viewer's limits.** They open the file by its
+   path, so Autoview's 1 MiB and its time limit do not apply: passing the cursor
+   over a big spreadsheet or CSV can hold the screen up. The row and column
+   limits do apply. A SQLite query cannot be cancelled either.
+7. **Tables of remote files and archive entries.** `Viewer::from_file` gives the
+   loaders the path it received, which is opened on the local disk, so a remote
+   `foo.csv` may show a local file with the same path, or fail. Seen in the code,
+   not tested. Should load tables only from files on disk.
+8. **SQLite and Parquet's zstd are C libraries.** They run only with V, never in
+   Autoview. Running them in a separate, isolated process would contain a bug
+   in them.
+
 Decided against: wiping the password from memory (`zeroize`: ssh and the
 pipe hold it too), and checking where remote symlinks point (copying a link
 as a link is what `cp -a` and `rsync -l` do).

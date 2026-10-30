@@ -39,9 +39,11 @@ rapidez assim que relatada.
 Ainda assim, erros acontecem. Veja o que o Xylem faz para manter o risco baixo:
 
 - Tudo o que o Xylem lê por conta própria (texto, hex, codificações, arquivos
-  comprimidos, pacotes) passa por analisadores em Rust com segurança de memória.
-  Nenhum programa externo é executado em um arquivo a menos que você solicite
-  com E, O ou X.
+  comprimidos, pacotes, planilhas, CSV, DBF) passa por analisadores em Rust com
+  segurança de memória. A exceção são bancos SQLite e arquivos Parquet, lidos
+  por bibliotecas em C: elas só rodam quando você abre esse arquivo com V, nunca
+  no Autoview. Nenhum programa externo é executado em um arquivo a menos que
+  você solicite com E, O ou X.
 - Tudo tem limite: a quantidade lida, a quantidade descomprimida, o tempo gasto
   e o volume de memória que um descompressor pode usar. Apenas um nível de
   compressão é desfeito, e nada é gravado em disco para exibir um arquivo.

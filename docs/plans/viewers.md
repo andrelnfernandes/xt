@@ -46,6 +46,15 @@ controla os bytes, o nome e o tamanho.
      proptest já está nas dev-deps);
    - nenhuma dependência nova com `unsafe` entra sem revisão.
 
+### Código em C
+
+SQLite (`rusqlite` com `bundled`) e o codec zstd do Parquet (`zstd-sys`) são
+bibliotecas em C, sem as garantias de memória do Rust. Decisão de 2026-10-30:
+esses dois formatos só são lidos com `V`, nunca no Autoview
+(`LoadOptions::c_parsers`), o que mantém o princípio 1. O zstd fica porque
+removê-lo deixaria de abrir esses Parquet e pouco reduziria o risco enquanto o
+SQLite existir. Isolar esses parsers em um processo próprio fica como evolução.
+
 ## Subprojetos
 
 Abordagem escolhida (A): primeiro o que é embutido, em Rust; os programas

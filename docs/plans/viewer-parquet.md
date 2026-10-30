@@ -3,8 +3,8 @@
 ## 1. Visão Geral
 Adiciona suporte nativo à visualização e filtragem do formato analítico colunar **Apache Parquet (`.parquet`)** dentro do modo tabela (`TableGrid`) do Xylem.
 
-Ao abrir um arquivo `.parquet` com `V` (View) ou inspecioná-lo com `F7` (Autoview):
-- Os metadados e esquema do arquivo são lidos via streaming seguro do Apache Arrow (`parquet` e `arrow-cast` em Rust 100% puro).
+Ao abrir um arquivo `.parquet` com `V` (View); o Autoview (`F7`) não usa este leitor e mostra o arquivo em hexadecimal:
+- Os metadados e esquema do arquivo são lidos via streaming seguro do Apache Arrow (`parquet` e `arrow-cast`, em Rust).
 - A grade tabular TUI é construída com suporte a navegação por células, cabeçalhos de coluna, status detalhado e busca.
 - O mini-avaliador SQL (`\`) funciona imediatamente sobre o grid em memória.
 - A tecla `T` alterna ciclicamente entre modo Tabela, Texto e Hexadecimal.
@@ -21,5 +21,5 @@ Ao abrir um arquivo `.parquet` com `V` (View) ou inspecioná-lo com `F7` (Autovi
    - Remoção de códigos de controle C0/C1 (prevenção contra injeção ANSI).
    - Sanitização de caracteres de controle bidirecional Unicode (prevenção contra Trojan Source CVE-2021-42574).
    - Truncamento em 2.048 caracteres por célula com elipse `…`.
-5. **Pure Rust Safe Code:**
-   Uso exclusivo de crates oficiais Apache Arrow compilados em safe Rust com codecs nativos (`snap`, `flate2-zlib-rs`, `lz4_flex`, `zstd`), sem bibliotecas C externas adicionadas.
+5. **Código em C isolado da navegação:**
+   Os crates do Apache Arrow e os codecs `snap`, `flate2-zlib-rs` e `lz4_flex` são em Rust, mas o codec `zstd` usa `zstd-sys`, que compila a biblioteca em C. Por isso o Parquet só é lido com `V`, uma ação explícita, nunca no Autoview. Ver "Código em C" em [viewers.md](viewers.md).

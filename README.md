@@ -37,8 +37,10 @@ such malfunction is a serious bug, and it will be fixed promptly once reported.
 Nevertheless, bugs happen. Here is what Xylem does to keep the risk small:
 
 - Everything Xylem reads on its own (text, hex, encodings, compressed files,
-  archives) goes through memory-safe Rust parsers. No external program runs on
-  a file unless you ask for it with E, O or X.
+  archives, spreadsheets, CSV, DBF) goes through memory-safe Rust parsers. The
+  exception is SQLite databases and Parquet files, read by libraries in C:
+  they run only when you open such a file with V, never in Autoview. No
+  external program runs on a file unless you ask for it with E, O or X.
 - Everything has a limit: how much is read, how much is decompressed, how long
   it takes and how much memory a decompressor may use. Only one level of
   compression is undone, and nothing is written to disk to show a file.

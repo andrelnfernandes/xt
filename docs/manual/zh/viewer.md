@@ -65,4 +65,8 @@ Xylem 会自己判断编码，顺序如下：先解压文件，再找 BOM（UTF-
 
 要查看原始的压缩字节，请关闭 `viewer_decompress`（[配置](configuration.md)第 2 页的 **J**）。
 
+## 由 C 库读取的表格
+
+SQLite 数据库（`.db`、`.sqlite`、`.sqlite3`）和 Parquet 文件由 C 语言编写的库读取，不具备 Rust 的内存安全性。因此，只有按 `V` 才会以表格形式打开。Autoview 会读取光标经过的所有文件，并将这些文件显示为普通内容，同时给出提示 `Parquet or SQLite: V opens the table`。只有在接受此风险时，才打开来源不可信的数据库。
+
 另请参阅：[搜索已标记的文件](search.md)。

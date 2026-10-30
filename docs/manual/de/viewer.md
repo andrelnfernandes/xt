@@ -81,4 +81,8 @@ Bei einer `.tar.gz` (oder `.tar.xz` ...) lautet der Hinweis `TAR archive: Alt+F5
 
 Um die rohen komprimierten Bytes zu sehen, schalten Sie `viewer_decompress` aus (**J** auf Seite 2 der [Konfiguration](configuration.md)).
 
+## Tabellen in C-Bibliotheken
+
+SQLite-Datenbanken (`.db`, `.sqlite`, `.sqlite3`) und Parquet-Dateien werden von in C geschriebenen Bibliotheken gelesen, die nicht die Speichersicherheit von Rust bieten. Deshalb öffnen sie sich nur mit `V` als Tabelle. Autoview liest alles, worüber der Cursor läuft, und zeigt diese Dateien als gewöhnlichen Inhalt mit dem Hinweis `Parquet or SQLite: V opens the table`. Öffnen Sie eine Datenbank aus nicht vertrauenswürdiger Quelle nur, wenn Sie dieses Risiko akzeptieren.
+
 Siehe auch: [markierte Dateien durchsuchen](search.md).

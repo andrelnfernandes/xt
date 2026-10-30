@@ -78,4 +78,8 @@ For a `.tar.gz` (or `.tar.xz`...) the note says `TAR archive: Alt+F5 opens it as
 
 To see the raw compressed bytes, turn off `viewer_decompress` (**J** on page 2 of the [configuration](configuration.md)).
 
+## Tables in C libraries
+
+SQLite databases (`.db`, `.sqlite`, `.sqlite3`) and Parquet files are read by libraries written in C, which do not have Rust's memory safety. So they open as tables only with `V`. Autoview reads whatever the cursor passes over, and shows these files as ordinary contents, with the note `Parquet or SQLite: V opens the table`. Open a database from an untrusted source only if you accept this risk.
+
 See also: [searching the tagged files](search.md).

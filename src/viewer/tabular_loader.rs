@@ -60,6 +60,17 @@ pub fn is_tabular_candidate(path: &Path) -> bool {
     )
 }
 
+/// The formats read by libraries in C: SQLite and Parquet's zstd codec.
+/// Everything else here is parsed in Rust.
+pub fn uses_c_parser(path: &Path) -> bool {
+    let ext = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_ascii_lowercase())
+        .unwrap_or_default();
+    matches!(ext.as_str(), "sqlite" | "sqlite3" | "db" | "parquet")
+}
+
 /// Helper to pick best CSV delimiter by frequency outside quotes.
 fn guess_csv_delimiter(sample: &str) -> u8 {
     let mut comma = 0usize;
