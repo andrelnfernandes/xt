@@ -2,7 +2,7 @@
 
 Origem: conversa de 2026-10-30, depois dos visualizadores tabulares
 ([viewer-tables.md](viewer-tables.md), [viewer-parquet.md](viewer-parquet.md)).
-Estado: etapas 1 a 3 implementadas; o restante é proposta.
+Estado: etapas 1 a 4 implementadas; o restante é proposta.
 
 ## 1. Objetivo
 
@@ -131,7 +131,12 @@ condicionais só pagam o custo quando máscara, cabeçalho e rodapé não bastar
    `.cmd` recusados para registros; `.sh` sem permissão de execução. A prévia
    olha até 1.000 registros (e por 3 s no máximo): o total só vem no fim, e uma
    coluna de JSON Lines que só apareça depois disso é recusada.
-4. **Codificadores de texto:** JSON, JSONL, CSV, XML e HTML.
+4. **Codificadores de texto (feito):** JSON, JSONL, CSV, TSV, XML e HTML. Em
+   arquivos desses formatos, máscara vazia grava os registros inteiros e `@a,b`
+   só esses campos; qualquer outra coisa continua sendo máscara. Os campos vêm de
+   uma primeira leitura de até 1.000 registros; coluna de JSON Lines que surja
+   depois fica de fora, com aviso no fim. Nomes de coluna não viram nomes de
+   elemento XML (`<field name="...">`), pois vêm de um arquivo hostil.
 5. **Arquivos de template.**
 6. **Saídas binárias:** SQLite primeiro.
 7. **Registros marcados na grade:** o equivalente ao Tag para registros. O `T`

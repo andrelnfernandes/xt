@@ -84,7 +84,7 @@ as a link is what `cp -a` and `rsync -l` do).
 - **Batch over files and records** ([docs/plans/batch.md](docs/plans/batch.md)):
   Ctrl+B also on what the viewer read (tables with or without a filter, text
   lines), with escaping by context and structured and binary outputs. Done: the
-  line filter, the record stream and Ctrl+B in the viewer with masks (steps 1 to
-  3). Next: JSON, XML and HTML with no mask (step 4), template files (5), binary
-  outputs (6), and tagging records (7). Records into `.bat`/`.cmd` wait for item 3
+  line filter, the record stream, and Ctrl+B in the viewer with masks and with
+  JSON, CSV, XML and HTML of whole records (steps 1 to 4). Next: template files
+  (5), binary outputs (6), and tagging records (7). Records into `.bat`/`.cmd` wait for item 3
   of Security; the filter on screen sees 50,000 rows, while Ctrl+B sees them all.

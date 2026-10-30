@@ -315,6 +315,7 @@ impl Viewer {
                     .filter
                     .as_ref()
                     .and_then(|f| f.matcher.regex().cloned()),
+                cut: self.truncated(),
             }),
             ViewMode::Hex => Err("Batch works on text and tables (H)".into()),
         }

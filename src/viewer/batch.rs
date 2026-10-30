@@ -321,6 +321,9 @@ pub struct Stats {
     pub suspicious: u64,
     /// Going into a CSV starting like a spreadsheet formula.
     pub formulas: u64,
+    /// Whole records only: columns of JSON Lines found after the preview,
+    /// and so not written.
+    pub late_columns: u64,
 }
 
 impl Stats {
@@ -352,7 +355,280 @@ impl Stats {
                 self.formulas
             ));
         }
+        if self.late_columns > 0 {
+            parts.push(format!(
+                "{} columns appeared after the first {SCAN_RECORDS} records and were left out",
+                self.late_columns
+            ));
+        }
         (!parts.is_empty()).then(|| parts.join(", "))
+    }
+}
+
+/// The formats that hold whole records, with no mask.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Format {
+    /// One array of objects.
+    Json,
+    /// An object per line.
+    JsonLines,
+    Csv,
+    Tsv,
+    Xml,
+    Html,
+}
+
+/// `file`'s format can hold whole records, with no mask.
+pub fn holds_records(file: &Path) -> bool {
+    Format::for_file(file).is_some()
+}
+
+impl Format {
+    fn for_file(file: &Path) -> Option<Self> {
+        Some(match extension(file).as_str() {
+            "json" => Format::Json,
+            "jsonl" | "ndjson" => Format::JsonLines,
+            "csv" => Format::Csv,
+            "tsv" => Format::Tsv,
+            "xml" => Format::Xml,
+            "html" | "htm" => Format::Html,
+            _ => return None,
+        })
+    }
+
+    fn escape(self) -> Escape {
+        match self {
+            Format::Json | Format::JsonLines => Escape::Json,
+            Format::Csv | Format::Tsv => Escape::Csv,
+            Format::Xml | Format::Html => Escape::Xml,
+        }
+    }
+}
+
+/// How a field is named in the output.
+fn key_of(name: &str) -> &str {
+    if name == "#line" { "line_number" } else { name }
+}
+
+/// What a Batch writes for each record.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Output {
+    /// A line from a mask.
+    Lines(Mask),
+    /// Whole records in a format that has its own rules for them.
+    Records {
+        format: Format,
+        /// The fields to write, if the user named them.
+        wanted: Option<Vec<String>>,
+        /// The fields being written, known once the source was looked at.
+        fields: Vec<String>,
+        /// The title of an HTML page: the name of what is read.
+        title: String,
+    },
+}
+
+impl From<Mask> for Output {
+    fn from(mask: Mask) -> Self {
+        Output::Lines(mask)
+    }
+}
+
+impl Output {
+    /// An empty mask writes all fields, and `@a,b` those fields, in the
+    /// formats that hold whole records; anything else is a mask.
+    pub fn parse(text: &str, out: &Path, open: &Path, size: u64) -> Result<Self, String> {
+        let format = Format::for_file(out);
+        let trimmed = text.trim();
+        if let Some(format) = format
+            && (trimmed.is_empty() || trimmed.starts_with('@'))
+        {
+            let wanted = match trimmed.strip_prefix('@') {
+                None => None,
+                Some(list) => {
+                    let fields: Vec<String> = list
+                        .split(',')
+                        .map(|f| f.trim().to_string())
+                        .filter(|f| !f.is_empty())
+                        .collect();
+                    if fields.is_empty() {
+                        return Err("Mask: @ needs the names of the fields".into());
+                    }
+                    Some(fields)
+                }
+            };
+            let title = open
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            return Ok(Output::Records {
+                format,
+                wanted,
+                fields: Vec::new(),
+                title,
+            });
+        }
+        Mask::parse(text, Escape::for_file(out), open, size).map(Output::Lines)
+    }
+
+    /// The first field the records do not have.
+    fn unknown(&self, row: &Row<'_>) -> Option<String> {
+        match self {
+            Output::Lines(mask) => mask.unknown(row).map(str::to_string),
+            Output::Records { wanted, .. } => wanted
+                .iter()
+                .flatten()
+                .find(|name| !row.knows(name))
+                .cloned(),
+        }
+    }
+
+    /// Fixes the fields, from the last record looked at.
+    fn settle(&mut self, row_fields: Vec<String>) {
+        if let Output::Records { wanted, fields, .. } = self {
+            *fields = wanted.clone().unwrap_or(row_fields);
+        }
+    }
+
+    fn begin(&self, out: &mut Vec<u8>) {
+        let Output::Records {
+            format,
+            fields,
+            title,
+            ..
+        } = self
+        else {
+            return;
+        };
+        let separator = if *format == Format::Tsv { "\t" } else { "," };
+        match format {
+            Format::Json => out.extend_from_slice(b"[\n"),
+            Format::JsonLines => {}
+            Format::Csv | Format::Tsv => {
+                for (i, field) in fields.iter().enumerate() {
+                    if i > 0 {
+                        out.extend_from_slice(separator.as_bytes());
+                    }
+                    csv_field(key_of(field), out);
+                }
+                out.push(b'\n');
+            }
+            Format::Xml => {
+                out.extend_from_slice(b"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<records>\n");
+            }
+            Format::Html => {
+                out.extend_from_slice(
+                    b"<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>",
+                );
+                escape_into(&Cell::Text(title.as_str().into()), Escape::Xml, out);
+                out.extend_from_slice(b"</title>\n</head>\n<body>\n<table>\n<thead>\n<tr>");
+                for field in fields {
+                    out.extend_from_slice(b"<th>");
+                    escape_into(&Cell::Text(key_of(field).into()), Escape::Xml, out);
+                    out.extend_from_slice(b"</th>");
+                }
+                out.extend_from_slice(b"</tr>\n</thead>\n<tbody>\n");
+            }
+        }
+    }
+
+    /// What ends the file.
+    fn end(&self, out: &mut Vec<u8>) {
+        let Output::Records { format, .. } = self else {
+            return;
+        };
+        match format {
+            Format::Json => out.extend_from_slice(b"\n]\n"),
+            Format::Xml => out.extend_from_slice(b"</records>\n"),
+            Format::Html => out.extend_from_slice(b"</tbody>\n</table>\n</body>\n</html>\n"),
+            _ => {}
+        }
+    }
+
+    /// A record, with what ends its line. `first` is whether it is the first
+    /// one written, since a JSON array has commas only between its objects.
+    fn render(
+        &self,
+        row: &Row<'_>,
+        first: bool,
+        newline: &[u8],
+        stats: &mut Stats,
+        out: &mut Vec<u8>,
+    ) {
+        let Output::Records {
+            format,
+            wanted,
+            fields,
+            ..
+        } = self
+        else {
+            if let Output::Lines(mask) = self {
+                mask.render(row, stats, out);
+            }
+            out.extend_from_slice(newline);
+            return;
+        };
+        if wanted.is_none() && row.positional && row.names.len() > fields.len() {
+            stats.late_columns = stats
+                .late_columns
+                .max((row.names.len() - fields.len()) as u64);
+        }
+        let escape = format.escape();
+        let mut value = |name: &str, out: &mut Vec<u8>| {
+            let cell = row.value(name);
+            stats.look_at(&cell, escape);
+            escape_into(&cell, escape, out);
+        };
+        match format {
+            Format::Json | Format::JsonLines => {
+                if *format == Format::Json {
+                    out.extend_from_slice(if first { b"  " } else { b",\n  " });
+                }
+                out.push(b'{');
+                for (i, field) in fields.iter().enumerate() {
+                    if i > 0 {
+                        out.extend_from_slice(b", ");
+                    }
+                    let key = serde_json::Value::from(key_of(field)).to_string();
+                    out.extend_from_slice(key.as_bytes());
+                    out.extend_from_slice(b": ");
+                    value(field, out);
+                }
+                out.push(b'}');
+                if *format == Format::JsonLines {
+                    out.push(b'\n');
+                }
+            }
+            Format::Csv | Format::Tsv => {
+                let separator = if *format == Format::Tsv { b'\t' } else { b',' };
+                for (i, field) in fields.iter().enumerate() {
+                    if i > 0 {
+                        out.push(separator);
+                    }
+                    value(field, out);
+                }
+                out.push(b'\n');
+            }
+            Format::Xml => {
+                out.extend_from_slice(b"  <record>\n");
+                for field in fields {
+                    out.extend_from_slice(b"    <field name=\"");
+                    escape_into(&Cell::Text(key_of(field).into()), Escape::Xml, out);
+                    out.extend_from_slice(b"\">");
+                    value(field, out);
+                    out.extend_from_slice(b"</field>\n");
+                }
+                out.extend_from_slice(b"  </record>\n");
+            }
+            Format::Html => {
+                out.extend_from_slice(b"<tr>");
+                for field in fields {
+                    out.extend_from_slice(b"<td>");
+                    value(field, out);
+                    out.extend_from_slice(b"</td>");
+                }
+                out.extend_from_slice(b"</tr>\n");
+            }
+        }
     }
 }
 
@@ -369,6 +645,32 @@ struct Row<'a> {
 }
 
 impl Row<'_> {
+    /// All the fields of a record, for a format that writes it whole. A group
+    /// with a name goes by the name; 0 repeats what the line already has.
+    fn all_fields(&self) -> Vec<String> {
+        if self.line.is_none() {
+            return self.names.to_vec();
+        }
+        let mut fields = vec!["#line".to_string(), "line".to_string()];
+        for name in self.names.iter().skip(1) {
+            if name == "0" {
+                continue;
+            }
+            // The number comes right before the name of the same group.
+            let named = name.parse::<usize>().is_ok()
+                && self
+                    .names
+                    .iter()
+                    .position(|n| n == name)
+                    .and_then(|i| self.names.get(i + 1))
+                    .is_some_and(|next| next.parse::<usize>().is_err());
+            if !named {
+                fields.push(name.clone());
+            }
+        }
+        fields
+    }
+
     fn index(&self, name: &str) -> Option<usize> {
         if let Some(i) = self.names.iter().position(|n| n.eq_ignore_ascii_case(name)) {
             return Some(i);
@@ -420,6 +722,8 @@ pub enum Source {
         kept: Option<Vec<usize>>,
         /// The filter's regular expression, for its groups.
         regex: Option<Regex>,
+        /// The viewer did not read all of the file.
+        cut: bool,
     },
 }
 
@@ -546,6 +850,7 @@ impl Source {
                 total,
                 kept,
                 regex,
+                ..
             } => {
                 let names = Self::text_names(regex.as_ref());
                 // Split as the viewer splits, so that a line's number is the same.
@@ -594,6 +899,11 @@ impl Source {
         }
     }
 
+    /// Part of the file will not be written.
+    fn cut(&self) -> bool {
+        matches!(self, Source::Text { cut: true, .. })
+    }
+
     fn unpacked(&self) -> u64 {
         match self {
             Source::Table { unpacked, .. } => *unpacked,
@@ -611,7 +921,11 @@ pub struct Preview {
     pub scanned: u64,
     /// Those are all of them.
     pub complete: bool,
+    /// The viewer read only part of the file, so the rest will not be written.
+    pub cut: bool,
     pub stats: Stats,
+    /// What to write, with its fields known.
+    pub output: Output,
 }
 
 /// A line of output, safe for the screen: it may hold anything.
@@ -619,37 +933,64 @@ fn shown(line: &[u8]) -> String {
     TableGrid::sanitize_cell(&String::from_utf8_lossy(line))
 }
 
-/// Reads the start of `source` through `mask`. A field that no record among
+/// Reads the start of `source` through `output`. A field that no record among
 /// those read has is an error here, so that it never comes out empty.
-pub fn preview(source: &Source, mask: &Mask) -> Result<Preview, String> {
-    let budget = Budget::new(SCAN_TIME, source.unpacked());
-    let mut lines = Vec::new();
+pub fn preview(source: &Source, output: impl Into<Output>) -> Result<Preview, String> {
+    let mut output = output.into();
+    // A first look finds the fields, since JSON Lines finds them as it goes.
     let mut scanned = 0;
-    let mut stats = Stats::default();
-    let mut unknown: Option<String> = None;
-    let mut line = Vec::new();
-    let end = source.run(budget, &mut |row| {
+    let mut unknown = None;
+    let mut fields = Vec::new();
+    let end = source.run(Budget::new(SCAN_TIME, source.unpacked()), &mut |row| {
         if scanned >= SCAN_RECORDS {
             return ControlFlow::Break(());
         }
         scanned += 1;
-        // The last answer counts: JSON Lines finds columns as it goes.
-        unknown = mask.unknown(row).map(str::to_string);
-        line.clear();
-        mask.render(row, &mut stats, &mut line);
-        if lines.len() < PREVIEW_LINES {
-            lines.push(shown(&line));
-        }
+        // The last answer counts, for the same reason.
+        unknown = output.unknown(row);
+        fields = row.all_fields();
         ControlFlow::Continue(())
     })?;
     if let Some(name) = unknown {
         return Err(format!("Mask: no field named {name}"));
     }
+    output.settle(fields);
+
+    // Then what those records become.
+    let mut stats = Stats::default();
+    let mut text = Vec::new();
+    let mut count = 0;
+    output.begin(&mut text);
+    source.run(Budget::new(SCAN_TIME, source.unpacked()), &mut |row| {
+        if count >= scanned {
+            return ControlFlow::Break(());
+        }
+        let first = count == 0;
+        count += 1;
+        // Only what the screen can show is kept; the rest is only looked at.
+        let shown_enough = text.iter().filter(|&&b| b == b'\n').count() > PREVIEW_LINES;
+        let mut line = Vec::new();
+        output.render(row, first, b"\n", &mut stats, &mut line);
+        if !shown_enough {
+            text.extend_from_slice(&line);
+        }
+        ControlFlow::Continue(())
+    })?;
+    let mut lines: Vec<String> = text
+        .split(|&b| b == b'\n')
+        .map(shown)
+        .take(PREVIEW_LINES)
+        .collect();
+    if lines.last().is_some_and(String::is_empty) {
+        lines.pop();
+    }
     Ok(Preview {
         lines,
         scanned,
         complete: end == End::Complete,
+        cut: source.cut(),
         stats,
+        output,
     })
 }
 
@@ -659,6 +1000,8 @@ pub struct Done {
     pub records: u64,
     pub stats: Stats,
     pub cancelled: bool,
+    /// The viewer read only part of the file, so the rest was not written.
+    pub cut: bool,
 }
 
 /// A Batch being written, in a thread of its own: a read can take long, and Esc
@@ -671,14 +1014,15 @@ pub struct Job {
 }
 
 impl Job {
-    pub fn start(source: Source, mask: Mask, file: PathBuf) -> Self {
+    pub fn start(source: Source, output: impl Into<Output>, file: PathBuf) -> Self {
+        let output = output.into();
         let cancel = Arc::new(AtomicBool::new(false));
         let written = Arc::new(AtomicU64::new(0));
         let handle = {
             let (cancel, written, file) = (cancel.clone(), written.clone(), file.clone());
             thread::spawn(move || {
                 let result = crate::panic_guard::catch(|| {
-                    write_file(&source, &mask, &file, cancel, &written)
+                    write_file(&source, &output, &file, cancel, &written)
                 })
                 .unwrap_or_else(|| Err("the file could not be read".into()));
                 // Nothing incomplete stays behind, unless it was never ours.
@@ -731,7 +1075,7 @@ const NOT_CREATED: &str = "Cannot create ";
 
 fn write_file(
     source: &Source,
-    mask: &Mask,
+    output: &Output,
     file: &Path,
     cancel: Arc<AtomicBool>,
     written: &AtomicU64,
@@ -750,16 +1094,18 @@ fn write_file(
     if extension(file) == "sh" {
         out.write_all(b"#!/bin/sh\n").map_err(|e| e.to_string())?;
     }
+    let mut line = Vec::new();
+    output.begin(&mut line);
+    out.write_all(&line)
+        .map_err(|e| format!("Cannot write {}: {e}", file.display()))?;
 
     let budget = Budget::cancellable(source.unpacked(), cancel);
     let mut stats = Stats::default();
     let mut records = 0;
-    let mut line = Vec::new();
     let mut failure = None;
     let end = source.run(budget, &mut |row| {
         line.clear();
-        mask.render(row, &mut stats, &mut line);
-        line.extend_from_slice(newline);
+        output.render(row, records == 0, newline, &mut stats, &mut line);
         if let Err(e) = out.write_all(&line) {
             failure = Some(e);
             return ControlFlow::Break(());
@@ -771,12 +1117,17 @@ fn write_file(
     if let Some(e) = failure {
         return Err(format!("Cannot write {}: {e}", file.display()));
     }
+    line.clear();
+    output.end(&mut line);
+    out.write_all(&line)
+        .map_err(|e| format!("Cannot write {}: {e}", file.display()))?;
     let flushed: Result<File, _> = out.into_inner();
     flushed.map_err(|e| format!("Cannot write {}: {e}", file.display()))?;
     Ok(Done {
         records,
         stats,
         cancelled: end == End::OutOfTime,
+        cut: source.cut(),
     })
 }
 
@@ -936,8 +1287,8 @@ mod tests {
         tmp
     }
 
-    fn run_to_file(source: Source, mask: Mask, out: &Path) -> Done {
-        let job = Job::start(source, mask, out.to_path_buf());
+    fn run_to_file(source: Source, output: impl Into<Output>, out: &Path) -> Done {
+        let job = Job::start(source, output, out.to_path_buf());
         while !job.is_done() {
             thread::sleep(Duration::from_millis(2));
         }
@@ -990,7 +1341,7 @@ mod tests {
     fn columns_answer_to_name_letter_and_position() {
         let tmp = csv_rows(1);
         let source = table_source(&tmp.path().join("in.csv"), None);
-        let p = preview(&source, &mask("%{NAME} %{b} %{2}", Escape::Line)).unwrap();
+        let p = preview(&source, mask("%{NAME} %{b} %{2}", Escape::Line)).unwrap();
         assert_eq!(p.lines, ["n1 n1 n1"]);
         assert_eq!(p.scanned, 1);
         assert!(p.complete);
@@ -1000,7 +1351,7 @@ mod tests {
     fn a_field_that_does_not_exist_is_an_error_not_an_empty_value() {
         let tmp = csv_rows(1);
         let source = table_source(&tmp.path().join("in.csv"), None);
-        let error = preview(&source, &mask("%{nope}", Escape::Line)).unwrap_err();
+        let error = preview(&source, mask("%{nope}", Escape::Line)).unwrap_err();
         assert_eq!(error, "Mask: no field named nope");
     }
 
@@ -1009,7 +1360,7 @@ mod tests {
         let tmp = crate::testing::tempdir();
         let path = tmp.path().join("in.jsonl");
         fs::write(&path, "{\"a\": 1}\n{\"a\": 2, \"b\": 3}\n").unwrap();
-        let p = preview(&table_source(&path, None), &mask("%{a}-%{b}", Escape::Line)).unwrap();
+        let p = preview(&table_source(&path, None), mask("%{a}-%{b}", Escape::Line)).unwrap();
         assert_eq!(p.lines, ["1-", "2-3"]);
     }
 
@@ -1017,7 +1368,7 @@ mod tests {
     fn the_preview_stops_at_its_limits_and_shows_safe_lines() {
         let tmp = csv_rows(5_000);
         let source = table_source(&tmp.path().join("in.csv"), None);
-        let p = preview(&source, &mask("%{id}", Escape::Line)).unwrap();
+        let p = preview(&source, mask("%{id}", Escape::Line)).unwrap();
         assert_eq!(p.lines.len(), PREVIEW_LINES);
         assert_eq!(p.scanned, SCAN_RECORDS);
         assert!(!p.complete);
@@ -1027,7 +1378,7 @@ mod tests {
         fs::write(&path, "v,w\n\"a\u{1b}[31m\u{202E}\",=1\n").unwrap();
         let p = preview(
             &table_source(&path, None),
-            &mask("%{v:raw},%{w:csv}", Escape::Line),
+            mask("%{v:raw},%{w:csv}", Escape::Line),
         )
         .unwrap();
         assert_eq!(p.lines, ["a·[31m·,=1"]);
@@ -1035,7 +1386,8 @@ mod tests {
             p.stats,
             Stats {
                 suspicious: 1,
-                formulas: 1
+                formulas: 1,
+                late_columns: 0,
             }
         );
         assert!(p.stats.warning().unwrap().contains(":csvsafe"));
@@ -1048,13 +1400,14 @@ mod tests {
             total: body.split('\n').count(),
             kept,
             regex: regex.map(|r| Regex::new(r).unwrap()),
+            cut: false,
         }
     }
 
     #[test]
     fn text_gives_the_original_line_its_number_and_the_sequence() {
         let source = text_source("a\tb\r\nskip\nc\u{1b}\n", Some(vec![0, 2]), None);
-        let p = preview(&source, &mask("%{#}/%{#line}:%{line:raw}", Escape::Line)).unwrap();
+        let p = preview(&source, mask("%{#}/%{#line}:%{line:raw}", Escape::Line)).unwrap();
         assert_eq!(p.lines, ["1/1:a·b", "2/3:c·"]);
     }
 
@@ -1066,7 +1419,7 @@ mod tests {
             Some(r"^(?P<ip>\S+) (\S+) (?P<status>\d+)$"),
         );
         let m = mask("%{ip} %{2} %{status} %{0}", Escape::Line);
-        let p = preview(&source, &m).unwrap();
+        let p = preview(&source, m.clone()).unwrap();
         assert_eq!(
             p.lines,
             [
@@ -1079,15 +1432,15 @@ mod tests {
     #[test]
     fn a_line_with_no_match_has_empty_groups() {
         let source = text_source("x\n", None, Some(r"(?P<n>\d+)"));
-        let p = preview(&source, &mask("[%{n}]", Escape::Line)).unwrap();
+        let p = preview(&source, mask("[%{n}]", Escape::Line)).unwrap();
         assert_eq!(p.lines, ["[]"]);
     }
 
     #[test]
     fn text_has_no_columns_by_position() {
         let source = text_source("x\n", None, None);
-        assert!(preview(&source, &mask("%{1}", Escape::Line)).is_err());
-        assert!(preview(&source, &mask("%{A}", Escape::Line)).is_err());
+        assert!(preview(&source, mask("%{1}", Escape::Line)).is_err());
+        assert!(preview(&source, mask("%{A}", Escape::Line)).is_err());
     }
 
     #[test]
@@ -1152,6 +1505,178 @@ mod tests {
         }
         assert!(job.finish().is_err());
         assert!(!out.exists());
+    }
+
+    fn output(text: &str, out: &str) -> Output {
+        Output::parse(text, Path::new(out), Path::new("/d/in.csv"), 1).unwrap()
+    }
+
+    fn write_records(body: &str, out_name: &str, text: &str) -> String {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("in.csv");
+        fs::write(&path, body).unwrap();
+        let out = tmp.path().join(out_name);
+        let source = table_source(&path, None);
+        let found = preview(&source, output(text, out_name)).unwrap();
+        run_to_file(source, found.output, &out);
+        fs::read_to_string(&out).unwrap()
+    }
+
+    const PEOPLE: &str = "id,name\n1,\"a<b, \"\"c\"\"\"\n007,\n";
+
+    #[test]
+    fn an_empty_mask_means_whole_records_only_where_a_format_holds_them() {
+        assert!(matches!(output("", "x.json"), Output::Records { .. }));
+        assert!(matches!(output("  ", "x.HTML"), Output::Records { .. }));
+        assert!(matches!(output("%{a}", "x.json"), Output::Lines(_)));
+        let error = Output::parse("", Path::new("x.txt"), Path::new("a"), 0).unwrap_err();
+        assert!(error.contains("empty"), "{error}");
+        assert!(matches!(output("@a", "x.txt"), Output::Lines(_)));
+        assert!(Output::parse("@ , ", Path::new("x.csv"), Path::new("a"), 0).is_err());
+    }
+
+    #[test]
+    fn json_is_one_valid_array_with_nothing_lost() {
+        let text = write_records(PEOPLE, "out.json", "");
+        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!([
+                {"id": "1", "name": "a<b, \"c\""},
+                {"id": "007", "name": ""},
+            ])
+        );
+    }
+
+    #[test]
+    fn an_empty_json_array_is_still_valid() {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("in.csv");
+        fs::write(&path, "id,name\n1,a\n").unwrap();
+        let out = tmp.path().join("out.json");
+        let source = table_source(&path, Some("id > 5"));
+        let wanted = Output::Records {
+            format: Format::Json,
+            wanted: None,
+            fields: vec!["id".into()],
+            title: String::new(),
+        };
+        run_to_file(source, wanted, &out);
+        let value: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&out).unwrap()).unwrap();
+        assert_eq!(value, serde_json::json!([]));
+    }
+
+    #[test]
+    fn json_lines_give_an_object_per_line() {
+        let text = write_records(PEOPLE, "out.jsonl", "@name");
+        let lines: Vec<serde_json::Value> = text
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        assert_eq!(lines[1], serde_json::json!({"name": ""}));
+        assert_eq!(lines.len(), 2);
+    }
+
+    #[test]
+    fn csv_reads_back_the_same_table() {
+        let text = write_records(PEOPLE, "out.csv", "");
+        let mut reader = csv::Reader::from_reader(text.as_bytes());
+        assert_eq!(reader.headers().unwrap(), vec!["id", "name"]);
+        let rows: Vec<_> = reader.records().map(Result::unwrap).collect();
+        assert_eq!(&rows[0], vec!["1", "a<b, \"c\""]);
+        assert_eq!(&rows[1], vec!["007", ""]);
+    }
+
+    #[test]
+    fn tsv_separates_with_tabs() {
+        let text = write_records("a,b\n1,2\n", "out.tsv", "");
+        assert_eq!(text, "a\tb\n1\t2\n");
+    }
+
+    #[test]
+    fn xml_and_html_escape_values_names_and_title() {
+        let body = "<evil>,b\n</td><script>,&\n";
+        let xml = write_records(body, "out.xml", "");
+        assert!(xml.starts_with("<?xml"));
+        assert!(xml.contains("<field name=\"&lt;evil&gt;\">&lt;/td&gt;&lt;script&gt;</field>"));
+        assert!(xml.contains("<field name=\"b\">&amp;</field>"));
+        assert!(xml.ends_with("</records>\n"));
+
+        let html = write_records(body, "out.html", "");
+        assert!(html.contains("<th>&lt;evil&gt;</th>"));
+        assert!(html.contains("<td>&lt;/td&gt;&lt;script&gt;</td>"));
+        assert!(!html.contains("<script>"));
+        assert!(html.ends_with("</html>\n"));
+    }
+
+    #[test]
+    fn columns_can_be_chosen_by_name_letter_or_number() {
+        let text = write_records("a,b\n1,2\n", "out.csv", "@b, A, #");
+        assert_eq!(text, "b,A,#\n2,1,1\n");
+    }
+
+    #[test]
+    fn a_wrong_column_is_an_error() {
+        let tmp = csv_rows(1);
+        let source = table_source(&tmp.path().join("in.csv"), None);
+        let error = preview(&source, output("@nope", "x.csv")).unwrap_err();
+        assert_eq!(error, "Mask: no field named nope");
+    }
+
+    #[test]
+    fn whole_records_of_text_have_the_number_the_line_and_the_groups() {
+        let source = text_source(
+            "ip 1.2 get\nskip\n",
+            Some(vec![0]),
+            Some(r"ip (?P<addr>\S+) (\w+)"),
+        );
+        let found = preview(&source, output("", "x.jsonl")).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&found.lines[0]).unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "line_number": 1, "line": "ip 1.2 get", "addr": "1.2", "2": "get"
+            })
+        );
+    }
+
+    #[test]
+    fn a_column_found_after_the_preview_is_told_not_silently_lost() {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("in.jsonl");
+        let mut body = String::new();
+        for i in 0..SCAN_RECORDS + 5 {
+            body.push_str(&format!("{{\"a\": {i}}}\n"));
+        }
+        body.push_str("{\"a\": 1, \"late\": 2}\n");
+        fs::write(&path, body).unwrap();
+        let out = tmp.path().join("out.jsonl");
+        let source = table_source(&path, None);
+        let found = preview(&source, output("", "out.jsonl")).unwrap();
+        let done = run_to_file(source, found.output, &out);
+        assert_eq!(done.stats.late_columns, 1);
+        assert!(done.stats.warning().unwrap().contains("left out"));
+    }
+
+    #[test]
+    fn the_preview_and_the_end_say_when_text_was_cut() {
+        let source = Source::Text {
+            text: "a\nb\n".into(),
+            total: 1,
+            kept: None,
+            regex: None,
+            cut: true,
+        };
+        let found = preview(&source, mask("%{line}", Escape::Line)).unwrap();
+        assert!(found.cut);
+        assert_eq!(found.lines, ["a"]);
+        let tmp = crate::testing::tempdir();
+        let done = run_to_file(source, found.output, &tmp.path().join("o.txt"));
+        assert!(done.cut);
+        let tmp = csv_rows(1);
+        let source = table_source(&tmp.path().join("in.csv"), None);
+        assert!(!preview(&source, mask("%{id}", Escape::Line)).unwrap().cut);
     }
 
     proptest! {

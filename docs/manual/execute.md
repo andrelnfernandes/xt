@@ -103,7 +103,7 @@ and execute permission (run it with `X`). An existing file is not overwritten.
 
 ## Batch in the viewer
 
-With a table or text open in the [viewer](viewer.md), **Ctrl+B** writes one line per record, from the whole file: past the 50,000 rows of the screen, with values whole and exactly as in the file. It respects the filter in use (the SQL filter on a table, the [line filter](filter.md) on text). A table is read again when it runs; text comes as the viewer read it, up to the size limit. It asks for the file, then the mask, and shows the first lines before writing: **Enter** writes, **Esc** gives up. While writing, Esc cancels and removes the incomplete file. An existing file is not overwritten.
+With a table or text open in the [viewer](viewer.md), **Ctrl+B** writes one line per record, from the whole file: past the 50,000 rows of the screen, with values whole and exactly as in the file. It respects the filter in use (the SQL filter on a table, the [line filter](filter.md) on text). A table is read again when it runs; text comes as the viewer read it, up to the size limit, and the preview warns when that is not all of the file. It asks for the file, then the mask, and shows the first lines before writing: **Enter** writes, **Esc** gives up. While writing, Esc cancels and removes the incomplete file. An existing file is not overwritten.
 
 | Field | Value |
 |---|---|
@@ -135,6 +135,10 @@ The values come from a file that may be hostile and may go into something you ru
 - A filter on a table applies to all the file, with the rules of the screen: `code = 7` also finds a cell with `007`, which comes out as `007`. So the file can have rows the screen, limited to 50,000, does not show.
 - A `.sh` starts with `#!/bin/sh` but **is not made executable**: read it before running it. `.bat` and `.cmd` are refused, because `cmd` expands `%VAR%` even inside quotes.
 - The preview and the final message warn about values with control or text direction characters, and in a CSV about values that start like a formula. The preview counts only what it looked at.
+
+### Whole records
+
+In a `.json`, `.jsonl`, `.ndjson`, `.csv`, `.tsv`, `.xml`, `.html` or `.htm` file, leave the mask **empty** to write whole records, with the rules of the format: a JSON array of objects, an object per line, a table with a header row, a `<record>` per record, or a page with a table. To write only some fields, start the mask with `@`: `@id, name, #`. Text gives `line_number`, `line` and the groups of the filter. Fields are found in the first 1,000 records: a JSON Lines key that appears only later is left out, and the final message says so.
 
 ## History
 

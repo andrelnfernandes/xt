@@ -108,7 +108,7 @@ não é sobrescrito.
 
 ## Batch no visualizador
 
-Com uma tabela ou um texto aberto no [visualizador](viewer.md), **Ctrl+B** escreve uma linha por registro, a partir do arquivo inteiro: além das 50.000 linhas da tela, com os valores inteiros e exatamente como estão no arquivo. Ele respeita o filtro em uso (o filtro SQL na tabela, o [filtro de linhas](filter.md) no texto). A tabela é relida na hora; o texto sai como o visualizador leu, até o limite de tamanho. Ele pede o arquivo, depois a máscara, e mostra as primeiras linhas antes de gravar: **Enter** grava, **Esc** desiste. Durante a gravação, Esc cancela e remove o arquivo incompleto. Um arquivo existente não é sobrescrito.
+Com uma tabela ou um texto aberto no [visualizador](viewer.md), **Ctrl+B** escreve uma linha por registro, a partir do arquivo inteiro: além das 50.000 linhas da tela, com os valores inteiros e exatamente como estão no arquivo. Ele respeita o filtro em uso (o filtro SQL na tabela, o [filtro de linhas](filter.md) no texto). A tabela é relida na hora; o texto sai como o visualizador leu, até o limite de tamanho, e a prévia avisa quando isso não é o arquivo inteiro. Ele pede o arquivo, depois a máscara, e mostra as primeiras linhas antes de gravar: **Enter** grava, **Esc** desiste. Durante a gravação, Esc cancela e remove o arquivo incompleto. Um arquivo existente não é sobrescrito.
 
 | Campo | Valor |
 |---|---|
@@ -140,6 +140,10 @@ Os valores vêm de um arquivo que pode ser hostil e podem ir para algo que você
 - O filtro de uma tabela vale para o arquivo todo, com as regras da tela: `code = 7` também acha uma célula com `007`, que sai como `007`. Por isso o arquivo pode ter linhas que a tela, limitada a 50.000, não mostra.
 - Um `.sh` começa com `#!/bin/sh`, mas **não recebe permissão de execução**: leia antes de rodar. `.bat` e `.cmd` são recusados, porque o `cmd` expande `%VAR%` até entre aspas.
 - A prévia e a mensagem final avisam sobre valores com caracteres de controle ou de direção do texto e, em um CSV, sobre valores que começam como fórmula. A prévia conta só o que olhou.
+
+### Registros inteiros
+
+Em um arquivo `.json`, `.jsonl`, `.ndjson`, `.csv`, `.tsv`, `.xml`, `.html` ou `.htm`, deixe a máscara **vazia** para gravar registros inteiros, com as regras do formato: um array JSON de objetos, um objeto por linha, uma tabela com linha de cabeçalho, um `<record>` por registro ou uma página com uma tabela. Para gravar só alguns campos, comece a máscara com `@`: `@id, nome, #`. O texto dá `line_number`, `line` e os grupos do filtro. Os campos são descobertos nos primeiros 1.000 registros: uma chave de JSON Lines que só apareça depois fica de fora, e a mensagem final avisa.
 
 ## Histórico
 
