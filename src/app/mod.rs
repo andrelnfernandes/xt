@@ -239,6 +239,14 @@ impl DerefMut for App {
     }
 }
 
+/// How long a log runs before the screen comes back to show its progress. The
+/// keys wait while it runs, so a test on a busy machine must not lose them: its
+/// small trees get all the time they need.
+#[cfg(not(test))]
+const JOB_FIRST_STEP: Duration = Duration::from_millis(30);
+#[cfg(test)]
+const JOB_FIRST_STEP: Duration = Duration::from_secs(60);
+
 impl App {
     pub fn new(root: PathBuf) -> Self {
         App {
@@ -488,7 +496,7 @@ impl App {
             then,
         });
         // Small branches finish immediately, without flashing the progress message.
-        self.tick(Duration::from_millis(30));
+        self.tick(JOB_FIRST_STEP);
     }
 
     pub(crate) fn start_op(&mut self, op: Operation) {
