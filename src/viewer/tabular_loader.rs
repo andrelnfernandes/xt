@@ -8,6 +8,8 @@ use std::io::{BufRead, BufReader, Read, Seek};
 use std::path::Path;
 
 use calamine::{Reader, open_workbook_auto};
+use parquet::arrow::ProjectionMask;
+use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use serde_json::Value as JsonValue;
 
 use super::table::{TableGrid, TableRow};
@@ -54,6 +56,7 @@ pub fn is_tabular_candidate(path: &Path) -> bool {
             | "sqlite"
             | "sqlite3"
             | "db"
+            | "parquet"
     )
 }
 
@@ -533,6 +536,112 @@ pub fn load_sqlite(path: &Path, table_or_query: Option<&str>) -> Result<TableGri
     Ok(grid)
 }
 
+/// Loads an Apache Parquet file (.parquet) into an interactive TableGrid.
+///
+/// Limits reading to `MAX_TABLE_ROWS` (50,000) and `MAX_TABLE_COLS` (256)
+/// to prevent memory exhaustion and DoS.
+pub fn load_parquet(path: &Path) -> Result<TableGrid, String> {
+    let mut file = File::open(path).map_err(|e| format!("Failed to open Parquet file: {e}"))?;
+
+    // Validate size and magic markers (PAR1 at start and end)
+    let file_len = file.metadata().map_err(|e| e.to_string())?.len();
+    if file_len < 12 {
+        return Err("File too small to be a valid Parquet file (min 12 bytes)".to_string());
+    }
+
+    let mut magic = [0u8; 4];
+    file.read_exact(&mut magic)
+        .map_err(|e| format!("Failed to read Parquet magic header: {e}"))?;
+    if &magic != b"PAR1" {
+        return Err("Invalid Parquet file: missing PAR1 magic header".to_string());
+    }
+
+    // Validate footer PAR1 marker
+    file.seek(std::io::SeekFrom::End(-4))
+        .map_err(|e| format!("Seek to footer failed: {e}"))?;
+    file.read_exact(&mut magic)
+        .map_err(|e| format!("Failed to read Parquet magic footer: {e}"))?;
+    if &magic != b"PAR1" {
+        return Err("Invalid Parquet file: missing PAR1 magic footer".to_string());
+    }
+
+    // Rewind back to beginning for Parquet reader
+    file.seek(std::io::SeekFrom::Start(0))
+        .map_err(|e| format!("Seek failed: {e}"))?;
+
+    let builder = ParquetRecordBatchReaderBuilder::try_new(file)
+        .map_err(|e| format!("Failed to parse Parquet metadata: {e}"))?;
+
+    let schema = builder.schema().clone();
+    let total_fields = schema.fields().len();
+    if total_fields == 0 {
+        return Ok(TableGrid::new(
+            path.display().to_string(),
+            Vec::new(),
+            Vec::new(),
+        ));
+    }
+
+    let col_count = total_fields.min(MAX_TABLE_COLS);
+
+    let headers: Vec<String> = schema.fields()[..col_count]
+        .iter()
+        .map(|f| TableGrid::sanitize_cell(f.name()))
+        .collect();
+
+    // Use ProjectionMask so columns beyond MAX_TABLE_COLS are never decoded from disk (DoS protection)
+    let mask = ProjectionMask::roots(builder.parquet_schema(), 0..col_count);
+    let reader = builder
+        .with_projection(mask)
+        .with_limit(MAX_TABLE_ROWS)
+        .with_batch_size(1024)
+        .build()
+        .map_err(|e| format!("Failed to create Parquet batch reader: {e}"))?;
+
+    let mut rows = Vec::new();
+    let mut truncated = false;
+
+    for batch_res in reader {
+        let batch = batch_res.map_err(|e| format!("Error decoding Parquet batch: {e}"))?;
+        let num_rows = batch.num_rows();
+        let columns = batch.columns();
+
+        for r in 0..num_rows {
+            if rows.len() >= MAX_TABLE_ROWS {
+                truncated = true;
+                break;
+            }
+            let mut cells = Vec::with_capacity(col_count);
+            for col in columns.iter().take(col_count) {
+                let cell_str = if col.is_null(r) {
+                    String::new()
+                } else {
+                    arrow_cast::display::array_value_to_string(col.as_ref(), r)
+                        .unwrap_or_else(|_| "<err>".to_string())
+                };
+                cells.push(TableGrid::sanitize_cell(&cell_str));
+            }
+            rows.push(TableRow { cells });
+        }
+
+        if truncated {
+            break;
+        }
+    }
+
+    let is_truncated = truncated || total_fields > MAX_TABLE_COLS;
+    let sheet_name = if is_truncated {
+        "Parquet (Truncated)".to_string()
+    } else {
+        "Parquet".to_string()
+    };
+
+    let mut grid = TableGrid::new(path.display().to_string(), headers, rows);
+    grid.sheets = vec![sheet_name];
+    grid.current_sheet = 0;
+    Ok(grid)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -637,5 +746,110 @@ mod tests {
         assert_eq!(grid_query.headers, vec!["name", "balance"]);
         assert_eq!(grid_query.rows.len(), 1);
         assert_eq!(grid_query.rows[0].cells, vec!["Bob", "250"]);
+    }
+
+    #[test]
+    fn test_load_parquet_basic_and_sanitization() {
+        use arrow_array::{Int32Array, RecordBatch, StringArray};
+        use arrow_schema::{DataType, Field, Schema};
+        use parquet::arrow::arrow_writer::ArrowWriter;
+        use std::sync::Arc;
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Int32, false),
+            Field::new("label", DataType::Utf8, true),
+        ]));
+
+        let ids = Arc::new(Int32Array::from(vec![10, 20, 30]));
+        // Test normal string, null, and ANSI escape + bidi Trojan Source
+        let labels = Arc::new(StringArray::from(vec![
+            Some("Valid"),
+            None,
+            Some("Evil\x1b[31mColor\x1b[0m\u{202E}Bidi"),
+        ]));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![ids, labels]).unwrap();
+
+        let file = NamedTempFile::new().unwrap();
+        {
+            let mut writer = ArrowWriter::try_new(file.reopen().unwrap(), schema, None).unwrap();
+            writer.write(&batch).unwrap();
+            writer.close().unwrap();
+        }
+
+        let grid = load_parquet(file.path()).unwrap();
+        assert_eq!(grid.headers, vec!["id", "label"]);
+        assert_eq!(grid.sheets, vec!["Parquet"]);
+        assert_eq!(grid.rows.len(), 3);
+        assert_eq!(grid.rows[0].cells, vec!["10", "Valid"]);
+        assert_eq!(grid.rows[1].cells, vec!["20", ""]);
+        // Control chars (ESC) and bidi controls replaced with '·' to neutralize terminal injections
+        assert_eq!(grid.rows[2].cells, vec!["30", "Evil·[31mColor·[0m·Bidi"]);
+    }
+
+    #[test]
+    fn test_load_parquet_invalid_header_or_size() {
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(b"NOT_A_PARQUET_FILE_TOO_LONG").unwrap();
+        let res = load_parquet(file.path());
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("missing PAR1 magic header"));
+
+        let mut tiny_file = NamedTempFile::new().unwrap();
+        tiny_file.write_all(b"PAR").unwrap();
+        let tiny_res = load_parquet(tiny_file.path());
+        assert!(tiny_res.is_err());
+        assert!(tiny_res.unwrap_err().contains("too small"));
+
+        let mut no_footer = NamedTempFile::new().unwrap();
+        no_footer.write_all(b"PAR112345678NOT1").unwrap();
+        let no_footer_res = load_parquet(no_footer.path());
+        assert!(no_footer_res.is_err());
+        assert!(
+            no_footer_res
+                .unwrap_err()
+                .contains("missing PAR1 magic footer")
+        );
+    }
+
+    #[test]
+    fn test_load_parquet_sql_filtering() {
+        use arrow_array::{Int32Array, RecordBatch, StringArray};
+        use arrow_schema::{DataType, Field, Schema};
+        use parquet::arrow::arrow_writer::ArrowWriter;
+        use std::sync::Arc;
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("name", DataType::Utf8, false),
+            Field::new("score", DataType::Int32, false),
+        ]));
+
+        let names = Arc::new(StringArray::from(vec!["Alice", "Bob", "Charlie", "David"]));
+        let scores = Arc::new(Int32Array::from(vec![95, 45, 80, 60]));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![names, scores]).unwrap();
+
+        let file = NamedTempFile::new().unwrap();
+        {
+            let mut writer = ArrowWriter::try_new(file.reopen().unwrap(), schema, None).unwrap();
+            writer.write(&batch).unwrap();
+            writer.close().unwrap();
+        }
+
+        let mut grid = load_parquet(file.path()).unwrap();
+        assert_eq!(grid.rows.len(), 4);
+
+        // Filter score >= 80
+        let matches = grid.apply_filter(Some("score >= 80")).unwrap();
+        assert_eq!(matches, 2);
+        assert_eq!(grid.filtered_indices, vec![0, 2]);
+
+        // Filter name LIKE '%a%' (case-sensitive: Charlie, David)
+        let matches = grid.apply_filter(Some("name LIKE '%a%'")).unwrap();
+        assert_eq!(matches, 2);
+
+        // Filter name ILIKE '%a%' (case-insensitive: Alice, Charlie, David)
+        let matches_ilike = grid.apply_filter(Some("name ILIKE '%a%'")).unwrap();
+        assert_eq!(matches_ilike, 3);
     }
 }

@@ -36,6 +36,8 @@ portable-pty = "0.9.0"
 ratatui = "0.30.2"
 rusqlite = { version = "0.33", features = ["bundled"] }
 ruzstd = "0.9"
+parquet = { version = "60.1", default-features = false, features = ["arrow", "snap", "flate2-zlib-rs", "lz4_flex", "zstd"] }
+arrow-cast = { version = "60.1", default-features = false }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0"
 sevenz-rust2 = { version = "0.24", default-features = false, features = ["bzip2", "ppmd", "deflate"] }
@@ -69,6 +71,8 @@ windows-sys = { version = "0.61.2", features = [
 winresource = "0.1.34"
 
 [dev-dependencies]
+arrow-array = "60.1"
+arrow-schema = "60.1"
 # Encoders, only to build test archives (the program only reads xz and 7z).
 lzma-rust2 = { version = "0.23", default-features = false, features = ["std", "xz", "encoder"] }
 proptest = "1.12"

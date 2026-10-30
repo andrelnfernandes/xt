@@ -277,12 +277,19 @@ impl Viewer {
                 "xlsx" | "ods" | "xls" | "xlsb" => tabular_loader::load_spreadsheet(&path),
                 "dbf" => tabular_loader::load_dbf(&path),
                 "sqlite" | "sqlite3" | "db" => tabular_loader::load_sqlite(&path, None),
+                "parquet" => tabular_loader::load_parquet(&path),
                 _ => Err("Not supported".to_string()),
             };
 
-            if let Ok(grid) = grid_res {
-                v.table = Some(grid);
-                v.mode = ViewMode::Table;
+            match grid_res {
+                Ok(grid) => {
+                    v.table = Some(grid);
+                    v.mode = ViewMode::Table;
+                }
+                Err(e) if v.note.is_none() => {
+                    v.note = Some(format!("Table mode: {e}"));
+                }
+                _ => {}
             }
         }
         if failed {
