@@ -145,6 +145,7 @@ Die Werte stammen aus einer möglicherweise feindlichen Datei und können in etw
 
 - Ein Blob kommt hexadezimal, außer bei `:raw` und bei `:sql`, das eine eigene Form hat.
 - Für MySQL und MariaDB nehmen Sie `:mysql`, in einer als `utf8mb4` gelesenen Datei: Dort kann ein Backslash ein `:sql`-Literal schließen, und die Vorschau warnt vor solchen Werten. Mit `NO_BACKSLASH_ESCAPES` auf dem Server ist `:sql` richtig.
+- In SQL werden `%f %d %n %b %e %s` innerhalb einer Zeichenkette abgelehnt: `LIKE '%foo%'` enthielte den Pfad der geöffneten Datei. Schreiben Sie `%%` für ein `%`, wie in `LIKE '%%foo%%'`, oder ein Feld wie `%{#name}` für den Wert.
 - Der Filter einer Tabelle gilt für die ganze Datei, nach den Regeln des Bildschirms: `code = 7` findet auch eine Zelle mit `007`, die als `007` herauskommt. Die Datei kann also Zeilen enthalten, die der auf 50.000 begrenzte Bildschirm nicht zeigt.
 - Eine `.sh` beginnt mit `#!/bin/sh`, wird aber **nicht ausführbar gemacht**: Lesen Sie sie vor dem Ausführen. `.bat` und `.cmd` werden abgelehnt, weil `cmd` `%VAR%` auch in Anführungszeichen auflöst.
 - Vorschau und Abschlussmeldung warnen vor Werten mit Steuer- oder Textrichtungszeichen und in einer CSV vor Werten, die wie eine Formel beginnen. Die Vorschau zählt nur, was sie angesehen hat.
