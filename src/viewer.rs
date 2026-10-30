@@ -2,6 +2,7 @@
 //! hexadecimal mode, with search.
 
 pub mod line_filter;
+pub mod records;
 pub mod sql_filter;
 pub mod table;
 pub mod tabular_loader;
@@ -21,6 +22,7 @@ use crate::decompress::{
 use crate::highlight::Highlighter;
 use crate::search::Pattern;
 use line_filter::{LineFilterSpec, LineMatcher};
+use records::Budget;
 
 /// The default viewer limit, the floor of `auto` and the cap for remote
 /// files (16 MiB).
@@ -257,23 +259,33 @@ impl Viewer {
             .and_then(|s| s.to_str())
             .map(|s| s.to_ascii_lowercase())
             .unwrap_or_default();
+        let budget = self.table_budget();
         let grid = match ext.as_str() {
-            "csv" | "tsv" | "tab" => tabular_loader::load_csv(&path, None),
-            "jsonl" | "ndjson" => tabular_loader::load_jsonl(&path),
-            "xlsx" | "ods" | "xls" | "xlsb" => tabular_loader::load_spreadsheet(&path, 0),
-            "dbf" => tabular_loader::load_dbf(&path),
-            "sqlite" | "sqlite3" | "db" => tabular_loader::load_sqlite(&path, None),
-            "parquet" => tabular_loader::load_parquet(&path),
+            "csv" | "tsv" | "tab" => tabular_loader::load_csv(&path, None, budget),
+            "jsonl" | "ndjson" => tabular_loader::load_jsonl(&path, budget),
+            "xlsx" | "ods" | "xls" | "xlsb" => tabular_loader::load_spreadsheet(&path, 0, budget),
+            "dbf" => tabular_loader::load_dbf(&path, budget),
+            "sqlite" | "sqlite3" | "db" => tabular_loader::load_sqlite(&path, None, budget),
+            "parquet" => tabular_loader::load_parquet(&path, budget),
             _ => Err("Not supported".to_string()),
         };
         match grid {
             Ok(grid) => {
+                // Autoview's title has only the note to say it.
+                if self.note.is_none() {
+                    self.note = grid.cut.clone();
+                }
                 self.table = Some(grid);
                 self.mode = ViewMode::Table;
             }
             Err(e) if self.note.is_none() => self.note = Some(format!("Table mode: {e}")),
             Err(_) => {}
         }
+    }
+
+    /// A table follows the same limits as the rest of the viewer.
+    fn table_budget(&self) -> Budget {
+        Budget::new(self.load.limits.time, self.load.limits.output as u64)
     }
 
     /// `[` and `]`: another sheet of a spreadsheet or table of a database.
@@ -289,10 +301,11 @@ impl Viewer {
         } else {
             (t.current_sheet + count - 1) % count
         };
+        let budget = self.table_budget();
         let grid = if tabular_loader::uses_c_parser(&self.path) {
-            tabular_loader::load_sqlite(&self.path, Some(&t.sheets[target]))
+            tabular_loader::load_sqlite(&self.path, Some(&t.sheets[target]), budget)
         } else {
-            tabular_loader::load_spreadsheet(&self.path, target)
+            tabular_loader::load_spreadsheet(&self.path, target, budget)
         };
         match grid {
             Ok(grid) => self.table = Some(grid),
@@ -1814,6 +1827,41 @@ mod tests {
         assert_eq!(t.current_sheet, 0);
         assert_eq!(t.active_cell(), Some("one"));
         assert!(v.note.as_deref().unwrap().starts_with("Table mode: "));
+    }
+
+    #[test]
+    fn a_cut_table_is_told_in_the_note() {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("big.csv");
+        let mut body = String::from("n,w\n");
+        for i in 0..tabular_loader::MAX_TABLE_ROWS + 1 {
+            body.push_str(&format!("{i},x\n"));
+        }
+        std::fs::write(&path, body).unwrap();
+        let v = Viewer::open(path, LOAD).unwrap();
+        assert_eq!(v.note.as_deref(), Some("showing first 50,000 rows"));
+    }
+
+    #[test]
+    fn autoview_does_not_read_a_spreadsheet_over_its_limit() {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("big.xlsx");
+        {
+            use std::io::Write;
+            let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+            zip.start_file("xl/big.xml", zip::write::SimpleFileOptions::default())
+                .unwrap();
+            zip.write_all(&vec![b' '; 2 << 20]).unwrap();
+            zip.finish().unwrap();
+        }
+        let v = Viewer::open(path, LoadOptions::autoview()).unwrap();
+        assert!(v.table.is_none());
+        assert!(
+            v.note
+                .as_deref()
+                .unwrap()
+                .contains("over the limit of 1 MiB")
+        );
     }
 
     #[test]

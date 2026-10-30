@@ -141,7 +141,7 @@ Les mots-clés s'écrivent en majuscules ou en minuscules.
 
 ### Limites
 
-Un tableau contient au plus 50 000 lignes et 256 colonnes. Ce qui dépasse n'est pas lu : cela n'apparaît pas, le filtre ne le voit pas et rien à l'écran ne le signale. Une cellule affiche au plus 2 048 caractères, puis `…`. Les caractères de contrôle et de direction du texte s'affichent comme `·`.
+Un tableau contient au plus 50 000 lignes et 256 colonnes, et prend au plus ce que permettent les autres limites de la visionneuse : 3 s (100 ms dans Autoview), et un classeur qui se décompresse au-delà de la limite de taille (1 Mio dans Autoview) ne s'ouvre pas en tableau. Ce qui dépasse n'apparaît pas et le filtre ne le voit pas ; l'en-tête le signale : `(showing first 50,000 rows)` ou `(stopped by the time limit: showing N rows)`. Une cellule affiche au plus 2 048 caractères, puis `…`. Les caractères de contrôle et de direction du texte s'affichent comme `·`.
 
 ## Tableaux lus par des bibliothèques C
 

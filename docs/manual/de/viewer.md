@@ -140,7 +140,7 @@ Schlüsselwörter können groß oder klein geschrieben werden.
 
 ### Grenzen
 
-Eine Tabelle fasst höchstens 50.000 Zeilen und 256 Spalten. Was darüber hinausgeht, wird nicht gelesen: Es erscheint nicht, der Filter sieht es nicht, und nichts auf dem Bildschirm weist darauf hin. Eine Zelle zeigt höchstens 2.048 Zeichen und dann `…`. Steuerzeichen und Zeichen für die Schreibrichtung erscheinen als `·`.
+Eine Tabelle fasst höchstens 50.000 Zeilen und 256 Spalten und braucht höchstens, was die übrigen Grenzen des Betrachters erlauben: 3 s (100 ms in Autoview), und eine Tabellenkalkulation, die entpackt größer als das Größenlimit ist (1 MiB in Autoview), öffnet sich nicht als Tabelle. Was darüber hinausgeht, erscheint nicht, und der Filter sieht es nicht; die Kopfzeile weist darauf hin: `(showing first 50,000 rows)` oder `(stopped by the time limit: showing N rows)`. Eine Zelle zeigt höchstens 2.048 Zeichen und dann `…`. Steuerzeichen und Zeichen für die Schreibrichtung erscheinen als `·`.
 
 ## Tabellen in C-Bibliotheken
 

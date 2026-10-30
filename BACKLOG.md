@@ -37,10 +37,11 @@ rest).
    searched, as a huge file on disk does. The search could keep the open
    reader between steps.
 
-6. **The table loaders ignore the viewer's limits.** They open the file by its
-   path, so Autoview's 1 MiB and its time limit do not apply: passing the cursor
-   over a big spreadsheet or CSV can hold the screen up. The row and column
-   limits do apply. A SQLite query cannot be cancelled either.
+6. **What the table readers still cannot limit.** The time limit stops them
+   between records, and SQLite midway, but a spreadsheet's reader loads the whole
+   sheet first: its size is checked before that, by what the ZIP declares, so a
+   ZIP that lies about its sizes gets through. A Parquet page is decompressed
+   whole too. Esc cannot interrupt a table being read, only the time limit can.
 7. **SQLite and Parquet's zstd are C libraries: replace them with Rust as soon
    as a usable option appears.** The author's decision. They run only with V,
    never in Autoview, and that is meant to be temporary. What to watch:
