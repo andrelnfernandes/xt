@@ -117,6 +117,7 @@ Com uma tabela ou um texto aberto no [visualizador](viewer.md), **Ctrl+B** escre
 | `%{ip}` `%{1}` `%{0}` | um grupo da expressão regular do filtro de linhas, por nome ou número; 0 é tudo o que ela encontrou |
 | `%{#}` | o número do registro entre os escritos: 1, 2, 3... |
 | `%{#line}` | o número da linha no arquivo (só no texto) |
+| `%{#path}` `%{#dir}` `%{#name}` `%{#base}` `%{#ext}` `%{#size}` | o arquivo aberto, com escape como qualquer campo; `%N` e os outros acima não têm, então prefira estes em uma página ou um script |
 | `%f %d %n %b %e %s` | o arquivo aberto, como no Batch acima |
 | `%%` | um `%` |
 
@@ -131,12 +132,14 @@ Os valores vêm de um arquivo que pode ser hostil e podem ir para algo que você
 | `:json` | um valor JSON: número sem aspas, texto com aspas | `.json` `.jsonl` `.ndjson` |
 | `:xml` ou `:html` | texto ou atributo | `.xml` `.html` `.htm` `.xhtml` `.svg` |
 | `:sql` | um literal com aspas, `NULL`, `X'00ff'` | `.sql` |
+| `:mysql` | o mesmo para MySQL e MariaDB, onde a barra invertida também escapa | |
 | `:csv` | um campo, entre aspas quando precisa | `.csv` `.tsv` |
 | `:csvsafe` | o mesmo, com um `'` antes do que a planilha tomaria por fórmula | |
 | `:line` | o valor, com caracteres de controle como espaços, para nunca abrir uma linha nova | os demais |
 | `:raw` | o valor como está: **não use em um script** | |
 
 - Um blob sai em hexadecimal, menos em `:raw` e em `:sql`, que tem a sua forma.
+- Para MySQL e MariaDB, use `:mysql`, em um arquivo lido como `utf8mb4`: neles, uma barra invertida em um literal `:sql` pode fechá-lo, e a prévia avisa sobre esses valores. Com `NO_BACKSLASH_ESCAPES` no servidor, o certo é `:sql`.
 - O filtro de uma tabela vale para o arquivo todo, com as regras da tela: `code = 7` também acha uma célula com `007`, que sai como `007`. Por isso o arquivo pode ter linhas que a tela, limitada a 50.000, não mostra.
 - Um `.sh` começa com `#!/bin/sh`, mas **não recebe permissão de execução**: leia antes de rodar. `.bat` e `.cmd` são recusados, porque o `cmd` expande `%VAR%` até entre aspas.
 - A prévia e a mensagem final avisam sobre valores com caracteres de controle ou de direção do texto e, em um CSV, sobre valores que começam como fórmula. A prévia conta só o que olhou.
@@ -144,6 +147,23 @@ Os valores vêm de um arquivo que pode ser hostil e podem ir para algo que você
 ### Registros inteiros
 
 Em um arquivo `.json`, `.jsonl`, `.ndjson`, `.csv`, `.tsv`, `.xml`, `.html` ou `.htm`, deixe a máscara **vazia** para gravar registros inteiros, com as regras do formato: um array JSON de objetos, um objeto por linha, uma tabela com linha de cabeçalho, um `<record>` por registro ou uma página com uma tabela. Para gravar só alguns campos, comece a máscara com `@`: `@id, nome, #`. O texto dá `line_number`, `line` e os grupos do filtro. Os campos são descobertos nos primeiros 1.000 registros: uma chave de JSON Lines que só apareça depois fica de fora, e a mensagem final avisa.
+
+### Templates
+
+Para ter texto em volta dos registros, salve um template em `~/.config/xylem/batch/nome.tpl` e digite `:nome` como máscara; o prompt lista os que encontrar (os quatro primeiros).
+
+```
+%%# um comentário
+%%header
+<h1>%{#name}</h1>
+<ul>
+%%record
+<li><a href="https://x/?id=%{id:url}">%{name}</a></li>
+%%footer
+</ul>
+```
+
+`%%header` e `%%footer` são opcionais e aceitam só o texto do template e os campos do arquivo aberto. `%%record` é gravado uma vez por registro e pode ter várias linhas; sem seções, o arquivo inteiro é o registro. Os escapes seguem o arquivo de saída, como em uma máscara, então um template de página deve ser gravado em um `.html`. Uma seção que não existe, uma repetida ou um campo de registro no cabeçalho ou no rodapé é erro na prévia. A prévia mostra as últimas 3 linhas do cabeçalho. Sem registros, nada é gravado.
 
 ## Histórico
 

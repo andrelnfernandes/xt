@@ -122,6 +122,7 @@ Avec un tableau ou un texte ouvert dans la [visionneuse](viewer.md), **Ctrl+B** 
 | `%{ip}` `%{1}` `%{0}` | un groupe de l'expression régulière du filtre de lignes, par nom ou numéro ; 0 est tout ce qu'elle a trouvé |
 | `%{#}` | le numéro de l'enregistrement parmi ceux écrits : 1, 2, 3... |
 | `%{#line}` | le numéro de la ligne dans le fichier (texte seulement) |
+| `%{#path}` `%{#dir}` `%{#name}` `%{#base}` `%{#ext}` `%{#size}` | le fichier ouvert, avec un échappement comme tout champ ; `%N` et les autres ci-dessus n'en ont pas, préférez donc ceux-ci dans une page ou un script |
 | `%f %d %n %b %e %s` | le fichier ouvert, comme dans le Batch ci-dessus |
 | `%%` | un `%` |
 
@@ -136,12 +137,14 @@ Les valeurs viennent d'un fichier qui peut être hostile et peuvent aller dans c
 | `:json` | une valeur JSON : nombres nus, texte entre guillemets | `.json` `.jsonl` `.ndjson` |
 | `:xml` ou `:html` | texte ou attribut | `.xml` `.html` `.htm` `.xhtml` `.svg` |
 | `:sql` | un littéral entre guillemets, `NULL`, `X'00ff'` | `.sql` |
+| `:mysql` | la même chose pour MySQL et MariaDB, où la barre oblique inverse échappe aussi | |
 | `:csv` | un champ, entre guillemets si nécessaire | `.csv` `.tsv` |
 | `:csvsafe` | la même chose, avec un `'` devant ce qu'un tableur prendrait pour une formule | |
 | `:line` | la valeur, avec les caractères de contrôle en espaces, pour qu'elle n'ouvre jamais une nouvelle ligne | les autres |
 | `:raw` | la valeur telle quelle : **à ne pas utiliser dans un script** | |
 
 - Un blob sort en hexadécimal, sauf avec `:raw` et avec `:sql`, qui a sa propre forme.
+- Pour MySQL et MariaDB, utilisez `:mysql`, dans un fichier lu en `utf8mb4` : chez eux, une barre oblique inverse dans un littéral `:sql` peut le fermer, et l'aperçu signale ces valeurs. Avec `NO_BACKSLASH_ESCAPES` sur le serveur, c'est `:sql` qui convient.
 - Le filtre d'un tableau s'applique à tout le fichier, avec les règles de l'écran : `code = 7` trouve aussi une cellule avec `007`, qui sort comme `007`. Le fichier peut donc avoir des lignes que l'écran, limité à 50 000, ne montre pas.
 - Un `.sh` commence par `#!/bin/sh` mais **ne reçoit pas le droit d'exécution** : lisez-le avant de le lancer. `.bat` et `.cmd` sont refusés, car `cmd` développe `%VAR%` même entre guillemets.
 - L'aperçu et le message final signalent les valeurs avec des caractères de contrôle ou de direction du texte et, dans un CSV, celles qui commencent comme une formule. L'aperçu ne compte que ce qu'il a examiné.
@@ -149,6 +152,23 @@ Les valeurs viennent d'un fichier qui peut être hostile et peuvent aller dans c
 ### Enregistrements entiers
 
 Dans un fichier `.json`, `.jsonl`, `.ndjson`, `.csv`, `.tsv`, `.xml`, `.html` ou `.htm`, laissez le masque **vide** pour écrire des enregistrements entiers, selon les règles du format : un tableau JSON d'objets, un objet par ligne, un tableau avec une ligne d'en-tête, un `<record>` par enregistrement ou une page avec un tableau. Pour n'écrire que certains champs, commencez le masque par `@` : `@id, nom, #`. Le texte donne `line_number`, `line` et les groupes du filtre. Les champs sont découverts dans les 1 000 premiers enregistrements : une clé JSON Lines qui n'apparaît qu'ensuite est laissée de côté, et le message final le signale.
+
+### Modèles
+
+Pour avoir du texte autour des enregistrements, enregistrez un modèle sous `~/.config/xylem/batch/nom.tpl` et tapez `:nom` comme masque ; l'invite liste ceux qu'elle trouve (les quatre premiers).
+
+```
+%%# un commentaire
+%%header
+<h1>%{#name}</h1>
+<ul>
+%%record
+<li><a href="https://x/?id=%{id:url}">%{name}</a></li>
+%%footer
+</ul>
+```
+
+`%%header` et `%%footer` sont facultatifs et n'acceptent que le texte du modèle et les champs du fichier ouvert. `%%record` est écrit une fois par enregistrement et peut avoir plusieurs lignes ; sans sections, tout le fichier est l'enregistrement. Les échappements suivent le fichier de sortie, comme pour un masque : un modèle de page doit donc être écrit dans un `.html`. Une section inexistante ou répétée, ou un champ d'enregistrement dans l'en-tête ou le pied, est une erreur dans l'aperçu. L'aperçu montre les 3 dernières lignes de l'en-tête. Sans enregistrements, rien n'est écrit.
 
 ## Historique
 

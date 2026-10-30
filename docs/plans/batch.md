@@ -2,7 +2,7 @@
 
 Origem: conversa de 2026-10-30, depois dos visualizadores tabulares
 ([viewer-tables.md](viewer-tables.md), [viewer-parquet.md](viewer-parquet.md)).
-Estado: etapas 1 a 4 implementadas; o restante é proposta.
+Estado: etapas 1 a 5 implementadas; o restante é proposta.
 
 ## 1. Objetivo
 
@@ -137,7 +137,48 @@ condicionais só pagam o custo quando máscara, cabeçalho e rodapé não bastar
    uma primeira leitura de até 1.000 registros; coluna de JSON Lines que surja
    depois fica de fora, com aviso no fim. Nomes de coluna não viram nomes de
    elemento XML (`<field name="...">`), pois vêm de um arquivo hostil.
-5. **Arquivos de template.**
+5. **Arquivos de template (feito):** `~/.config/xylem/batch/nome.tpl`, escolhido
+   com `:nome` na máscara. Só um nome simples vale, sem caminho: `: %{a}` continua
+   sendo máscara. Seções `%%header`, `%%record` e `%%footer`, e comentários `%%#`;
+   sem seções, o arquivo inteiro é o registro, que pode ter várias linhas. Cabeçalho
+   e rodapé não aceitam campos de registro. Campos novos `%{#path}`, `%{#dir}`,
+   `%{#name}`, `%{#base}`, `%{#ext}` e `%{#size}`, do arquivo aberto, valem também
+   nas máscaras: um `%N` em uma página seria injeção, pois não tem escape. Sem
+   separador entre registros: um array JSON sai pelo codificador nativo. Vale só
+   para o Batch de registros, não para o de arquivos marcados.
+   Depois, o escape `:mysql`: em MySQL e MariaDB a barra invertida também escapa,
+   então um valor com `\'` fecharia um literal de `:sql`. `.sql` continua com `:sql`
+   por padrão, pois a extensão não diz o banco; a prévia avisa sobre esses valores.
+
+   **5b. Templates com ambiente, macros, totais e condições (proposta):** em três
+   passos, nesta ordem.
+
+   1. **`count`, ambiente e macros:**
+      - `%{count}` no rodapé. Totais só no rodapé, pois o cabeçalho é gravado antes
+        de ler os registros.
+      - `%{$NOME}` lê qualquer variável do processo, com escape. Variável inexistente
+        é erro na prévia, nunca valor vazio. O valor é o da geração; um `$NOME`
+        escrito em um `.sh` continua sendo o da execução. A prévia lista as variáveis
+        lidas: um template de terceiros poderia mandar um segredo para fora quando o
+        script rodasse, e deve ser tratado como um script dessa pessoa.
+      - Macros com o prefixo `#`: `#date`, `#time`, `#datetime`, `#utc`, `#weekday`
+        (ISO, segunda = 1), `#weekday_name` (sempre em inglês), `#year`, `#month`,
+        `#day`, `#epoch`, `#user`, `#host`, `#template` e `#output`. A hora é fixa, a
+        de quando o template é lido, igual em todos os registros; é local, com o fuso
+        em `#datetime`. O `chrono` já é dependência.
+   2. **`if` e `stop`:** `%%if`, `%%else` e `%%end` dentro do registro, com a linguagem
+      do filtro SQL, que já tem parser e avaliador. `%%stop if expressão` para a
+      leitura e cobre o `until`. Como a prévia olha só 1.000 registros, ela avisa
+      quais ramos não foram vistos.
+   3. **`sum`, depois `min`, `max` e `avg`:** em decimal exato, nunca ponto flutuante,
+      pois pode ser dinheiro. O formato do número é explícito (`%{sum:valor:br}`), já
+      que `1.234,56` e `1,234.56` são ambíguos em um CSV. Valor inválido não é ignorado
+      em silêncio: a mensagem final diz quantos ficaram de fora.
+
+   Fora de escopo: `while` genérico, que exigiria variáveis que mudam e limites contra
+   laços infinitos com dados hostis; atribuição de variáveis; laços aninhados; totais
+   por grupo; `%{#date:formato}` e `%{#uuid}` até fazerem falta. Se um dia pedir `each`
+   e grupos, trocar pelo `minijinja` em vez de crescer uma linguagem própria.
 6. **Saídas binárias:** SQLite primeiro.
 7. **Registros marcados na grade:** o equivalente ao Tag para registros. O `T`
    já alterna entre tabela e texto, então precisa de outra tecla.

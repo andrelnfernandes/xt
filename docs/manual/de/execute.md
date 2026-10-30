@@ -122,6 +122,7 @@ Bei einer im [Betrachter](viewer.md) geöffneten Tabelle oder einem Text schreib
 | `%{ip}` `%{1}` `%{0}` | eine Gruppe des regulären Ausdrucks des Zeilenfilters, nach Name oder Nummer; 0 ist alles, was er gefunden hat |
 | `%{#}` | die Nummer des Datensatzes unter den geschriebenen: 1, 2, 3... |
 | `%{#line}` | die Nummer der Zeile in der Datei (nur Text) |
+| `%{#path}` `%{#dir}` `%{#name}` `%{#base}` `%{#ext}` `%{#size}` | die geöffnete Datei, mit Escape wie jedes Feld; `%N` und die anderen oben haben keins, nehmen Sie in einer Seite oder einem Skript also besser diese |
 | `%f %d %n %b %e %s` | die geöffnete Datei, wie beim Batch oben |
 | `%%` | ein `%` |
 
@@ -136,12 +137,14 @@ Die Werte stammen aus einer möglicherweise feindlichen Datei und können in etw
 | `:json` | einen JSON-Wert: Zahlen ohne, Text mit Anführungszeichen | `.json` `.jsonl` `.ndjson` |
 | `:xml` oder `:html` | Text oder Attribut | `.xml` `.html` `.htm` `.xhtml` `.svg` |
 | `:sql` | ein Literal mit Anführungszeichen, `NULL`, `X'00ff'` | `.sql` |
+| `:mysql` | dasselbe für MySQL und MariaDB, wo auch der Backslash maskiert | |
 | `:csv` | ein Feld, bei Bedarf in Anführungszeichen | `.csv` `.tsv` |
 | `:csvsafe` | dasselbe, mit einem `'` vor dem, was eine Tabellenkalkulation für eine Formel hielte | |
 | `:line` | der Wert, Steuerzeichen als Leerzeichen, damit er nie eine neue Zeile beginnt | alle anderen |
 | `:raw` | der Wert, wie er ist: **nicht in einem Skript verwenden** | |
 
 - Ein Blob kommt hexadezimal, außer bei `:raw` und bei `:sql`, das eine eigene Form hat.
+- Für MySQL und MariaDB nehmen Sie `:mysql`, in einer als `utf8mb4` gelesenen Datei: Dort kann ein Backslash ein `:sql`-Literal schließen, und die Vorschau warnt vor solchen Werten. Mit `NO_BACKSLASH_ESCAPES` auf dem Server ist `:sql` richtig.
 - Der Filter einer Tabelle gilt für die ganze Datei, nach den Regeln des Bildschirms: `code = 7` findet auch eine Zelle mit `007`, die als `007` herauskommt. Die Datei kann also Zeilen enthalten, die der auf 50.000 begrenzte Bildschirm nicht zeigt.
 - Eine `.sh` beginnt mit `#!/bin/sh`, wird aber **nicht ausführbar gemacht**: Lesen Sie sie vor dem Ausführen. `.bat` und `.cmd` werden abgelehnt, weil `cmd` `%VAR%` auch in Anführungszeichen auflöst.
 - Vorschau und Abschlussmeldung warnen vor Werten mit Steuer- oder Textrichtungszeichen und in einer CSV vor Werten, die wie eine Formel beginnen. Die Vorschau zählt nur, was sie angesehen hat.
@@ -149,6 +152,23 @@ Die Werte stammen aus einer möglicherweise feindlichen Datei und können in etw
 ### Ganze Datensätze
 
 Lassen Sie bei einer Datei `.json`, `.jsonl`, `.ndjson`, `.csv`, `.tsv`, `.xml`, `.html` oder `.htm` die Maske **leer**, um ganze Datensätze nach den Regeln des Formats zu schreiben: ein JSON-Array von Objekten, ein Objekt pro Zeile, eine Tabelle mit Kopfzeile, ein `<record>` pro Datensatz oder eine Seite mit einer Tabelle. Um nur einige Felder zu schreiben, beginnen Sie die Maske mit `@`: `@id, name, #`. Text liefert `line_number`, `line` und die Gruppen des Filters. Die Felder werden in den ersten 1.000 Datensätzen ermittelt: Ein JSON-Lines-Schlüssel, der erst später auftaucht, bleibt außen vor, und die Abschlussmeldung weist darauf hin.
+
+### Vorlagen
+
+Für Text um die Datensätze herum speichern Sie eine Vorlage als `~/.config/xylem/batch/name.tpl` und geben `:name` als Maske ein; die Eingabezeile listet die gefundenen auf (die ersten vier).
+
+```
+%%# ein Kommentar
+%%header
+<h1>%{#name}</h1>
+<ul>
+%%record
+<li><a href="https://x/?id=%{id:url}">%{name}</a></li>
+%%footer
+</ul>
+```
+
+`%%header` und `%%footer` sind optional und erlauben nur den Text der Vorlage und die Felder der geöffneten Datei. `%%record` wird einmal pro Datensatz geschrieben und darf mehrere Zeilen haben; ohne Abschnitte ist die ganze Datei der Datensatz. Die Escapes richten sich wie bei einer Maske nach der Ausgabedatei, eine Vorlage für eine Seite sollte also in eine `.html` geschrieben werden. Ein unbekannter oder doppelter Abschnitt oder ein Datensatzfeld in Kopf oder Fuß ist ein Fehler in der Vorschau. Die Vorschau zeigt die letzten 3 Zeilen des Kopfes. Ohne Datensätze wird nichts geschrieben.
 
 ## Verlauf
 

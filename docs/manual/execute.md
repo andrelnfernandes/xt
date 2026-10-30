@@ -112,6 +112,7 @@ With a table or text open in the [viewer](viewer.md), **Ctrl+B** writes one line
 | `%{ip}` `%{1}` `%{0}` | a group of the line filter's regular expression, by name or number; 0 is all it matched |
 | `%{#}` | the record's number among those written: 1, 2, 3... |
 | `%{#line}` | the line's number in the file (text only) |
+| `%{#path}` `%{#dir}` `%{#name}` `%{#base}` `%{#ext}` `%{#size}` | the open file, with an escape like any field; `%N` and the others above have none, so prefer these in a page or a script |
 | `%f %d %n %b %e %s` | the open file, as in Batch above |
 | `%%` | a `%` |
 
@@ -126,12 +127,14 @@ The values come from a file that may be hostile and may go into something you ru
 | `:json` | a JSON value: numbers bare, text with its quotes | `.json` `.jsonl` `.ndjson` |
 | `:xml` or `:html` | text or an attribute | `.xml` `.html` `.htm` `.xhtml` `.svg` |
 | `:sql` | a literal with its quotes, `NULL`, `X'00ff'` | `.sql` |
+| `:mysql` | the same for MySQL and MariaDB, where a backslash also escapes | |
 | `:csv` | a field, quoted when needed | `.csv` `.tsv` |
 | `:csvsafe` | the same, with a `'` before what a spreadsheet would take for a formula | |
 | `:line` | the value, with control characters as spaces, so it never starts a new line | any other |
 | `:raw` | the value as it is: **do not use it in a script** | |
 
 - A blob comes out in hexadecimal, except in `:raw` and in `:sql`, which has its own form.
+- For MySQL and MariaDB, name `:mysql`, in a file read as `utf8mb4`: there, a backslash in a `:sql` literal can close it, and the preview warns about those values. With `NO_BACKSLASH_ESCAPES` on the server, `:sql` is the right one.
 - A filter on a table applies to all the file, with the rules of the screen: `code = 7` also finds a cell with `007`, which comes out as `007`. So the file can have rows the screen, limited to 50,000, does not show.
 - A `.sh` starts with `#!/bin/sh` but **is not made executable**: read it before running it. `.bat` and `.cmd` are refused, because `cmd` expands `%VAR%` even inside quotes.
 - The preview and the final message warn about values with control or text direction characters, and in a CSV about values that start like a formula. The preview counts only what it looked at.
@@ -139,6 +142,23 @@ The values come from a file that may be hostile and may go into something you ru
 ### Whole records
 
 In a `.json`, `.jsonl`, `.ndjson`, `.csv`, `.tsv`, `.xml`, `.html` or `.htm` file, leave the mask **empty** to write whole records, with the rules of the format: a JSON array of objects, an object per line, a table with a header row, a `<record>` per record, or a page with a table. To write only some fields, start the mask with `@`: `@id, name, #`. Text gives `line_number`, `line` and the groups of the filter. Fields are found in the first 1,000 records: a JSON Lines key that appears only later is left out, and the final message says so.
+
+### Templates
+
+For text around the records, save a template as `~/.config/xylem/batch/name.tpl` and type `:name` as the mask; the prompt lists the ones it finds (the first four).
+
+```
+%%# a comment
+%%header
+<h1>%{#name}</h1>
+<ul>
+%%record
+<li><a href="https://x/?id=%{id:url}">%{name}</a></li>
+%%footer
+</ul>
+```
+
+`%%header` and `%%footer` are optional and take only the template's text and the open file's fields. `%%record` is written once per record and may have several lines; with no sections, the whole file is the record. Escapes follow the output file, as in a mask, so a template for a page should be written to a `.html`. A section that does not exist, a repeated one, or a field of a record in the header or footer is an error in the preview. The preview shows the last 3 lines of the header. With no records, nothing is written.
 
 ## History
 

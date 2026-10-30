@@ -119,6 +119,7 @@ Con una tabla o un texto abierto en el [visor](viewer.md), **Ctrl+B** escribe un
 | `%{ip}` `%{1}` `%{0}` | un grupo de la expresión regular del filtro de líneas, por nombre o número; 0 es todo lo que encontró |
 | `%{#}` | el número del registro entre los escritos: 1, 2, 3... |
 | `%{#line}` | el número de la línea en el archivo (solo en texto) |
+| `%{#path}` `%{#dir}` `%{#name}` `%{#base}` `%{#ext}` `%{#size}` | el archivo abierto, con escape como cualquier campo; `%N` y los otros de arriba no lo tienen, así que prefiere estos en una página o un script |
 | `%f %d %n %b %e %s` | el archivo abierto, como en el Batch de arriba |
 | `%%` | un `%` |
 
@@ -133,12 +134,14 @@ Los valores vienen de un archivo que puede ser hostil y pueden ir a algo que vas
 | `:json` | un valor JSON: números sin comillas, texto con comillas | `.json` `.jsonl` `.ndjson` |
 | `:xml` o `:html` | texto o atributo | `.xml` `.html` `.htm` `.xhtml` `.svg` |
 | `:sql` | un literal con comillas, `NULL`, `X'00ff'` | `.sql` |
+| `:mysql` | lo mismo para MySQL y MariaDB, donde la barra invertida también escapa | |
 | `:csv` | un campo, entre comillas cuando hace falta | `.csv` `.tsv` |
 | `:csvsafe` | lo mismo, con un `'` delante de lo que una hoja de cálculo tomaría por fórmula | |
 | `:line` | el valor, con los caracteres de control como espacios, para que nunca abra una línea nueva | los demás |
 | `:raw` | el valor tal cual: **no lo uses en un script** | |
 
 - Un blob sale en hexadecimal, salvo en `:raw` y en `:sql`, que tiene su propia forma.
+- Para MySQL y MariaDB, usa `:mysql`, en un archivo leído como `utf8mb4`: en ellos, una barra invertida en un literal `:sql` puede cerrarlo, y la vista previa avisa de esos valores. Con `NO_BACKSLASH_ESCAPES` en el servidor, lo correcto es `:sql`.
 - El filtro de una tabla vale para todo el archivo, con las reglas de la pantalla: `code = 7` también encuentra una celda con `007`, que sale como `007`. Por eso el archivo puede tener filas que la pantalla, limitada a 50 000, no muestra.
 - Un `.sh` empieza con `#!/bin/sh`, pero **no recibe permiso de ejecución**: léelo antes de ejecutarlo. `.bat` y `.cmd` se rechazan, porque `cmd` expande `%VAR%` incluso entre comillas.
 - La vista previa y el mensaje final avisan de valores con caracteres de control o de dirección del texto y, en un CSV, de valores que empiezan como una fórmula. La vista previa cuenta solo lo que miró.
@@ -146,6 +149,23 @@ Los valores vienen de un archivo que puede ser hostil y pueden ir a algo que vas
 ### Registros enteros
 
 En un archivo `.json`, `.jsonl`, `.ndjson`, `.csv`, `.tsv`, `.xml`, `.html` o `.htm`, deja la máscara **vacía** para escribir registros enteros, con las reglas del formato: un array JSON de objetos, un objeto por línea, una tabla con fila de cabecera, un `<record>` por registro o una página con una tabla. Para escribir solo algunos campos, empieza la máscara con `@`: `@id, nombre, #`. El texto da `line_number`, `line` y los grupos del filtro. Los campos se descubren en los primeros 1000 registros: una clave de JSON Lines que solo aparezca después queda fuera, y el mensaje final lo avisa.
+
+### Plantillas
+
+Para tener texto alrededor de los registros, guarda una plantilla en `~/.config/xylem/batch/nombre.tpl` y escribe `:nombre` como máscara; el prompt lista las que encuentre (las cuatro primeras).
+
+```
+%%# un comentario
+%%header
+<h1>%{#name}</h1>
+<ul>
+%%record
+<li><a href="https://x/?id=%{id:url}">%{name}</a></li>
+%%footer
+</ul>
+```
+
+`%%header` y `%%footer` son opcionales y solo admiten el texto de la plantilla y los campos del archivo abierto. `%%record` se escribe una vez por registro y puede tener varias líneas; sin secciones, todo el archivo es el registro. Los escapes siguen al archivo de salida, como en una máscara, así que una plantilla de página debe escribirse en un `.html`. Una sección que no existe, una repetida o un campo de registro en la cabecera o el pie es un error en la vista previa. La vista previa muestra las últimas 3 líneas de la cabecera. Sin registros, no se escribe nada.
 
 ## Historial
 
