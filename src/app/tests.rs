@@ -2880,6 +2880,120 @@ fn line_filter_survives_editing_the_file() {
     assert_eq!(v.total_lines(), 4);
 }
 
+fn ctrl_b(app: &mut App) {
+    app.handle_key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::CONTROL));
+}
+
+#[test]
+fn batch_in_the_viewer_writes_the_filtered_records() {
+    let (tmp, mut app) = sample();
+    let path = tmp.path().join("in.csv");
+    std::fs::write(&path, "id,name\n1,ana\n2,bob\n3,cid\n").unwrap();
+    app.viewer = Some(Viewer::open(path, viewer::LoadOptions::view(1 << 20)).unwrap());
+    press(&mut app, KeyCode::Char('&'));
+    answer_prompt(&mut app, "id >= 2");
+
+    let out = tmp.path().join("out.sh");
+    ctrl_b(&mut app);
+    answer_prompt(&mut app, out.to_str().unwrap());
+    assert!(app.prompt.as_ref().unwrap().label.contains("id, name, #"));
+    answer_prompt(&mut app, "echo %{#} %{name}");
+
+    // Nothing is written before the preview is accepted.
+    let preview = app.batch_preview.as_ref().expect("preview");
+    assert_eq!(preview.preview.lines, ["echo '1' 'bob'", "echo '2' 'cid'"]);
+    assert!(!out.exists());
+    press(&mut app, KeyCode::Enter);
+    while app.busy() {
+        app.tick(Duration::from_millis(5));
+    }
+    assert_eq!(
+        std::fs::read_to_string(&out).unwrap(),
+        "#!/bin/sh\necho '1' 'bob'\necho '2' 'cid'\n"
+    );
+    assert_eq!(
+        app.viewer.as_ref().unwrap().note,
+        Some(format!("Wrote 2 lines to {}", out.display()))
+    );
+}
+
+#[test]
+fn batch_of_text_gives_the_groups_of_the_line_filter() {
+    let (tmp, mut app) = sample();
+    let path = tmp.path().join("log.txt");
+    std::fs::write(&path, "ip 1.2.3.4 ok\nnothing\nip 5.6.7.8 ok\n").unwrap();
+    app.viewer = Some(Viewer::open(path, viewer::LoadOptions::view(1 << 20)).unwrap());
+    press(&mut app, KeyCode::Char('&'));
+    press(&mut app, KeyCode::F(4));
+    answer_prompt(&mut app, r"ip (?P<addr>\S+)");
+
+    let out = tmp.path().join("out.txt");
+    ctrl_b(&mut app);
+    answer_prompt(&mut app, out.to_str().unwrap());
+    answer_prompt(&mut app, "%{#line}=%{addr}");
+    let preview = app.batch_preview.as_ref().expect("preview");
+    assert_eq!(preview.preview.lines, ["1=1.2.3.4", "3=5.6.7.8"]);
+    assert!(preview.preview.complete);
+    // Esc leaves everything as it was.
+    press(&mut app, KeyCode::Esc);
+    assert!(app.batch_preview.is_none());
+    assert!(app.viewer.is_some(), "the viewer stays open");
+    assert!(!out.exists());
+}
+
+#[test]
+fn batch_refuses_what_it_cannot_do_safely() {
+    let (tmp, mut app) = sample();
+    let path = tmp.path().join("in.csv");
+    std::fs::write(&path, "id\n1\n").unwrap();
+    app.viewer = Some(Viewer::open(path, viewer::LoadOptions::view(1 << 20)).unwrap());
+    let note = |app: &App| {
+        app.viewer
+            .as_ref()
+            .unwrap()
+            .note
+            .clone()
+            .unwrap_or_default()
+    };
+
+    ctrl_b(&mut app);
+    let script = tmp.path().join("run.bat");
+    answer_prompt(&mut app, script.to_str().unwrap());
+    assert!(note(&app).contains(".bat"));
+    assert!(app.prompt.is_none());
+
+    let taken = tmp.path().join("taken.txt");
+    std::fs::write(&taken, "mine").unwrap();
+    ctrl_b(&mut app);
+    answer_prompt(&mut app, taken.to_str().unwrap());
+    assert!(note(&app).contains("already exists"));
+
+    let out = tmp.path().join("out.txt");
+    ctrl_b(&mut app);
+    answer_prompt(&mut app, out.to_str().unwrap());
+    answer_prompt(&mut app, "%{nope}");
+    assert_eq!(note(&app), "Mask: no field named nope");
+    assert!(app.batch_preview.is_none());
+
+    press(&mut app, KeyCode::Char('h'));
+    press(&mut app, KeyCode::Char('h'));
+    ctrl_b(&mut app);
+    assert!(note(&app).contains("text and tables"));
+    assert!(app.prompt.is_none());
+}
+
+#[test]
+fn ctrl_b_in_the_viewer_is_not_the_backward_search() {
+    let (tmp, mut app) = sample();
+    let path = tmp.path().join("a.txt");
+    std::fs::write(&path, "x\n").unwrap();
+    app.viewer = Some(Viewer::open(path, viewer::LoadOptions::view(1 << 20)).unwrap());
+    ctrl_b(&mut app);
+    assert!(app.prompt.as_ref().unwrap().label.starts_with("BATCH"));
+    let f1 = KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE);
+    assert_eq!(help_topic_after(&mut app, f1), "execute");
+}
+
 #[test]
 fn autoview_supports_wrap_and_line_number_keys() {
     let (_tmp, mut app) = sample();

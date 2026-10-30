@@ -2,8 +2,7 @@
 
 Origem: conversa de 2026-10-30, depois dos visualizadores tabulares
 ([viewer-tables.md](viewer-tables.md), [viewer-parquet.md](viewer-parquet.md)).
-Estado: etapa 1 (filtro de linhas, tecla `&`, ajuda em F1) implementada; o
-restante é proposta.
+Estado: etapas 1 a 3 implementadas; o restante é proposta.
 
 ## 1. Objetivo
 
@@ -123,7 +122,15 @@ condicionais só pagam o custo quando máscara, cabeçalho e rodapé não bastar
    `progress_handler` no SQLite. O filtro SQL continua avaliando a grade, com as
    mesmas limitações; muda na etapa 3, que precisa filtrar tudo.
 3. **Ctrl+B no viewer com máscara e escape por contexto:** inclui a prévia, o
-   cancelamento e a saída sem o limite de linhas.
+   cancelamento e a saída sem o limite de linhas. Em `src/viewer/batch.rs`.
+   Campos `%{nome}`, `%{A}`, `%{2}` (tabela), `%{line}`, `%{0}`, `%{ip}` (texto),
+   `%{#}` e `%{#line}`; escapes `:sh :url :json :xml :sql :csv :csvsafe :line
+   :raw`, com padrão pela extensão. Decisões aprovadas: o filtro SQL vale para
+   todas as linhas, com a regra da tela (`007` = 7, mas sai `007`); a tabela é
+   relida na hora; o texto sai como o viewer leu, com a linha original; `.bat` e
+   `.cmd` recusados para registros; `.sh` sem permissão de execução. A prévia
+   olha até 1.000 registros (e por 3 s no máximo): o total só vem no fim, e uma
+   coluna de JSON Lines que só apareça depois disso é recusada.
 4. **Codificadores de texto:** JSON, JSONL, CSV, XML e HTML.
 5. **Arquivos de template.**
 6. **Saídas binárias:** SQLite primeiro.

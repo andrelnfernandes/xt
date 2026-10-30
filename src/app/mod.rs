@@ -42,6 +42,8 @@ use crate::viewer::line_filter::LineFilterSpec;
 use crate::viewer::{self, Action as ViewerAction, SearchFrom, Viewer};
 
 mod actions;
+mod batch_cmd;
+pub use batch_cmd::BatchPreview;
 mod commands;
 mod context_help;
 mod git_cmd;
@@ -129,6 +131,10 @@ pub struct App {
     /// Last search term (Ctrl+S and the viewer share it, so that
     /// Space in Ctrl+V continues the search done with Ctrl+S).
     pub search: Option<SearchSpec>,
+    /// Batch in the viewer: the preview waiting for Enter.
+    pub batch_preview: Option<batch_cmd::BatchPreview>,
+    /// Batch in the viewer: being written.
+    pub batch_job: Option<viewer::batch::Job>,
     /// How the last line filter was set (regex, case, inverted): the next
     /// one starts the same way.
     pub line_filter: LineFilterSpec,
@@ -244,6 +250,8 @@ impl App {
             job: None,
             search_job: None,
             search: None,
+            batch_preview: None,
+            batch_job: None,
             line_filter: LineFilterSpec::default(),
             tagged_view: None,
             autoview: None,
@@ -388,6 +396,7 @@ impl App {
     /// There is ongoing work that does not depend on the user.
     pub fn busy(&self) -> bool {
         self.job.is_some()
+            || self.batch_job.is_some()
             || self.search_job.is_some()
             || self.archive_job.is_some()
             || self.op.as_ref().is_some_and(|op| op.conflict.is_none())
@@ -400,6 +409,10 @@ impl App {
 
     /// Advances the ongoing work by at most `budget`.
     pub fn tick(&mut self, budget: Duration) {
+        if self.batch_job.is_some() {
+            self.batch_tick(budget);
+            return;
+        }
         if let Some(job) = &mut self.archive_job {
             job.step(budget);
             if job.is_done() {

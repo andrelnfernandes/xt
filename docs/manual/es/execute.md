@@ -108,6 +108,41 @@ En minúsculas salen entrecomillados, seguros para la shell
 Un archivo `.sh` recibe `#!/bin/sh` y permiso de ejecución (ejecútalo con `X`).
 Un archivo existente no se sobrescribe.
 
+## Batch en el visor
+
+Con una tabla o un texto abierto en el [visor](viewer.md), **Ctrl+B** escribe una línea por registro, a partir del archivo entero: más allá de las 50 000 filas de la pantalla, con los valores enteros y tal como están en el archivo. Respeta el filtro en uso (el filtro SQL en la tabla, el [filtro de líneas](filter.md) en el texto). La tabla se vuelve a leer en ese momento; el texto sale como lo leyó el visor, hasta el límite de tamaño. Pide el archivo, luego la máscara, y muestra las primeras líneas antes de escribir: **Enter** escribe, **Esc** desiste. Durante la escritura, Esc cancela y elimina el archivo incompleto. Un archivo existente no se sobrescribe.
+
+| Campo | Valor |
+|---|---|
+| `%{nombre}` `%{A}` `%{2}` | una columna de la tabla, por nombre, letra o posición |
+| `%{line}` | la línea entera del texto, con sus tabulaciones |
+| `%{ip}` `%{1}` `%{0}` | un grupo de la expresión regular del filtro de líneas, por nombre o número; 0 es todo lo que encontró |
+| `%{#}` | el número del registro entre los escritos: 1, 2, 3... |
+| `%{#line}` | el número de la línea en el archivo (solo en texto) |
+| `%f %d %n %b %e %s` | el archivo abierto, como en el Batch de arriba |
+| `%%` | un `%` |
+
+Un campo que no existe es un error en la vista previa, nunca un valor vacío. Como la vista previa mira 1000 registros como máximo, una clave de JSON Lines que solo aparezca después cuenta como inexistente.
+
+Los valores vienen de un archivo que puede ser hostil y pueden ir a algo que vas a ejecutar, así que cada campo tiene un escape. Escríbelo tras el campo: `curl "https://api/x?id=%{id:url}"`.
+
+| Escape | Para | Por defecto en |
+|---|---|---|
+| `:sh` | un argumento entre comillas de un comando de shell | `.sh` `.bash` `.zsh` |
+| `:url` | una parte de una URL, con codificación por porcentaje | |
+| `:json` | un valor JSON: números sin comillas, texto con comillas | `.json` `.jsonl` `.ndjson` |
+| `:xml` o `:html` | texto o atributo | `.xml` `.html` `.htm` `.xhtml` `.svg` |
+| `:sql` | un literal con comillas, `NULL`, `X'00ff'` | `.sql` |
+| `:csv` | un campo, entre comillas cuando hace falta | `.csv` `.tsv` |
+| `:csvsafe` | lo mismo, con un `'` delante de lo que una hoja de cálculo tomaría por fórmula | |
+| `:line` | el valor, con los caracteres de control como espacios, para que nunca abra una línea nueva | los demás |
+| `:raw` | el valor tal cual: **no lo uses en un script** | |
+
+- Un blob sale en hexadecimal, salvo en `:raw` y en `:sql`, que tiene su propia forma.
+- El filtro de una tabla vale para todo el archivo, con las reglas de la pantalla: `code = 7` también encuentra una celda con `007`, que sale como `007`. Por eso el archivo puede tener filas que la pantalla, limitada a 50 000, no muestra.
+- Un `.sh` empieza con `#!/bin/sh`, pero **no recibe permiso de ejecución**: léelo antes de ejecutarlo. `.bat` y `.cmd` se rechazan, porque `cmd` expande `%VAR%` incluso entre comillas.
+- La vista previa y el mensaje final avisan de valores con caracteres de control o de dirección del texto y, en un CSV, de valores que empiezan como una fórmula. La vista previa cuenta solo lo que miró.
+
 ## Historial
 
 En cada entrada, ↑ y ↓ recuperan entradas anteriores. Cada tipo de entrada

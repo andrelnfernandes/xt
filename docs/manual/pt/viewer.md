@@ -16,6 +16,7 @@ Planilhas, CSV, DBF, SQLite e Parquet abrem como tabela (veja Modo tabela).
 | `#` ou `L` | ativa ou desativa os números de linha (no modo texto) |
 | `g` ou `:` | pula para uma linha (um deslocamento de byte em hexadecimal, uma linha da grade no modo tabela) |
 | `&` | mostra só as linhas que combinam, texto simples ou regex ([filtrar linhas](filter.md)); no modo tabela, o filtro SQL |
+| Ctrl+B | uma linha de saída por registro ou linha mostrada ([Batch no visualizador](execute.md)) |
 | `E` | edita o arquivo; de volta ao Xylem, o visualizador mostra o novo conteúdo na mesma posição (arquivos binários somente com um editor em [`[editors]`](execute.md)) |
 | `D` | com Git ativo: mostra o que mudou desde o último commit, e volta ([Git](git.md)) |
 | `T` | tabela ou texto, num arquivo que abriu como tabela |

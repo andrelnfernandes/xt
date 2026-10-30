@@ -1,6 +1,7 @@
 //! File viewer (`V` key; Ctrl+V for the tagged files), in text or
 //! hexadecimal mode, with search.
 
+pub mod batch;
 pub mod line_filter;
 pub mod records;
 pub mod sql_filter;
@@ -80,6 +81,8 @@ pub enum Action {
     FilterSql,
     /// Prompts for the line filter in text mode.
     FilterLines,
+    /// Ctrl+B: a line of output per record of what is shown.
+    Batch,
 }
 
 /// How a file is read: how much of it, and whether a compressed file is
@@ -260,7 +263,7 @@ impl Viewer {
             .map(|s| s.to_ascii_lowercase())
             .unwrap_or_default();
         let budget = self.table_budget();
-        let grid = match ext.as_str() {
+        let grid = crate::panic_guard::catch(|| match ext.as_str() {
             "csv" | "tsv" | "tab" => tabular_loader::load_csv(&path, None, budget),
             "jsonl" | "ndjson" => tabular_loader::load_jsonl(&path, budget),
             "xlsx" | "ods" | "xls" | "xlsb" => tabular_loader::load_spreadsheet(&path, 0, budget),
@@ -268,7 +271,8 @@ impl Viewer {
             "sqlite" | "sqlite3" | "db" => tabular_loader::load_sqlite(&path, None, budget),
             "parquet" => tabular_loader::load_parquet(&path, budget),
             _ => Err("Not supported".to_string()),
-        };
+        })
+        .unwrap_or_else(|| Err("the file could not be read".into()));
         match grid {
             Ok(grid) => {
                 // Autoview's title has only the note to say it.
@@ -286,6 +290,34 @@ impl Viewer {
     /// A table follows the same limits as the rest of the viewer.
     fn table_budget(&self) -> Budget {
         Budget::new(self.load.limits.time, self.load.limits.output as u64)
+    }
+
+    /// What a Batch reads to give what is on screen, whatever the screen's limits.
+    pub fn batch_source(&self) -> Result<batch::Source, String> {
+        match self.mode {
+            ViewMode::Table => {
+                let Some(t) = &self.table else {
+                    return Err("No table to read".into());
+                };
+                Ok(batch::Source::Table {
+                    path: self.path.clone(),
+                    sheet: t.current_sheet,
+                    table: t.sheets.get(t.current_sheet).cloned(),
+                    filter: t.filter_expr.clone(),
+                    unpacked: self.load.limits.output as u64,
+                })
+            }
+            ViewMode::Text => Ok(batch::Source::Text {
+                text: charset::decode(&self.data, self.charset),
+                total: self.lines.len(),
+                kept: self.filter.as_ref().map(|f| f.rows.clone()),
+                regex: self
+                    .filter
+                    .as_ref()
+                    .and_then(|f| f.matcher.regex().cloned()),
+            }),
+            ViewMode::Hex => Err("Batch works on text and tables (H)".into()),
+        }
     }
 
     /// `[` and `]`: another sheet of a spreadsheet or table of a database.
@@ -1007,7 +1039,9 @@ impl Viewer {
         let max_top = self.line_count().saturating_sub(page);
         self.note = None;
         let alt = key.modifiers.contains(KeyModifiers::ALT);
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let action = match key.code {
+            KeyCode::Char('b' | 'B') if ctrl => Action::Batch,
             KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q' | 'Q' | 'v' | 'V') => Action::Close,
             KeyCode::Home if alt => Action::First,
             KeyCode::End if alt => Action::Last,

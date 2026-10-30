@@ -198,7 +198,8 @@ mkdir -p ~/.local/share/man/man1 && xy --man > ~/.local/share/man/man1/xy.1
   bookmarks, and Ctrl+S to search the tagged files for text.
 - **Looking inside:** a text and hex viewer with search, a line filter with
   regular expressions and syntax colors, a table mode with a SQL filter for
-  spreadsheets, CSV, JSON Lines, DBF, SQLite and Parquet,
+  spreadsheets, CSV, JSON Lines, DBF, SQLite and Parquet, and Ctrl+B to turn
+  those records or lines into a script, JSON, SQL or anything else,
   Autoview next to the list, ZIP, 7z and TAR archives opened as directories,
   and display modes that show owners or what each file is.
 - **Where the space goes:** the Usage view (Alt+W) lists a branch's folders

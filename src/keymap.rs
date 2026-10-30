@@ -767,6 +767,7 @@ impl Keymap {
              /, S / \\                find from this page forward / backward\n  \
              Space, + / -            next hit (in Ctrl+V, continues in the next files)\n  \
              &                       show only matching lines (F1 at the prompt: regex help)\n  \
+             Ctrl+B                  a line of output per record or line shown\n  \
              N / P, Alt+Home/End     next / previous / first / last tagged file\n  \
              U                       untag the file being viewed\n  \
              H                       hex / text\n  \

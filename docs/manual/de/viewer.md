@@ -16,6 +16,7 @@ Tabellenkalkulationen, CSV, DBF, SQLite und Parquet öffnen sich als Tabelle (si
 | `#` oder `L` | Zeilennummern ein oder aus (im Textmodus) |
 | `g` oder `:` | zu einer Zeile springen (Byte-Offset im Hex-Modus, Tabellenzeile im Tabellenmodus) |
 | `&` | zeigt nur passende Zeilen, einfacher Text oder Regex ([Zeilen filtern](filter.md)); im Tabellenmodus der SQL-Filter |
+| Ctrl+B | eine Ausgabezeile pro angezeigtem Datensatz oder Zeile ([Batch im Betrachter](execute.md)) |
 | `E` | Datei bearbeiten; zurück in Xylem zeigt der Betrachter den neuen Inhalt an derselben Stelle (Binärdateien nur mit einem Editor unter [`[editors]`](execute.md)) |
 | `D` | bei aktiviertem Git: Änderungen seit dem letzten Commit und zurück ([Git](git.md)) |
 | `T` | Tabelle oder Text, bei einer Datei, die sich als Tabelle geöffnet hat |

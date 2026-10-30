@@ -11,6 +11,8 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek};
 use std::ops::ControlFlow;
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use arrow_array::Array;
@@ -61,10 +63,12 @@ impl Cell<'_> {
 }
 
 /// How far a reading may go.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Budget {
     /// When to stop. A reader looks at it now and then, between records.
     deadline: Option<Instant>,
+    /// Set by someone else to stop it, looked at along with the deadline.
+    cancel: Option<Arc<AtomicBool>>,
     /// The most a spreadsheet may unpack to: its reader has no way to stop
     /// midway, so this is checked before it starts.
     unpacked: u64,
@@ -74,6 +78,16 @@ impl Budget {
     pub fn new(time: Duration, unpacked: u64) -> Self {
         Budget {
             deadline: Some(Instant::now() + time),
+            cancel: None,
+            unpacked,
+        }
+    }
+
+    /// No deadline: it goes on until `cancel` is set.
+    pub fn cancellable(unpacked: u64, cancel: Arc<AtomicBool>) -> Self {
+        Budget {
+            deadline: None,
+            cancel: Some(cancel),
             unpacked,
         }
     }
@@ -82,12 +96,17 @@ impl Budget {
     pub fn unlimited() -> Self {
         Budget {
             deadline: None,
+            cancel: None,
             unpacked: u64::MAX,
         }
     }
 
-    fn over(&self) -> bool {
+    pub fn over(&self) -> bool {
         self.deadline.is_some_and(|d| Instant::now() >= d)
+            || self
+                .cancel
+                .as_ref()
+                .is_some_and(|c| c.load(Ordering::Relaxed))
     }
 }
 
@@ -550,7 +569,8 @@ pub fn read_sqlite(
     let _ = conn.execute_batch("PRAGMA query_only = ON;");
 
     // A query can take forever without giving a single row.
-    if budget.deadline.is_some() {
+    if budget.deadline.is_some() || budget.cancel.is_some() {
+        let budget = budget.clone();
         conn.progress_handler(SQLITE_STEPS, Some(move || budget.over()));
     }
 
@@ -672,6 +692,31 @@ fn parquet_cell(col: &dyn Array, r: usize) -> Cell<'_> {
                 .unwrap_or_else(|_| "<err>".to_string())
                 .into(),
         ),
+    }
+}
+
+/// Whichever format the file's extension says; `sheet` is the position of a
+/// spreadsheet's sheet, and `table` the name of a database's table.
+pub fn read_table(
+    path: &Path,
+    sheet: usize,
+    table: Option<&str>,
+    budget: Budget,
+    sink: &mut dyn RecordSink,
+) -> Result<End, String> {
+    let ext = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_ascii_lowercase())
+        .unwrap_or_default();
+    match ext.as_str() {
+        "csv" | "tsv" | "tab" => read_csv(path, None, budget, sink),
+        "jsonl" | "ndjson" => read_jsonl(path, budget, sink),
+        "xlsx" | "ods" | "xls" | "xlsb" => read_spreadsheet(path, sheet, budget, sink),
+        "dbf" => read_dbf(path, budget, sink),
+        "sqlite" | "sqlite3" | "db" => read_sqlite(path, table, budget, sink),
+        "parquet" => read_parquet(path, budget, sink),
+        _ => Err("Not supported".to_string()),
     }
 }
 
@@ -818,6 +863,7 @@ mod tests {
     fn expired() -> Budget {
         Budget {
             deadline: Some(Instant::now()),
+            cancel: None,
             unpacked: u64::MAX,
         }
     }
@@ -1042,13 +1088,13 @@ mod tests {
             let mut file = NamedTempFile::new().unwrap();
             file.write_all(&bytes).unwrap();
             let path = file.path();
-            let budget = Budget::unlimited();
-            let _ = read_csv(path, None, budget, &mut Collect::default());
-            let _ = read_jsonl(path, budget, &mut Collect::default());
-            let _ = read_dbf(path, budget, &mut Collect::default());
-            let _ = read_spreadsheet(path, 0, budget, &mut Collect::default());
-            let _ = read_parquet(path, budget, &mut Collect::default());
-            let _ = read_sqlite(path, None, budget, &mut Collect::default());
+            let budget = Budget::unlimited;
+            let _ = read_csv(path, None, budget(), &mut Collect::default());
+            let _ = read_jsonl(path, budget(), &mut Collect::default());
+            let _ = read_dbf(path, budget(), &mut Collect::default());
+            let _ = read_spreadsheet(path, 0, budget(), &mut Collect::default());
+            let _ = read_parquet(path, budget(), &mut Collect::default());
+            let _ = read_sqlite(path, None, budget(), &mut Collect::default());
         }
     }
 

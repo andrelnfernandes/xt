@@ -205,7 +205,8 @@ mkdir -p ~/.local/share/man/man1 && xy --man > ~/.local/share/man/man1/xy.1
   caminho, bookmarks, e Ctrl+S para buscar texto nos arquivos marcados.
 - **Olhar dentro:** um visualizador de texto e hex com busca, filtro de linhas
   com expressões regulares e cores de sintaxe, um modo tabela com filtro SQL
-  para planilhas, CSV, JSON Lines, DBF, SQLite e Parquet, Autoview ao lado da lista,
+  para planilhas, CSV, JSON Lines, DBF, SQLite e Parquet, Ctrl+B para transformar
+  esses registros ou linhas em um script, JSON, SQL ou o que for, Autoview ao lado da lista,
   arquivos ZIP, 7z e TAR abertos como diretórios, e modos de exibição que
   mostram o dono ou o que cada arquivo é.
 - **Para onde vai o espaço:** a visão Usage (Alt+W) lista as pastas e os

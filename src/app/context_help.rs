@@ -25,6 +25,9 @@ impl App {
                 ConfirmKind::OpenHidden { .. } => "files",
             };
         }
+        if self.batch_preview.is_some() || self.batch_job.is_some() {
+            return "execute";
+        }
         if self.settings.is_some() {
             return "configuration";
         }
@@ -65,6 +68,7 @@ impl App {
                 | PromptKind::ViewerGoto
                 | PromptKind::ViewerSqlFilter => "viewer",
                 PromptKind::ViewerLineFilter { .. } => "filter",
+                PromptKind::ViewerBatchFile | PromptKind::ViewerBatchMask { .. } => "execute",
                 PromptKind::CreateArchive(_) => "archives",
                 PromptKind::BookmarkJump | PromptKind::BookmarkSet => "bookmarks",
                 PromptKind::MakeDir(_) => "tree",
