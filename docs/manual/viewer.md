@@ -137,7 +137,7 @@ Keywords can be in any case.
 
 ### Limits
 
-A table holds at most 50,000 rows and 256 columns. What lies beyond them is not read: it does not show, the filter does not see it, and nothing on the screen warns about it. A cell shows at most 2,048 characters and then `…`. Control and text direction characters show as `·`.
+A table holds at most 50,000 rows and 256 columns, and takes at most what the viewer's other limits allow: 3 s (100 ms in Autoview), and a spreadsheet that unpacks to more than the size limit (1 MiB in Autoview) does not open as a table. What lies beyond them does not show and the filter does not see it; the header says so: `(showing first 50,000 rows)` or `(stopped by the time limit: showing N rows)`. A cell shows at most 2,048 characters and then `…`. Control and text direction characters show as `·`.
 
 ## Tables in C libraries
 

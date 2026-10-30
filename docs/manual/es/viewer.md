@@ -140,7 +140,7 @@ Las palabras clave pueden ir en mayúsculas o minúsculas.
 
 ### Límites
 
-Una tabla guarda como máximo 50 000 filas y 256 columnas. Lo que pasa de ahí no se lee: no aparece, el filtro no lo ve y nada en la pantalla lo avisa. Una celda muestra como máximo 2048 caracteres y luego `…`. Los caracteres de control y de dirección del texto aparecen como `·`.
+Una tabla guarda como máximo 50 000 filas y 256 columnas, y tarda como máximo lo que permiten los demás límites del visor: 3 s (100 ms en Autoview), y una hoja de cálculo que se desempaqueta a más del límite de tamaño (1 MiB en Autoview) no se abre como tabla. Lo que pasa de ahí no aparece y el filtro no lo ve; la cabecera lo avisa: `(showing first 50,000 rows)` o `(stopped by the time limit: showing N rows)`. Una celda muestra como máximo 2048 caracteres y luego `…`. Los caracteres de control y de dirección del texto aparecen como `·`.
 
 ## Tablas en bibliotecas C
 

@@ -114,8 +114,14 @@ condicionais só pagam o custo quando máscara, cabeçalho e rodapé não bastar
    linhas visíveis, e o desenho, a rolagem, o Goto e a busca passam a percorrer
    esses índices. Assim a margem continua mostrando o número original da linha,
    com lacunas, e as cores de sintaxe seguem calculadas sobre o texto inteiro.
-2. **Valor bruto separado da exibição e iterador de registros:** sem mudança
-   visível.
+2. **Valor bruto separado da exibição e iterador de registros:** cada formato
+   vira um fluxo em `src/viewer/records.rs`, com valores tipados (`Cell`: nulo,
+   booleano, inteiro, real, texto, bytes), sem cortes nem saneamento e sem limite
+   de linhas. Quem recebe (`RecordSink`) pode mandar parar. A grade da tela vira
+   um consumidor: saneia, corta e para em 50.000 linhas, avisando no cabeçalho.
+   O limite de tempo do viewer vale para as tabelas (`Budget`), com
+   `progress_handler` no SQLite. O filtro SQL continua avaliando a grade, com as
+   mesmas limitações; muda na etapa 3, que precisa filtrar tudo.
 3. **Ctrl+B no viewer com máscara e escape por contexto:** inclui a prévia, o
    cancelamento e a saída sem o limite de linhas.
 4. **Codificadores de texto:** JSON, JSONL, CSV, XML e HTML.

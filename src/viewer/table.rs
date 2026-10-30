@@ -44,6 +44,9 @@ pub struct TableGrid {
 
     // Cached column widths
     pub col_widths: Vec<usize>,
+
+    /// What of the file is not here, for the header.
+    pub cut: Option<String>,
 }
 
 struct GridRowContext<'a> {
@@ -93,6 +96,7 @@ impl TableGrid {
             active_filter: None,
             filter_expr: None,
             col_widths: Vec::new(),
+            cut: None,
         };
         grid.recalculate_widths();
         grid

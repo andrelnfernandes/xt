@@ -2116,6 +2116,14 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
             ));
         }
     }
+    if v.mode == ViewMode::Table
+        && let Some(cut) = v.table.as_ref().and_then(|t| t.cut.as_ref())
+    {
+        title.push(Span::styled(
+            format!("  ({cut})"),
+            Style::new().fg(theme().error),
+        ));
+    }
     if let Some(problem) = v.problem() {
         title.push(Span::styled(
             format!("  ({problem})"),
