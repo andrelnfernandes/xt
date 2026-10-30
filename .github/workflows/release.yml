@@ -62,6 +62,10 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
+      # SQLite and zstd are compiled from C, for musl too.
+      - name: C compiler for musl
+        if: runner.os != 'Windows'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
       - name: Build
         run: cargo build --release --locked --target ${{ matrix.target }}
 

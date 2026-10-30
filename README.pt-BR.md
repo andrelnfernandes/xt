@@ -150,7 +150,8 @@ Releases, não de um repositório, então não se atualiza sozinho: instale o
 próximo do mesmo jeito. Para remover, `sudo apt remove xylem-fm` ou
 `sudo dnf remove xylem-fm`.
 
-**Com o Cargo** (requer Rust, via [rustup](https://rustup.rs)), a partir do
+**Com o Cargo** (requer Rust, via [rustup](https://rustup.rs), e um compilador
+C, para o SQLite e o zstd), a partir do
 [crates.io](https://crates.io/crates/xylem-fm), onde o Xylem se chama
 `xylem-fm` (o nome `xylem` já era de outro projeto); o comando é `xy`:
 

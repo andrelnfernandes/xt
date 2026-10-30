@@ -45,9 +45,19 @@ rest).
    loaders the path it received, which is opened on the local disk, so a remote
    `foo.csv` may show a local file with the same path, or fail. Seen in the code,
    not tested. Should load tables only from files on disk.
-8. **SQLite and Parquet's zstd are C libraries.** They run only with V, never in
-   Autoview. Running them in a separate, isolated process would contain a bug
-   in them.
+8. **SQLite and Parquet's zstd are C libraries: replace them with Rust as soon
+   as a usable option appears.** The author's decision. They run only with V,
+   never in Autoview, and that is meant to be temporary. What to watch:
+   - zstd: a way for the `parquet` crate to decode through a Rust codec; Xylem
+     already has `ruzstd` for `.zst` files.
+   - SQLite: a Rust implementation that reads real SQLite files reliably and is
+     mature enough for hostile ones. Limbo is now Turso Database (crate `turso`).
+     Checked on 2026-10-30, at 0.9.0-pre: not yet. Replace it when it has reached
+     1.0, builds with no C (`default-features = false`, `pure-rust-crypto`, no
+     `mimalloc`), and a fuzz of corrupt files no longer makes it panic or hang.
+   Once one is replaced, its format can go back to Autoview. Until then, running
+   them in a separate, isolated process would contain a bug in them. Also recheck
+   the C dependencies whenever these crates are updated: `cargo tree | grep -- -sys`.
 
 Decided against: wiping the password from memory (`zeroize`: ssh and the
 pipe hold it too), and checking where remote symlinks point (copying a link

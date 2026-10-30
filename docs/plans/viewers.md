@@ -55,6 +55,10 @@ esses dois formatos só são lidos com `V`, nunca no Autoview
 removê-lo deixaria de abrir esses Parquet e pouco reduziria o risco enquanto o
 SQLite existir. Isolar esses parsers em um processo próprio fica como evolução.
 
+Decisão do autor: **trocar essas bibliotecas em C por Rust assim que houver
+opção utilizável** (item 8 de Security no [BACKLOG](../../BACKLOG.md)). O bloqueio
+no Autoview é provisório e cai para cada formato que passar a ser lido em Rust.
+
 ## Subprojetos
 
 Abordagem escolhida (A): primeiro o que é embutido, em Rust; os programas
