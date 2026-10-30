@@ -2,7 +2,7 @@
 # Builds the .deb and the .rpm of Xylem in target/packages/, each with a
 # .sha256 next to it, from the release binary already built for the target
 # given, e.g.:
-#   cargo build --release --locked --target x86_64-unknown-linux-musl
+#   cargo build --release --locked --target x86_64-unknown-linux-musl   (needs musl-tools)
 #   sh packaging/linux/packages.sh x86_64-unknown-linux-musl
 # What goes in them is in [package.metadata.deb] and
 # [package.metadata.generate-rpm] in Cargo.toml. Used by

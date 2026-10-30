@@ -39,9 +39,11 @@ rapidez assim que relatada.
 Ainda assim, erros acontecem. Veja o que o Xylem faz para manter o risco baixo:
 
 - Tudo o que o Xylem lê por conta própria (texto, hex, codificações, arquivos
-  comprimidos, pacotes) passa por analisadores em Rust com segurança de memória.
-  Nenhum programa externo é executado em um arquivo a menos que você solicite
-  com E, O ou X.
+  comprimidos, pacotes, planilhas, CSV, DBF) passa por analisadores em Rust com
+  segurança de memória. A exceção são bancos SQLite e arquivos Parquet, lidos
+  por bibliotecas em C: elas só rodam quando você abre esse arquivo com V, nunca
+  no Autoview. Nenhum programa externo é executado em um arquivo a menos que
+  você solicite com E, O ou X.
 - Tudo tem limite: a quantidade lida, a quantidade descomprimida, o tempo gasto
   e o volume de memória que um descompressor pode usar. Apenas um nível de
   compressão é desfeito, e nada é gravado em disco para exibir um arquivo.
@@ -148,7 +150,8 @@ Releases, não de um repositório, então não se atualiza sozinho: instale o
 próximo do mesmo jeito. Para remover, `sudo apt remove xylem-fm` ou
 `sudo dnf remove xylem-fm`.
 
-**Com o Cargo** (requer Rust, via [rustup](https://rustup.rs)), a partir do
+**Com o Cargo** (requer Rust, via [rustup](https://rustup.rs), e um compilador
+C, para o SQLite e o zstd), a partir do
 [crates.io](https://crates.io/crates/xylem-fm), onde o Xylem se chama
 `xylem-fm` (o nome `xylem` já era de outro projeto); o comando é `xy`:
 
@@ -200,9 +203,10 @@ mkdir -p ~/.local/share/man/man1 && xy --man > ~/.local/share/man/man1/xy.1
   duas janelas.
 - **Achar coisas:** Filespec por nome, data e tamanho, Treespec para digitar um
   caminho, bookmarks, e Ctrl+S para buscar texto nos arquivos marcados.
-- **Olhar dentro:** um visualizador de texto e hex com busca e cores de
-  sintaxe, Autoview ao lado da lista, arquivos ZIP, 7z e TAR abertos como
-  diretórios, e modos de exibição que mostram o dono ou o que cada arquivo é.
+- **Olhar dentro:** um visualizador de texto e hex com busca, filtro de linhas
+  com expressões regulares e cores de sintaxe, Autoview ao lado da lista,
+  arquivos ZIP, 7z e TAR abertos como diretórios, e modos de exibição que
+  mostram o dono ou o que cada arquivo é.
 - **Para onde vai o espaço:** a visão Usage (Alt+W) lista as pastas e os
   arquivos de um ramo pelo espaço que ocupam, do maior para o menor, até o
   que enche o disco; o Alt+K Percent mostra a parte de cada pasta na própria
@@ -231,7 +235,7 @@ ajuda daquele prompt; numa janela, a ajuda daquela janela, com links para o
 resto.
 
 A mesma ajuda é [o manual](docs/manual/index.md), que dá para ler aqui no
-GitHub, e a página de manual (`xy --man`); os dois estão em inglês. Alguns
+GitHub, e a página de manual (`xy --man`). Alguns
 tópicos: [a janela da árvore](docs/manual/tree.md),
 [a janela de arquivos](docs/manual/files.md),
 [tags e operações em grupo](docs/manual/tagging.md),
@@ -241,6 +245,10 @@ tópicos: [a janela da árvore](docs/manual/tree.md),
 [configuração](docs/manual/configuration.md),
 [Windows](docs/manual/windows.md) (experimental) e a
 [comparação com o ZTreeWin](docs/manual/ztreewin.md).
+
+A ajuda também existe em português, espanhol, francês, alemão e chinês. As
+traduções em espanhol, francês, alemão e chinês não foram revisadas por falantes
+nativos: se você lê um desses idiomas, [sugestões são bem-vindas](docs/manual/TRANSLATING.md#reviews-wanted).
 
 ## Estrutura
 

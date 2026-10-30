@@ -14,6 +14,7 @@ nur der Anfang angezeigt.
 | `W` | Zeilenumbruch ein oder aus |
 | `#` oder `L` | Zeilennummern ein oder aus (im Textmodus) |
 | `g` oder `:` | zu einer Zeile springen (oder Byte-Offset im Hex-Modus) |
+| `&` | zeigt nur passende Zeilen, einfacher Text oder Regex ([Zeilen filtern](filter.md)); im Tabellenmodus der SQL-Filter |
 | `E` | Datei bearbeiten; zurück in Xylem zeigt der Betrachter den neuen Inhalt an derselben Stelle (Binärdateien nur mit einem Editor unter [`[editors]`](execute.md)) |
 | `D` | bei aktiviertem Git: Änderungen seit dem letzten Commit und zurück ([Git](git.md)) |
 | `T` / `U` | Datei markieren / Markierung aufheben |
@@ -79,5 +80,9 @@ Autoview zeigt den Hinweis in seinem Titel. Im Hex-Modus (`H`) sehen Sie die ent
 Bei einer `.tar.gz` (oder `.tar.xz` ...) lautet der Hinweis `TAR archive: Alt+F5 opens it as a folder` (Alt+F5 öffnet sie als Ordner).
 
 Um die rohen komprimierten Bytes zu sehen, schalten Sie `viewer_decompress` aus (**J** auf Seite 2 der [Konfiguration](configuration.md)).
+
+## Tabellen in C-Bibliotheken
+
+SQLite-Datenbanken (`.db`, `.sqlite`, `.sqlite3`) und Parquet-Dateien werden von in C geschriebenen Bibliotheken gelesen, die nicht die Speichersicherheit von Rust bieten. Deshalb öffnen sie sich nur mit `V` als Tabelle. Autoview liest alles, worüber der Cursor läuft, und zeigt diese Dateien als gewöhnlichen Inhalt mit dem Hinweis `Parquet or SQLite: V opens the table`. Öffnen Sie eine Datenbank aus nicht vertrauenswürdiger Quelle nur, wenn Sie dieses Risiko akzeptieren.
 
 Siehe auch: [markierte Dateien durchsuchen](search.md).

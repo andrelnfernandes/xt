@@ -67,6 +67,12 @@ pub(crate) enum PromptKind {
     BookmarkSet,
     /// Goto line in the viewer (g / :).
     ViewerGoto,
+    /// SQL filter in the viewer (WHERE ... / query).
+    ViewerSqlFilter,
+    /// Line filter in the viewer's text mode (F2, F3 and F4 change the options).
+    ViewerLineFilter {
+        spec: LineFilterSpec,
+    },
     /// A question from ssh while connecting: a password (`secret`, shown
     /// masked) or a yes/no.
     Askpass {
@@ -91,6 +97,8 @@ impl PromptKind {
             PromptKind::RenameTagged { .. } => "rename_mask",
             PromptKind::SearchTagged { .. } | PromptKind::ViewerSearch { .. } => "search",
             PromptKind::ViewerGoto => "goto",
+            PromptKind::ViewerSqlFilter => "sql_filter",
+            PromptKind::ViewerLineFilter { .. } => "line_filter",
             PromptKind::Chmod(_) => "chmod",
             PromptKind::RenameFile(_)
             | PromptKind::RenameDir(_)
@@ -120,6 +128,9 @@ impl PromptKind {
             PromptKind::ViewerSearch { spec, forward, .. } => {
                 let dir = if *forward { "FIND" } else { "FIND backward" };
                 format!("{dir} ({}): ", spec.mode_label())
+            }
+            PromptKind::ViewerLineFilter { spec } => {
+                format!("FILTER lines ({}): ", spec.mode_label())
             }
             _ => return None,
         })
@@ -158,6 +169,12 @@ impl Prompt {
             self.kind,
             PromptKind::SearchTagged { .. } | PromptKind::ViewerSearch { .. }
         )
+    }
+
+    /// The line filter's prompt accepts F2 (case), F3 (invert) and F4
+    /// (text/regex).
+    pub fn is_line_filter(&self) -> bool {
+        matches!(self.kind, PromptKind::ViewerLineFilter { .. })
     }
 
     pub fn is_bookmark_jump(&self) -> bool {
@@ -587,7 +604,16 @@ impl App {
             PromptKind::ViewerGoto => {
                 let clean = text.trim().trim_start_matches(':').trim();
                 if let Some(v) = &mut self.viewer {
-                    if v.mode == ViewMode::Text {
+                    if v.mode == ViewMode::Table {
+                        if let Some(t) = &mut v.table
+                            && let Ok(row) = clean.parse::<usize>()
+                            && row > 0
+                            && row <= t.visible_row_count()
+                        {
+                            t.cursor_row = row - 1;
+                            t.scroll_row = (row - 1).saturating_sub(v.page / 2);
+                        }
+                    } else if v.mode == ViewMode::Text {
                         match clean.parse::<usize>() {
                             Ok(line) if line > 0 => v.goto_line(line),
                             _ => v.note = Some(format!("Invalid line number: {text}")),
@@ -604,6 +630,34 @@ impl App {
                         }
                     }
                 }
+                Ok(())
+            }
+            PromptKind::ViewerSqlFilter => {
+                if let Some(v) = &mut self.viewer
+                    && let Some(t) = &mut v.table
+                {
+                    let query = if text.trim().is_empty() {
+                        None
+                    } else {
+                        Some(text.as_str())
+                    };
+                    match t.apply_filter(query) {
+                        Ok(count) => {
+                            v.note = Some(format!("Filter matched {count} rows"));
+                        }
+                        Err(e) => {
+                            v.note = Some(format!("SQL error: {e}"));
+                        }
+                    }
+                }
+                Ok(())
+            }
+            PromptKind::ViewerLineFilter { mut spec } => {
+                spec.text = text;
+                if let Some(v) = &mut self.viewer {
+                    v.note = Some(v.apply_line_filter(&spec));
+                }
+                self.line_filter = spec;
                 Ok(())
             }
             PromptKind::Prune {

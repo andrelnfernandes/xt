@@ -19,12 +19,17 @@ l'arborescence ou la fenêtre de fichiers, l'aide de cette fenêtre. Dans l'aide
 arrière** revient en arrière, **I** affiche cet index, **K** les touches en
 vigueur, **L** change la langue et **Échap** ferme.
 
+**Aidez-nous pour la traduction :** cette version du manuel n'a pas été relue
+par un locuteur natif. Si vous trouvez une erreur ou une tournure étrange,
+proposez une amélioration : `https://github.com/andrelnfernandes/xylem/issues`.
+
 ## Fenêtres et vues
 
 - [La fenêtre d'arborescence](tree.md) : déplacements, lecture, Branch et Showall
 - [La fenêtre de fichiers](files.md) : modes d'affichage, Autoview, ouverture de fichiers
 - [Écran partagé](split.md) : deux fenêtres côte à côte
 - [La visionneuse](viewer.md) : texte et hexadécimal, recherche, coloration syntaxique
+- [Filtrer les lignes](filter.md) : `&` dans la visionneuse, avec un guide des expressions régulières
 - [Rechercher dans les fichiers marqués](search.md) : Ctrl+S et Ctrl+V
 - [Informations](info.md) : Info, Avail, statistiques et tailles des répertoires
 - [Utilisation du disque](usage.md) : où va l'espace (Alt+W)

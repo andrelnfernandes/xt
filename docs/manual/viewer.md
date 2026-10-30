@@ -13,6 +13,7 @@ Binary files open in hex. Files over the size limit show only the beginning.
 | `W` | soft wrap on or off |
 | `#` or `L` | line numbers on or off (in text mode) |
 | `g` or `:` | jump to a line (or byte offset in hex) |
+| `&` | show only the lines that match, plain text or regex ([filtering lines](filter.md)); in table mode, the SQL filter |
 | `E` | edit the file; back in Xylem, the viewer shows the new contents at the same place (binary files only with an editor in [`[editors]`](execute.md)) |
 | `D` | with Git on: what changed since the last commit, and back ([Git](git.md)) |
 | `T` / `U` | tag / untag the file |
@@ -76,5 +77,9 @@ Autoview shows the note in its title. In hex mode (`H`) you see the decompressed
 For a `.tar.gz` (or `.tar.xz`...) the note says `TAR archive: Alt+F5 opens it as a folder`.
 
 To see the raw compressed bytes, turn off `viewer_decompress` (**J** on page 2 of the [configuration](configuration.md)).
+
+## Tables in C libraries
+
+SQLite databases (`.db`, `.sqlite`, `.sqlite3`) and Parquet files are read by libraries written in C, which do not have Rust's memory safety. So they open as tables only with `V`. Autoview reads whatever the cursor passes over, and shows these files as ordinary contents, with the note `Parquet or SQLite: V opens the table`. Open a database from an untrusted source only if you accept this risk.
 
 See also: [searching the tagged files](search.md).

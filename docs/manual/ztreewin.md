@@ -61,7 +61,7 @@ other programs", below.
 | Feature | In ZTreeWin | In Xylem |
 |---|---|---|
 | Filespec | name with its own name and extension rules, date, size, attribute, inverted filespec (Ctrl+I), labels | glob for names, date and size as in ZTreeWin (with K/M/G); no attributes, inversion or labels |
-| Viewer | Alpha, Dump, Hex, Junk and Wrap modes; character sets; hex editing; bookmarks; auto-scroll | text or hex, with ZTreeWin's search (F, B, /, \\, Space, + and -), soft wrap (W), line numbers (#), goto line (g / :); up to the size limit (`viewer_max_size`, 16 MiB to 1 GiB); no hex editing, by choice (see "What Xylem leaves to other programs") |
+| Viewer | Alpha, Dump, Hex, Junk and Wrap modes; character sets; hex editing; bookmarks; auto-scroll | text or hex, with ZTreeWin's search (F, B, /, \\, Space, + and -), soft wrap (W), line numbers (#), goto line (g / :), line filter with regex (&); up to the size limit (`viewer_max_size`, 16 MiB to 1 GiB); no hex editing, by choice (see "What Xylem leaves to other programs") |
 | Ctrl+S | text, hex or Unicode; searches only the ZIP index | text or hex |
 | Attributes | Windows attributes (R, A, S, H) | Unix permissions in octal (`644`); no owner/group. On Windows, R, H, S and A, as in ZTreeWin |
 | Sort | Name, Ext, Date, Time, Length, Alpha, nuMber, Size, Value, Unsorted; Charset; same/diff in split screen | Name, Ext, Date, Size, ascending/descending, Path first; each window has its own order |

@@ -14,6 +14,7 @@ muestran solo el principio.
 | `W` | activar o desactivar el ajuste de línea |
 | `#` o `L` | activar o desactivar números de línea (en modo texto) |
 | `g` o `:` | saltar a una línea (o desplazamiento de byte en hexadecimal) |
+| `&` | muestra solo las líneas que coinciden, texto simple o regex ([filtrar líneas](filter.md)); en modo tabla, el filtro SQL |
 | `E` | editar el archivo; al volver a Xylem, el visor muestra el contenido nuevo en el mismo lugar (archivos binarios solo con un editor en [`[editors]`](execute.md)) |
 | `D` | con Git activado: qué cambió desde el último commit, y volver ([Git](git.md)) |
 | `T` / `U` | marcar / desmarcar el archivo |
@@ -79,5 +80,9 @@ Autoview muestra la nota en su título. En modo hexadecimal (`H`) se ven los byt
 Para un `.tar.gz` (o `.tar.xz`...), la nota dice `TAR archive: Alt+F5 opens it as a folder` (Alt+F5 lo abre como una carpeta).
 
 Para ver los bytes comprimidos, desactive `viewer_decompress` (**J** en la página 2 de la [configuración](configuration.md)).
+
+## Tablas en bibliotecas C
+
+Las bases SQLite (`.db`, `.sqlite`, `.sqlite3`) y los archivos Parquet se leen con bibliotecas escritas en C, que no tienen la seguridad de memoria de Rust. Por eso solo se abren como tabla con `V`. Autoview lee todo aquello por donde pasa el cursor y muestra estos archivos como contenido normal, con la nota `Parquet or SQLite: V opens the table`. Abre una base de origen no confiable solo si aceptas este riesgo.
 
 Véase también: [buscar en los archivos marcados](search.md).

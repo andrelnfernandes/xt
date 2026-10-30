@@ -170,6 +170,7 @@ pub const TOPICS: &[(&str, &str)] = &[
     ("execute", include_str!("../docs/manual/execute.md")),
     ("archives", include_str!("../docs/manual/archives.md")),
     ("viewer", include_str!("../docs/manual/viewer.md")),
+    ("filter", include_str!("../docs/manual/filter.md")),
     ("search", include_str!("../docs/manual/search.md")),
     ("info", include_str!("../docs/manual/info.md")),
     ("usage", include_str!("../docs/manual/usage.md")),

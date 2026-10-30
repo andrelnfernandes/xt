@@ -38,6 +38,7 @@ use crate::settings::{Outcome, Settings};
 use crate::shell::{self, External};
 use crate::state::{self, Bookmark, Bookmarks, History};
 use crate::term::Terminal;
+use crate::viewer::line_filter::LineFilterSpec;
 use crate::viewer::{self, Action as ViewerAction, SearchFrom, Viewer};
 
 mod actions;
@@ -128,6 +129,9 @@ pub struct App {
     /// Last search term (Ctrl+S and the viewer share it, so that
     /// Space in Ctrl+V continues the search done with Ctrl+S).
     pub search: Option<SearchSpec>,
+    /// How the last line filter was set (regex, case, inverted): the next
+    /// one starts the same way.
+    pub line_filter: LineFilterSpec,
     pub tagged_view: Option<TaggedView>,
     /// F7: the contents of the selected file next to the list.
     pub autoview: Option<Viewer>,
@@ -240,6 +244,7 @@ impl App {
             job: None,
             search_job: None,
             search: None,
+            line_filter: LineFilterSpec::default(),
             tagged_view: None,
             autoview: None,
             archive_job: None,

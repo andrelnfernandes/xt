@@ -226,6 +226,17 @@ impl App {
                 prompt.label = prompt.kind.search_label().unwrap_or_default();
                 return;
             }
+            if matches!(key.code, KeyCode::F(2) | KeyCode::F(3) | KeyCode::F(4))
+                && let PromptKind::ViewerLineFilter { spec } = &mut prompt.kind
+            {
+                match key.code {
+                    KeyCode::F(2) => spec.case_sensitive = !spec.case_sensitive,
+                    KeyCode::F(3) => spec.invert = !spec.invert,
+                    _ => spec.regex = !spec.regex,
+                }
+                prompt.label = prompt.kind.search_label().unwrap_or_default();
+                return;
+            }
             // F6: with/without paths; F7: from where the paths start.
             if matches!(key.code, KeyCode::F(6) | KeyCode::F(7))
                 && let PromptKind::Transfer {

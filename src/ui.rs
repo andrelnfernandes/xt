@@ -1549,6 +1549,13 @@ fn prompt_lines(frame: &mut Frame, prompt: &app::Prompt, area: Rect) -> Vec<Line
             help.push(("F4", "text/hex"));
             help.push(("↑↓", "history"));
         }
+        if prompt.is_line_filter() {
+            help.push(("F1", "regex help"));
+            help.push(("F2", "match case"));
+            help.push(("F3", "invert"));
+            help.push(("F4", "text/regex"));
+            help.push(("↑↓", "history"));
+        }
         if prompt.is_goto() {
             help.push(("↑↓", "history"));
         }
@@ -2094,7 +2101,7 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
         // The hex view shows every byte read: the line budget cuts only
         // the text.
         let shown = if v.lines_cut() && v.mode == ViewMode::Text {
-            Some(format!("{} lines", fmt_num(v.line_count() as u64)))
+            Some(format!("{} lines", fmt_num(v.total_lines() as u64)))
         } else if !v.bytes_cut() {
             None
         } else if v.compression.is_some() {
@@ -2125,6 +2132,19 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
             Style::new().fg(theme().error),
         ));
     }
+    if v.mode == ViewMode::Text
+        && let Some(spec) = v.line_filter()
+    {
+        title.push(Span::styled(
+            format!(
+                "  [filter {}: {} of {} lines]",
+                spec.text,
+                fmt_num(v.line_count() as u64),
+                fmt_num(v.total_lines() as u64)
+            ),
+            Style::new().fg(theme().key),
+        ));
+    }
     if let Some((i, n)) = tagged {
         title.push(Span::styled(
             format!("  [tagged {i} of {n}]"),
@@ -2134,19 +2154,44 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
     frame.render_widget(Line::from(title), header);
 
     let mode = match v.mode {
-        ViewMode::Text => " TEXT ",
-        ViewMode::Hex => " HEX ",
+        ViewMode::Text => " TEXT ".to_string(),
+        ViewMode::Hex => " HEX ".to_string(),
+        ViewMode::Table => {
+            if let Some(t) = &v.table {
+                if t.sheets.len() > 1 {
+                    format!(" TABLE [{}/{}] ", t.current_sheet + 1, t.sheets.len())
+                } else {
+                    " TABLE ".to_string()
+                }
+            } else {
+                " TABLE ".to_string()
+            }
+        }
     };
-    draw_viewer_body(frame, v, mode.to_string(), body);
+    draw_viewer_body(frame, v, mode, body);
 
     let total = v.line_count().max(1);
     let position = match v.mode {
         ViewMode::Text => format!(
             "Line {} of {}",
-            fmt_num(v.top as u64 + 1),
-            fmt_num(total as u64)
+            fmt_num(v.top_line() as u64 + 1),
+            fmt_num(v.total_lines().max(1) as u64)
         ),
         ViewMode::Hex => format!("Offset {:08X}", v.top * viewer::HEX_WIDTH),
+        ViewMode::Table => {
+            if let Some(t) = &v.table {
+                let cell_col_letter = crate::viewer::tabular_loader::column_letter(t.cursor_col);
+                format!(
+                    "Cell {}{} (Row {} of {})",
+                    cell_col_letter,
+                    t.cursor_row + 1,
+                    t.cursor_row + 1,
+                    t.visible_row_count()
+                )
+            } else {
+                "Table".to_string()
+            }
+        }
     };
     let percent = ((v.top + v.page).min(total) * 100) / total;
     let note = v.note.clone();
@@ -2167,6 +2212,7 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
             menu_line(
                 "",
                 &[
+                    ("&", "filter"),
                     ("/ \\", "find here"),
                     ("Space", "next hit"),
                     ("Esc", "close"),
@@ -2278,8 +2324,15 @@ fn draw_viewer_body(frame: &mut Frame, v: &mut Viewer, title: String, area: Rect
     let inner = panel("", false).inner(area);
     v.page = inner.height as usize;
     v.width = inner.width as usize;
+
+    if v.mode == ViewMode::Table
+        && let Some(t) = &v.table
+    {
+        draw_table_grid(frame, t, title, area);
+        return;
+    }
     let mark = highlight(true).add_modifier(Modifier::BOLD);
-    let digits = v.line_count().to_string().len().max(1);
+    let digits = v.total_lines().to_string().len().max(1);
     let show_numbers = v.line_numbers && v.mode == ViewMode::Text;
     let t = theme();
     let lines: Vec<Line> = v
@@ -2314,6 +2367,130 @@ fn draw_viewer_body(frame: &mut Frame, v: &mut Viewer, title: String, area: Rect
             Line::from(spans)
         })
         .collect();
+    frame.render_widget(Paragraph::new(lines).block(panel(title, true)), area);
+}
+
+/// Render the tabular grid view for spreadsheets, CSV, DBF and SQLite.
+fn draw_table_grid(
+    frame: &mut Frame,
+    grid: &crate::viewer::table::TableGrid,
+    title: String,
+    area: Rect,
+) {
+    let t = theme();
+    let inner = panel("", false).inner(area);
+    if inner.height < 2 || inner.width < 4 {
+        return;
+    }
+
+    let page_rows = inner.height.saturating_sub(2) as usize; // reserve 1 for header, 1 for status
+    let total_rows = grid.visible_row_count();
+    let col_count = grid.headers.len();
+    let row_num_width = (grid.rows.len().max(1)).to_string().len().max(3);
+
+    let mut lines = Vec::new();
+
+    // 1. Column Headers Line
+    let mut header_spans = Vec::new();
+    header_spans.push(Span::styled(
+        format!("{:>width$} │ ", "#", width = row_num_width),
+        Style::new().fg(t.border),
+    ));
+
+    let mut current_width = row_num_width + 3;
+    let max_avail_width = inner.width as usize;
+
+    for col_idx in grid.scroll_col..col_count {
+        let w = grid.col_widths.get(col_idx).copied().unwrap_or(8);
+        if current_width + w > max_avail_width {
+            break;
+        }
+        let header_name = grid.headers.get(col_idx).map(|s| s.as_str()).unwrap_or("");
+        let is_selected_col = col_idx == grid.cursor_col;
+        let style = if is_selected_col {
+            Style::new().fg(t.key).add_modifier(Modifier::BOLD)
+        } else {
+            Style::new().fg(t.dim)
+        };
+        header_spans.push(Span::styled(
+            format!("{:<width$} ", header_name, width = w),
+            style,
+        ));
+        header_spans.push(Span::styled("│ ", Style::new().fg(t.border)));
+        current_width += w + 2;
+    }
+    lines.push(Line::from(header_spans));
+
+    // 2. Data Rows
+    for r_offset in 0..page_rows {
+        let display_row_idx = grid.scroll_row + r_offset;
+        if display_row_idx >= total_rows {
+            break;
+        }
+        let real_row_idx = grid.filtered_indices[display_row_idx];
+        let row_data = &grid.rows[real_row_idx];
+        let is_cursor_row = display_row_idx == grid.cursor_row;
+
+        let mut row_spans = Vec::new();
+        let num_style = if is_cursor_row {
+            Style::new().fg(t.key)
+        } else {
+            Style::new().fg(t.dim)
+        };
+
+        row_spans.push(Span::styled(
+            format!("{:>width$} │ ", display_row_idx + 1, width = row_num_width),
+            num_style,
+        ));
+
+        let mut cur_w = row_num_width + 3;
+        for col_idx in grid.scroll_col..col_count {
+            let w = grid.col_widths.get(col_idx).copied().unwrap_or(8);
+            if cur_w + w > max_avail_width {
+                break;
+            }
+            let cell_text = row_data
+                .cells
+                .get(col_idx)
+                .map(|s| s.as_str())
+                .unwrap_or("");
+            let is_active_cell = is_cursor_row && col_idx == grid.cursor_col;
+
+            let cell_style = if is_active_cell {
+                highlight(true).add_modifier(Modifier::BOLD)
+            } else if is_cursor_row {
+                Style::new().fg(t.text)
+            } else {
+                Style::new().fg(t.dim)
+            };
+
+            let formatted_cell = format!("{:<width$} ", fit(cell_text, w), width = w);
+            row_spans.push(Span::styled(formatted_cell, cell_style));
+            row_spans.push(Span::styled("│ ", Style::new().fg(t.border)));
+            cur_w += w + 2;
+        }
+        lines.push(Line::from(row_spans));
+    }
+
+    // 3. Status / Active Cell Full Content at Bottom
+    let active_content = grid.active_cell().unwrap_or("");
+    let filter_notice = if let Some(q) = &grid.active_filter {
+        format!(" [Filter: {} ({} matches)] ", q, grid.visible_row_count())
+    } else {
+        String::new()
+    };
+
+    let bottom_text = format!(
+        "Cell: {} │ Content: {}{}",
+        crate::viewer::tabular_loader::column_letter(grid.cursor_col),
+        active_content,
+        filter_notice
+    );
+    lines.push(Line::from(Span::styled(
+        fit(&bottom_text, max_avail_width),
+        Style::new().fg(t.key),
+    )));
+
     frame.render_widget(Paragraph::new(lines).block(panel(title, true)), area);
 }
 

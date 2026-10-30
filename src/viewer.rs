@@ -1,6 +1,11 @@
 //! File viewer (`V` key; Ctrl+V for the tagged files), in text or
 //! hexadecimal mode, with search.
 
+pub mod line_filter;
+pub mod sql_filter;
+pub mod table;
+pub mod tabular_loader;
+
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
@@ -15,6 +20,7 @@ use crate::decompress::{
 };
 use crate::highlight::Highlighter;
 use crate::search::Pattern;
+use line_filter::{LineFilterSpec, LineMatcher};
 
 /// The default viewer limit, the floor of `auto` and the cap for remote
 /// files (16 MiB).
@@ -27,6 +33,7 @@ const PAN_STEP: usize = 8;
 pub enum ViewMode {
     Text,
     Hex,
+    Table,
 }
 
 /// Where a new search starts.
@@ -67,6 +74,10 @@ pub enum Action {
     CopyPath,
     /// Prompts for line number to go to.
     GotoLine,
+    /// Prompts for a SQL WHERE filter in table mode.
+    FilterSql,
+    /// Prompts for the line filter in text mode.
+    FilterLines,
 }
 
 /// How a file is read: how much of it, and whether a compressed file is
@@ -77,6 +88,9 @@ pub struct LoadOptions {
     pub limits: Limits,
     /// Fixed charset for files that are not UTF-8 or UTF-16 (`None`: guess).
     pub fallback: Option<Charset>,
+    /// May hand the file to a parser written in C (see
+    /// [`tabular_loader::uses_c_parser`]): only when the user asks to see it.
+    pub c_parsers: bool,
 }
 
 impl LoadOptions {
@@ -90,6 +104,7 @@ impl LoadOptions {
                 time: VIEW_TIME,
             },
             fallback: None,
+            c_parsers: true,
         }
     }
 
@@ -103,6 +118,7 @@ impl LoadOptions {
                 time: AUTOVIEW_TIME,
             },
             fallback: None,
+            c_parsers: false,
         }
     }
 }
@@ -170,6 +186,17 @@ pub struct Viewer {
     /// What went wrong decompressing, for the header: the note says it
     /// too, but any key clears the note.
     problem: Option<String>,
+    /// Tabular grid for CSV, spreadsheet, SQLite, or DBF files.
+    pub table: Option<table::TableGrid>,
+    /// Text mode shows only the lines this filter kept. `lines` stays whole:
+    /// the margin keeps each line's number, and the colors their context.
+    filter: Option<LineFilter>,
+}
+
+/// The line filter in effect and the lines it kept, in order.
+struct LineFilter {
+    matcher: LineMatcher,
+    rows: Vec<usize>,
 }
 
 /// A piece of a displayed line: text, its color and whether it is part of
@@ -249,9 +276,46 @@ impl Viewer {
         });
         let found = charset::detect(&data, load.fallback);
         let limit = load.limits.output;
-        let mut v = Self::build(path, size, data, found.charset, found.binary, limit);
+        let mut v = Self::build(path.clone(), size, data, found.charset, found.binary, limit);
         if let Some(name) = name {
             v = v.colored_as(&name);
+        }
+
+        // Autoview runs on whatever the cursor passes over, so it never
+        // reaches a parser written in C.
+        let c_refused = !load.c_parsers && tabular_loader::uses_c_parser(&path);
+        if c_refused && note.is_none() {
+            note = Some("Parquet or SQLite: V opens the table".into());
+        }
+
+        // Auto-load tabular candidate files into Table mode if on disk
+        if tabular_loader::is_tabular_candidate(&path) && !c_refused {
+            let ext = path
+                .extension()
+                .and_then(|s| s.to_str())
+                .map(|s| s.to_ascii_lowercase())
+                .unwrap_or_default();
+
+            let grid_res = match ext.as_str() {
+                "csv" | "tsv" | "tab" => tabular_loader::load_csv(&path, None),
+                "jsonl" | "ndjson" => tabular_loader::load_jsonl(&path),
+                "xlsx" | "ods" | "xls" | "xlsb" => tabular_loader::load_spreadsheet(&path),
+                "dbf" => tabular_loader::load_dbf(&path),
+                "sqlite" | "sqlite3" | "db" => tabular_loader::load_sqlite(&path, None),
+                "parquet" => tabular_loader::load_parquet(&path),
+                _ => Err("Not supported".to_string()),
+            };
+
+            match grid_res {
+                Ok(grid) => {
+                    v.table = Some(grid);
+                    v.mode = ViewMode::Table;
+                }
+                Err(e) if v.note.is_none() => {
+                    v.note = Some(format!("Table mode: {e}"));
+                }
+                _ => {}
+            }
         }
         if failed {
             // The raw bytes of a compressed file that gave nothing.
@@ -286,6 +350,11 @@ impl Viewer {
             self.charset_manual = true;
         }
         self.mode = old.mode;
+        self.filter = old.filter.map(|f| LineFilter {
+            matcher: f.matcher,
+            rows: Vec::new(),
+        });
+        self.refilter();
         self.top = old.top.min(self.line_count().saturating_sub(1));
         self.left = old.left;
         self.page = old.page;
@@ -311,7 +380,7 @@ impl Viewer {
             }
             KeyCode::End => {
                 if self.mode == ViewMode::Text && self.wrap {
-                    self.top = self.lines.len().saturating_sub(1);
+                    self.top = self.text_rows().saturating_sub(1);
                     self.sub_top = 0;
                 } else {
                     self.top = self.line_count().saturating_sub(page);
@@ -325,14 +394,15 @@ impl Viewer {
         if self.mode == ViewMode::Text && self.wrap {
             let cw = self.content_width();
             for _ in 0..count {
-                if self.top >= self.lines.len() {
+                if self.top >= self.text_rows() {
                     break;
                 }
                 // Only as far as the next row: the line can be huge.
-                let next_row = WrapRows::new(&self.lines[self.top], cw).nth(self.sub_top + 1);
+                let line = &self.lines[self.line_index(self.top)];
+                let next_row = WrapRows::new(line, cw).nth(self.sub_top + 1);
                 if next_row.is_some() {
                     self.sub_top += 1;
-                } else if self.top + 1 < self.lines.len() {
+                } else if self.top + 1 < self.text_rows() {
                     self.top += 1;
                     self.sub_top = 0;
                 } else {
@@ -353,7 +423,7 @@ impl Viewer {
                     self.sub_top -= 1;
                 } else if self.top > 0 {
                     self.top -= 1;
-                    let rows = WrapRows::new(&self.lines[self.top], cw).count();
+                    let rows = WrapRows::new(&self.lines[self.line_index(self.top)], cw).count();
                     self.sub_top = rows.saturating_sub(1);
                 } else {
                     break;
@@ -382,10 +452,17 @@ impl Viewer {
         if self.mode == ViewMode::Text {
             let max_line = self.lines.len().max(1);
             let line = target_1_indexed.clamp(1, max_line);
-            self.top = line.saturating_sub(1);
+            self.top = self
+                .row_of_line(line - 1)
+                .min(self.text_rows().saturating_sub(1));
             self.sub_top = 0;
             self.left = 0;
-            self.note = Some(format!("Line {line} of {max_line}"));
+            let shown = self.top_line() + 1;
+            self.note = Some(if shown == line {
+                format!("Line {line} of {max_line}")
+            } else {
+                format!("Line {line} is filtered out: showing line {shown}")
+            });
         } else {
             let max_offset = self.data.len();
             let offset = target_1_indexed.min(max_offset);
@@ -474,6 +551,8 @@ impl Viewer {
             cut: size > data_len,
             lines_cut: text.cut,
             problem: None,
+            table: None,
+            filter: None,
         }
     }
 
@@ -513,6 +592,7 @@ impl Viewer {
         self.lines = text.lines;
         self.bidi = text.bidi;
         self.lines_cut = text.cut;
+        self.refilter();
         let had_colors = self.colors.is_some();
         self.colors = readable
             .then(|| text_colors(&self.path, self.color_name.as_deref(), &self.lines))
@@ -520,7 +600,7 @@ impl Viewer {
         self.colors_on = self.colors.is_some() && (self.colors_on || !had_colors);
         self.hit = None;
         if self.mode == ViewMode::Text {
-            self.top = self.top.min(self.lines.len().saturating_sub(1));
+            self.top = self.top.min(self.text_rows().saturating_sub(1));
         }
         self.sub_top = 0;
     }
@@ -564,9 +644,108 @@ impl Viewer {
 
     pub fn line_count(&self) -> usize {
         match self.mode {
-            ViewMode::Text => self.lines.len(),
+            ViewMode::Text => self.text_rows(),
             ViewMode::Hex => self.data.len().div_ceil(HEX_WIDTH),
+            ViewMode::Table => self
+                .table
+                .as_ref()
+                .map(|t| t.visible_row_count())
+                .unwrap_or(0),
         }
+    }
+
+    /// Lines of text read, filtered or not.
+    pub fn total_lines(&self) -> usize {
+        self.lines.len()
+    }
+
+    /// Rows of text mode: the lines the filter kept, or all of them. `top`
+    /// and the scrolling count these.
+    fn text_rows(&self) -> usize {
+        self.filter
+            .as_ref()
+            .map_or(self.lines.len(), |f| f.rows.len())
+    }
+
+    /// The line (index in `lines`) shown at a row of text mode.
+    fn line_index(&self, row: usize) -> usize {
+        self.filter.as_ref().map_or(row, |f| f.rows[row])
+    }
+
+    /// The row showing `line`, or else the first one after it.
+    fn row_of_line(&self, line: usize) -> usize {
+        self.filter
+            .as_ref()
+            .map_or(line, |f| f.rows.partition_point(|&l| l < line))
+    }
+
+    /// The line at the top of the text mode's window.
+    pub fn top_line(&self) -> usize {
+        if self.top < self.text_rows() {
+            self.line_index(self.top)
+        } else {
+            0
+        }
+    }
+
+    /// The filter in effect, if any.
+    pub fn line_filter(&self) -> Option<&LineFilterSpec> {
+        self.filter.as_ref().map(|f| f.matcher.spec())
+    }
+
+    /// Runs the filter again, after `lines` changed.
+    fn refilter(&mut self) {
+        if let Some(f) = &mut self.filter {
+            let matcher = &f.matcher;
+            f.rows = (0..self.lines.len())
+                .filter(|&i| matcher.matches(&self.lines[i]))
+                .collect();
+        }
+    }
+
+    /// Applies the prompt's filter (empty text turns it off) and says what
+    /// happened. A filter that keeps nothing or is invalid changes nothing.
+    /// The line at the top stays there, or the next one that is left.
+    pub fn apply_line_filter(&mut self, spec: &LineFilterSpec) -> String {
+        let total = self.lines.len();
+        let anchor = self.top_line();
+        let (filter, note) = if spec.text.is_empty() {
+            (None, format!("Filter off: {total} lines"))
+        } else {
+            let matcher = match LineMatcher::new(spec) {
+                Ok(m) => m,
+                Err(e) => return e,
+            };
+            let rows: Vec<usize> = (0..total)
+                .filter(|&i| matcher.matches(&self.lines[i]))
+                .collect();
+            if rows.is_empty() {
+                return format!("No lines match \"{}\": filter not changed", spec.text);
+            }
+            let note = format!("Filter: {} of {total} lines", rows.len());
+            (Some(LineFilter { matcher, rows }), note)
+        };
+        self.filter = filter;
+        self.hit = self
+            .hit
+            .filter(|h| h.mode != ViewMode::Text || self.line_kept(h.line));
+        self.top = self.row_of_line(anchor);
+        if self.wrap {
+            self.top = self.top.min(self.text_rows().saturating_sub(1));
+        } else {
+            self.top = self
+                .top
+                .min(self.text_rows().saturating_sub(self.page.max(1)));
+        }
+        self.sub_top = 0;
+        note
+    }
+
+    /// `line` is on screen under the current filter.
+    fn line_kept(&self, line: usize) -> bool {
+        self.filter
+            .as_ref()
+            .is_none_or(|f| f.rows.binary_search(&line).is_ok())
     }
 
     /// The lines that fit in `height`, with the offset already applied, and
@@ -581,9 +760,10 @@ impl Viewer {
         let hit = self.hit.filter(|h| h.mode == self.mode);
         match self.mode {
             ViewMode::Text if !self.wrap => {
-                let range = self.top..(self.top + height).min(self.lines.len());
+                let range = self.top..(self.top + height).min(self.text_rows());
                 range
-                    .map(|i| {
+                    .map(|row| {
+                        let i = self.line_index(row);
                         let line: String = self.lines[i].chars().skip(self.left).collect();
                         let mark = hit.filter(|h| h.line == i).and_then(|h| {
                             let s = h.start.saturating_sub(self.left);
@@ -597,9 +777,10 @@ impl Viewer {
             ViewMode::Text => {
                 let cw = self.content_width();
                 let mut out = Vec::new();
-                let mut line_idx = self.top;
+                let mut row = self.top;
                 let mut sub_idx = self.sub_top;
-                while out.len() < height && line_idx < self.lines.len() {
+                while out.len() < height && row < self.text_rows() {
+                    let line_idx = self.line_index(row);
                     let ranges = wrap_line_ranges(&self.lines[line_idx], cw);
                     while sub_idx < ranges.len() && out.len() < height {
                         let r = &ranges[sub_idx];
@@ -620,7 +801,7 @@ impl Viewer {
                         out.push((chars, mark));
                         sub_idx += 1;
                     }
-                    line_idx += 1;
+                    row += 1;
                     sub_idx = 0;
                 }
                 out
@@ -637,6 +818,7 @@ impl Viewer {
                     })
                     .collect()
             }
+            ViewMode::Table => Vec::new(),
         }
     }
 
@@ -655,12 +837,14 @@ impl Viewer {
         let hit = self.hit.filter(|h| h.mode == self.mode);
         match self.mode {
             ViewMode::Text if !self.wrap => {
-                let range = self.top..(self.top + height).min(self.lines.len());
+                let range = self.top..(self.top + height).min(self.text_rows());
                 let width = self.content_width();
+                let kept = self.filter.as_ref().map(|f| f.rows.as_slice());
                 let (left, colors, lines, bidi) =
                     (self.left, &mut self.colors, &self.lines, &self.bidi);
                 range
-                    .map(|i| {
+                    .map(|row| {
+                        let i = kept.map_or(row, |rows| rows[row]);
                         // Only what fits: a line can be megabytes long.
                         let shown = visible_chars(&lines[i], left, width);
                         let mark = hit.filter(|h| h.line == i).and_then(|h| {
@@ -684,9 +868,11 @@ impl Viewer {
             ViewMode::Text => {
                 let cw = self.content_width();
                 let mut out = Vec::new();
-                let mut line_idx = self.top;
+                let mut row = self.top;
                 let mut sub_idx = self.sub_top;
-                while out.len() < height && line_idx < self.lines.len() {
+                let total = self.text_rows();
+                while out.len() < height && row < total {
+                    let line_idx = self.line_index(row);
                     let line = &self.lines[line_idx];
                     // Only the rows on screen: a line can be megabytes long.
                     let rows: Vec<WrapRow> = WrapRows::new(line, cw)
@@ -726,7 +912,7 @@ impl Viewer {
                             });
                         }
                     }
-                    line_idx += 1;
+                    row += 1;
                     sub_idx = 0;
                 }
                 out
@@ -744,12 +930,33 @@ impl Viewer {
                     })
                     .collect()
             }
+            ViewMode::Table => Vec::new(),
         }
     }
 
     /// Handles a key; what does not belong to the viewer itself (close, switch
     /// file, search) comes back as an `Action`.
     pub fn handle_key(&mut self, key: KeyEvent) -> Action {
+        // Route movement keys to table when in Table mode
+        if self.mode == ViewMode::Table
+            && let Some(t) = &mut self.table
+        {
+            match key.code {
+                KeyCode::Up
+                | KeyCode::Down
+                | KeyCode::Left
+                | KeyCode::Right
+                | KeyCode::PageUp
+                | KeyCode::PageDown
+                | KeyCode::Home
+                | KeyCode::End => {
+                    t.handle_key(key.code, self.page);
+                    return Action::None;
+                }
+                _ => {}
+            }
+        }
+
         let page = self.page.max(1);
         let max_top = self.line_count().saturating_sub(page);
         self.note = None;
@@ -781,7 +988,7 @@ impl Viewer {
             }
             KeyCode::End => {
                 if self.mode == ViewMode::Text && self.wrap {
-                    self.top = self.lines.len().saturating_sub(1);
+                    self.top = self.text_rows().saturating_sub(1);
                     self.sub_top = 0;
                 } else {
                     self.top = max_top;
@@ -805,6 +1012,64 @@ impl Viewer {
                 Action::None
             }
             KeyCode::Char('g' | 'G' | ':') => Action::GotoLine,
+            KeyCode::Char('t' | 'T') => {
+                if self.table.is_some() {
+                    self.mode = match self.mode {
+                        ViewMode::Table => ViewMode::Text,
+                        _ => ViewMode::Table,
+                    };
+                }
+                Action::None
+            }
+            KeyCode::Char('&') => match self.mode {
+                ViewMode::Text => Action::FilterLines,
+                ViewMode::Table => Action::FilterSql,
+                ViewMode::Hex => {
+                    self.note = Some("The line filter works in text mode (H)".into());
+                    Action::None
+                }
+            },
+            KeyCode::Char('\\') => {
+                if self.mode == ViewMode::Table {
+                    Action::FilterSql
+                } else {
+                    Action::Search {
+                        forward: false,
+                        from: SearchFrom::Page,
+                    }
+                }
+            }
+            KeyCode::Char(']') => {
+                if let Some(t) = &mut self.table
+                    && !t.sheets.is_empty()
+                {
+                    t.current_sheet = (t.current_sheet + 1) % t.sheets.len();
+                    // Reload table for sqlite sheet change if needed
+                    let sheet_name = t.sheets[t.current_sheet].clone();
+                    if let Ok(new_grid) = tabular_loader::load_sqlite(&self.path, Some(&sheet_name))
+                    {
+                        *t = new_grid;
+                    }
+                }
+                Action::None
+            }
+            KeyCode::Char('[') => {
+                if let Some(t) = &mut self.table
+                    && !t.sheets.is_empty()
+                {
+                    t.current_sheet = if t.current_sheet == 0 {
+                        t.sheets.len() - 1
+                    } else {
+                        t.current_sheet - 1
+                    };
+                    let sheet_name = t.sheets[t.current_sheet].clone();
+                    if let Ok(new_grid) = tabular_loader::load_sqlite(&self.path, Some(&sheet_name))
+                    {
+                        *t = new_grid;
+                    }
+                }
+                Action::None
+            }
             KeyCode::Char(c) => match c.to_ascii_lowercase() {
                 'h' => {
                     self.toggle_mode();
@@ -864,7 +1129,7 @@ impl Viewer {
             _ => Action::None,
         };
         if self.mode == ViewMode::Text && self.wrap {
-            self.top = self.top.min(self.lines.len().saturating_sub(1));
+            self.top = self.top.min(self.text_rows().saturating_sub(1));
         } else {
             self.top = self.top.min(max_top);
         }
@@ -874,7 +1139,14 @@ impl Viewer {
     fn toggle_mode(&mut self) {
         self.mode = match self.mode {
             ViewMode::Text => ViewMode::Hex,
-            ViewMode::Hex => ViewMode::Text,
+            ViewMode::Hex => {
+                if self.table.is_some() {
+                    ViewMode::Table
+                } else {
+                    ViewMode::Text
+                }
+            }
+            ViewMode::Table => ViewMode::Text,
         };
         self.top = 0;
         self.sub_top = 0;
@@ -896,9 +1168,13 @@ impl Viewer {
     /// Next match after the last one found (or the page).
     pub fn search_next(&mut self, pattern: &Pattern, forward: bool) -> bool {
         self.forward = forward;
+        let row = |h: Hit| match h.mode {
+            ViewMode::Text => self.row_of_line(h.line),
+            _ => h.line,
+        };
         let pos = match self.hit.filter(|h| h.mode == self.mode) {
-            Some(h) if forward => (h.line, h.start + 1),
-            Some(h) => (h.line, h.start),
+            Some(h) if forward => (row(h), h.start + 1),
+            Some(h) => (row(h), h.start),
             None => return self.search(pattern, forward, SearchFrom::Page),
         };
         self.find_from(pattern, forward, pos)
@@ -928,6 +1204,7 @@ impl Viewer {
                     end: e,
                 })
             }
+            ViewMode::Table => None,
         };
         match hit {
             Some(h) => {
@@ -938,8 +1215,10 @@ impl Viewer {
         }
     }
 
-    fn find_text(&self, pattern: &Pattern, forward: bool, line: usize, col: usize) -> Option<Hit> {
-        let n = self.lines.len();
+    /// `row` counts the rows of text mode: a search sees only what the
+    /// filter kept.
+    fn find_text(&self, pattern: &Pattern, forward: bool, row: usize, col: usize) -> Option<Hit> {
+        let n = self.text_rows();
         if n == 0 {
             return None;
         }
@@ -950,22 +1229,30 @@ impl Viewer {
             end: e,
         };
         if forward {
-            if line >= n {
+            if row >= n {
                 return None;
             }
+            let line = self.line_index(row);
             if let Some(r) = pattern.find_in_line(&self.lines[line], col) {
                 return Some(at(line, r));
             }
-            (line + 1..n).find_map(|i| pattern.find_in_line(&self.lines[i], 0).map(|r| at(i, r)))
+            (row + 1..n).find_map(|i| {
+                let line = self.line_index(i);
+                pattern
+                    .find_in_line(&self.lines[line], 0)
+                    .map(|r| at(line, r))
+            })
         } else {
-            let line = line.min(n - 1);
+            let row = row.min(n - 1);
+            let line = self.line_index(row);
             if let Some(r) = pattern.rfind_in_line(&self.lines[line], col) {
                 return Some(at(line, r));
             }
-            (0..line).rev().find_map(|i| {
+            (0..row).rev().find_map(|i| {
+                let line = self.line_index(i);
                 pattern
-                    .rfind_in_line(&self.lines[i], usize::MAX)
-                    .map(|r| at(i, r))
+                    .rfind_in_line(&self.lines[line], usize::MAX)
+                    .map(|r| at(line, r))
             })
         }
     }
@@ -974,9 +1261,13 @@ impl Viewer {
     fn show(&mut self, hit: Hit) {
         self.hit = Some(hit);
         let page = self.page.max(1);
+        let row = match hit.mode {
+            ViewMode::Text => self.row_of_line(hit.line),
+            _ => hit.line,
+        };
         if self.mode == ViewMode::Text && self.wrap {
-            if hit.line < self.top || hit.line >= self.top + page {
-                self.top = hit.line.saturating_sub(page / 3);
+            if row < self.top || row >= self.top + page {
+                self.top = row.saturating_sub(page / 3);
             }
             let cw = self.content_width();
             self.sub_top = WrapRows::new(&self.lines[hit.line], cw)
@@ -984,8 +1275,8 @@ impl Viewer {
                 .unwrap_or(0);
             self.left = 0;
         } else {
-            if hit.line < self.top || hit.line >= self.top + page {
-                self.top = hit.line.saturating_sub(page / 3);
+            if row < self.top || row >= self.top + page {
+                self.top = row.saturating_sub(page / 3);
             }
             self.top = self.top.min(self.line_count().saturating_sub(page));
             if hit.mode == ViewMode::Text {
@@ -1343,11 +1634,45 @@ mod tests {
             time: VIEW_TIME,
         },
         fallback: None,
+        c_parsers: true,
     };
 
     fn from_gz(name: &str, raw: Vec<u8>, load: LoadOptions) -> Viewer {
         let n = raw.len() as u64;
         Viewer::from_file(PathBuf::from(name), n, raw, load)
+    }
+
+    fn sqlite_file(dir: &Path) -> PathBuf {
+        let path = dir.join("data.db");
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch("CREATE TABLE t (a); INSERT INTO t VALUES (1);")
+            .unwrap();
+        path
+    }
+
+    #[test]
+    fn autoview_never_reaches_the_parsers_in_c() {
+        let tmp = crate::testing::tempdir();
+        let path = sqlite_file(tmp.path());
+        let v = Viewer::open(path.clone(), LoadOptions::autoview()).unwrap();
+        assert!(v.table.is_none());
+        assert_eq!(v.mode, ViewMode::Hex);
+        assert_eq!(
+            v.note.as_deref(),
+            Some("Parquet or SQLite: V opens the table")
+        );
+        let v = Viewer::open(path, LoadOptions::view(1 << 20)).unwrap();
+        assert!(v.table.is_some(), "V opens it");
+        assert_eq!(v.mode, ViewMode::Table);
+    }
+
+    #[test]
+    fn autoview_still_shows_tables_read_in_rust() {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("data.csv");
+        std::fs::write(&path, "a,b\n1,2\n").unwrap();
+        let v = Viewer::open(path, LoadOptions::autoview()).unwrap();
+        assert!(v.table.is_some());
     }
 
     #[test]
@@ -1962,6 +2287,206 @@ mod tests {
         press(&mut v, KeyCode::Up);
         assert_eq!(v.top, 1);
         assert_eq!(v.sub_top, 0);
+    }
+
+    fn filter_spec(text: &str, regex: bool) -> LineFilterSpec {
+        LineFilterSpec {
+            text: text.into(),
+            regex,
+            ..Default::default()
+        }
+    }
+
+    fn numbers(v: &mut Viewer, height: usize) -> Vec<usize> {
+        v.styled(height).iter().filter_map(|r| r.line_num).collect()
+    }
+
+    /// `n` lines: "line 1", "line 2"..., every third one with "error".
+    fn logged(n: usize) -> Viewer {
+        let text: String = (1..=n)
+            .map(|i| {
+                let word = if i % 3 == 0 { " error" } else { "" };
+                format!("line {i}{word}\n")
+            })
+            .collect();
+        let mut v = viewer(text.as_bytes());
+        v.page = 4;
+        v.line_numbers = true;
+        v
+    }
+
+    #[test]
+    fn line_filter_keeps_the_numbers_of_the_file() {
+        let mut v = logged(10);
+        assert_eq!(
+            v.apply_line_filter(&filter_spec("error", false)),
+            "Filter: 3 of 10 lines"
+        );
+        assert_eq!(numbers(&mut v, 10), [3, 6, 9]);
+        assert_eq!(v.line_count(), 3);
+        assert_eq!(v.total_lines(), 10);
+        assert_eq!(v.visible_lines(10)[1], "line 6 error");
+    }
+
+    #[test]
+    fn line_filter_with_regex_and_inverted() {
+        let mut v = logged(10);
+        v.apply_line_filter(&filter_spec(r"^line \d$", true));
+        assert_eq!(numbers(&mut v, 20), [1, 2, 4, 5, 7, 8]);
+        let spec = LineFilterSpec {
+            invert: true,
+            ..filter_spec("error", false)
+        };
+        v.apply_line_filter(&spec);
+        assert_eq!(numbers(&mut v, 20), [1, 2, 4, 5, 7, 8, 10]);
+    }
+
+    #[test]
+    fn line_filter_that_fails_changes_nothing() {
+        let mut v = logged(10);
+        v.apply_line_filter(&filter_spec("error", false));
+        let note = v.apply_line_filter(&filter_spec("nothing", false));
+        assert!(note.starts_with("No lines match"), "{note}");
+        assert_eq!(numbers(&mut v, 20), [3, 6, 9]);
+        let note = v.apply_line_filter(&filter_spec("(", true));
+        assert!(note.starts_with("Invalid regex"), "{note}");
+        assert_eq!(numbers(&mut v, 20), [3, 6, 9]);
+    }
+
+    #[test]
+    fn empty_filter_turns_it_off_keeping_the_line_at_the_top() {
+        let mut v = logged(30);
+        v.apply_line_filter(&filter_spec("error", false));
+        press(&mut v, KeyCode::Down);
+        press(&mut v, KeyCode::Down);
+        assert_eq!(v.top_line(), 8, "line 9");
+        assert_eq!(
+            v.apply_line_filter(&filter_spec("", false)),
+            "Filter off: 30 lines"
+        );
+        assert!(v.line_filter().is_none());
+        assert_eq!(v.top, 8);
+        // Turning it on looks for the same line, or the next one kept.
+        press(&mut v, KeyCode::Down);
+        v.apply_line_filter(&filter_spec("error", false));
+        assert_eq!(v.top_line(), 11, "line 12");
+    }
+
+    #[test]
+    fn scrolling_stops_at_the_lines_kept() {
+        let mut v = logged(30);
+        v.apply_line_filter(&filter_spec("error", false));
+        press(&mut v, KeyCode::End);
+        assert_eq!(numbers(&mut v, 4), [18, 21, 24, 27, 30][1..]);
+        press(&mut v, KeyCode::Home);
+        assert_eq!(v.top_line(), 2);
+        v.wrap = true;
+        press(&mut v, KeyCode::End);
+        assert_eq!(v.top_line(), 29);
+        press(&mut v, KeyCode::Down);
+        assert_eq!(v.top_line(), 29);
+        press(&mut v, KeyCode::Up);
+        assert_eq!(v.top_line(), 26);
+        assert_eq!(numbers(&mut v, 2), [27, 30]);
+    }
+
+    #[test]
+    fn search_sees_only_the_lines_kept() {
+        let mut v = logged(30);
+        v.apply_line_filter(&filter_spec("error", false));
+        // "line 1" also starts lines 1, 10, 11... but only 12, 15, 18 are kept.
+        assert!(v.search(&pat("line 1"), true, SearchFrom::Edge));
+        assert_eq!(v.hit.unwrap().line, 11);
+        assert!(v.search_next(&pat("line 1"), true));
+        assert_eq!(v.hit.unwrap().line, 14);
+        assert!(v.search_next(&pat("line 1"), false));
+        assert_eq!(v.hit.unwrap().line, 11);
+        assert!(!v.search_next(&pat("line 1"), false));
+        assert!(v.search(&pat("line 1"), false, SearchFrom::Edge));
+        assert_eq!(v.hit.unwrap().line, 17);
+        // The match is on screen: its row, not its line, moves the window.
+        assert_eq!(numbers(&mut v, 4)[0], v.top_line() + 1);
+        assert!(numbers(&mut v, 4).contains(&18));
+        assert!(!v.search(&pat("line 2\u{0}"), true, SearchFrom::Edge));
+    }
+
+    #[test]
+    fn a_match_the_filter_hides_is_forgotten() {
+        let mut v = logged(10);
+        assert!(v.search(&pat("line 3"), true, SearchFrom::Edge));
+        v.apply_line_filter(&filter_spec("error", false));
+        assert!(v.hit.is_some(), "line 3 stays");
+        assert!(v.search(&pat("line 6"), true, SearchFrom::Edge));
+        v.apply_line_filter(&filter_spec("line 3", false));
+        assert!(v.hit.is_none());
+    }
+
+    #[test]
+    fn goto_takes_lines_of_the_file_under_a_filter() {
+        let mut v = logged(30);
+        v.apply_line_filter(&filter_spec("error", false));
+        v.goto_line(9);
+        assert_eq!(v.top_line(), 8);
+        assert_eq!(v.note.as_deref(), Some("Line 9 of 30"));
+        v.goto_line(10);
+        assert_eq!(v.top_line(), 11);
+        assert_eq!(
+            v.note.as_deref(),
+            Some("Line 10 is filtered out: showing line 12")
+        );
+        v.goto_line(999);
+        assert_eq!(v.top_line(), 29);
+    }
+
+    #[test]
+    fn colors_stay_those_of_the_whole_text() {
+        let text = b"/* first\nkeep inside\n*/\nkeep outside\n";
+        let mut whole = Viewer::from_bytes("x.c".into(), 40, text.to_vec());
+        let mut v = Viewer::from_bytes("x.c".into(), 40, text.to_vec());
+        v.apply_line_filter(&filter_spec("keep", false));
+        let colors = |rows: &[StyledRow]| rows[0].segments[0].1;
+        let all = whole.styled(4);
+        let kept = v.styled(4);
+        assert_eq!(colors(&kept), colors(&all[1..]), "inside the comment");
+        assert_eq!(colors(&kept[1..]), colors(&all[3..]), "outside");
+        assert_ne!(colors(&kept), colors(&kept[1..]));
+    }
+
+    #[test]
+    fn line_filter_survives_a_change_of_encoding() {
+        let mut v = logged(10);
+        v.apply_line_filter(&filter_spec("error", false));
+        v.cycle_charset();
+        assert_eq!(numbers(&mut v, 20), [3, 6, 9]);
+    }
+
+    #[test]
+    fn filter_key_depends_on_the_mode() {
+        let mut v = logged(3);
+        assert_eq!(press(&mut v, KeyCode::Char('&')), Action::FilterLines);
+        press(&mut v, KeyCode::Char('h'));
+        assert_eq!(press(&mut v, KeyCode::Char('&')), Action::None);
+        assert!(v.note.as_deref().unwrap().contains("text mode"));
+        // Hex keeps its bytes whatever the filter did to the text.
+        v.mode = ViewMode::Text;
+        v.apply_line_filter(&filter_spec("error", false));
+        v.mode = ViewMode::Hex;
+        assert_eq!(v.line_count(), v.data.len().div_ceil(HEX_WIDTH));
+    }
+
+    #[test]
+    fn line_filter_in_wrap_mode_numbers_only_first_rows() {
+        let mut v = viewer(b"short\nkeep aaaa bbbb cccc dddd\nskip\nkeep\n");
+        v.page = 10;
+        v.width = 12;
+        v.line_numbers = true;
+        v.wrap = true;
+        v.apply_line_filter(&filter_spec("keep", false));
+        let rows = v.styled(10);
+        assert_eq!(rows[0].line_num, Some(2));
+        assert_eq!(rows[1].line_num, None);
+        assert_eq!(rows.last().unwrap().line_num, Some(4));
+        assert_eq!(v.visible_lines(10).last().unwrap(), "keep");
     }
 
     #[test]

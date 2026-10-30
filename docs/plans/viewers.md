@@ -46,6 +46,19 @@ controla os bytes, o nome e o tamanho.
      proptest já está nas dev-deps);
    - nenhuma dependência nova com `unsafe` entra sem revisão.
 
+### Código em C
+
+SQLite (`rusqlite` com `bundled`) e o codec zstd do Parquet (`zstd-sys`) são
+bibliotecas em C, sem as garantias de memória do Rust. Decisão de 2026-10-30:
+esses dois formatos só são lidos com `V`, nunca no Autoview
+(`LoadOptions::c_parsers`), o que mantém o princípio 1. O zstd fica porque
+removê-lo deixaria de abrir esses Parquet e pouco reduziria o risco enquanto o
+SQLite existir. Isolar esses parsers em um processo próprio fica como evolução.
+
+Decisão do autor: **trocar essas bibliotecas em C por Rust assim que houver
+opção utilizável** (item 8 de Security no [BACKLOG](../../BACKLOG.md)). O bloqueio
+no Autoview é provisório e cai para cada formato que passar a ser lido em Rust.
+
 ## Subprojetos
 
 Abordagem escolhida (A): primeiro o que é embutido, em Rust; os programas
@@ -54,7 +67,7 @@ externos vêm por último, como opção.
 | # | Subprojeto | Quem lê o arquivo | Depende de | Status |
 |---|---|---|---|---|
 | 1 | Codificações (UTF-8, UTF-16, CP850, CP437, 1252), `.gz/.xz/.zst/.bz2` soltos, limite de tamanho configurável | Rust, dentro do Xylem | — | **feito** (PRs #44 a #49); spec em [viewer-encoding.md](viewer-encoding.md) |
-| 2 | Modo tabela + DBF (com memo `.DBT`/`.FPT`) e CSV; SDF como extra | Rust, dentro do Xylem | 1 | não iniciado |
+| 2 | Modo tabela + planilhas (XLSX, ODS), bancos (SQLite), DBF, CSV, JSONL, Parquet com busca e SQL | Rust (+ SQLite defensivo) | 1 | spec em [viewer-tables.md](viewer-tables.md) |
 | 3 | Viewer em janelas, como o `less`: lê sob demanda, monta o índice de linhas em segundo plano, carrega de forma assíncrona e Esc cancela | — | 1 | não iniciado |
 | 4 | Logs: follow, ir para o fim, filtro de linhas, cor por nível, ANSI só SGR | Rust, dentro do Xylem | 3 | não iniciado |
 | 5 | SQLite | a decidir (ver abaixo) | 2 | não iniciado |

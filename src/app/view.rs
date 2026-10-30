@@ -291,15 +291,43 @@ impl App {
                 let Some(v) = &self.viewer else { return };
                 let label = match v.mode {
                     ViewMode::Text => {
-                        let total = v.line_count().max(1);
+                        let total = v.total_lines().max(1);
                         format!("GOTO line (1-{total}): ")
                     }
                     ViewMode::Hex => {
                         let max = v.size.saturating_sub(1);
                         format!("GOTO offset (0-{max:X}): ")
                     }
+                    ViewMode::Table => {
+                        let total = v.table.as_ref().map(|t| t.visible_row_count()).unwrap_or(1);
+                        format!("GOTO row (1-{total}): ")
+                    }
                 };
                 self.open_prompt(PromptKind::ViewerGoto, label, "");
+            }
+            ViewerAction::FilterSql => {
+                let Some(v) = &self.viewer else { return };
+                let current = v
+                    .table
+                    .as_ref()
+                    .and_then(|t| t.active_filter.clone())
+                    .unwrap_or_default();
+                self.open_prompt(
+                    PromptKind::ViewerSqlFilter,
+                    "SQL Filter (WHERE ...): ".to_string(),
+                    &current,
+                );
+            }
+            ViewerAction::FilterLines => {
+                let Some(v) = &self.viewer else { return };
+                let spec = v.line_filter().cloned().unwrap_or_else(|| LineFilterSpec {
+                    text: String::new(),
+                    ..self.line_filter.clone()
+                });
+                let text = spec.text.clone();
+                let kind = PromptKind::ViewerLineFilter { spec };
+                let label = kind.search_label().unwrap_or_default();
+                self.open_prompt(kind, label, &text);
             }
             ViewerAction::Untag => {
                 let Some(f) = self

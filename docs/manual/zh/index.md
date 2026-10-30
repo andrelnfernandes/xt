@@ -6,12 +6,15 @@ Xylem 将不可信的文件视为恶意文件：绝不应因文件内容或文�
 
 **F1**（若终端占用了 F1，也可按 **Alt+H**）会打开与当前操作相关的帮助：在提示行中，打开该提示的帮助；在目录树或文件窗口中，打开该窗口的帮助。在帮助中，**Tab** 与 **Shift+Tab** 选择链接，**Enter** 跳转，**Backspace** 返回，**I** 显示本目录，**K** 显示当前生效的按键，**L** 切换语言，**Esc** 关闭。
 
+**协助改进翻译：** 本手册的中文版尚未经过母语人士审校。如果您发现错误或表达不自然的地方，欢迎提出改进建议：`https://github.com/andrelnfernandes/xylem/issues`。
+
 ## 窗口与视图
 
 - [目录树窗口](tree.md)：移动、载入、Branch 与 Showall
 - [文件窗口](files.md)：显示模式、Autoview、打开文件
 - [分屏](split.md)：并排显示两个窗口
 - [查看器](viewer.md)：文本与十六进制、搜索、语法高亮
+- [筛选行](filter.md)：查看器中的 `&`，附正则表达式指南
 - [搜索已标记的文件](search.md)：Ctrl+S 与 Ctrl+V
 - [信息](info.md)：Info、Avail、统计信息与目录大小
 - [磁盘用量](usage.md)：查看空间去向（Alt+W）

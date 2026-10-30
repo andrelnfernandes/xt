@@ -61,7 +61,10 @@ impl App {
                 PromptKind::Chmod(_) | PromptKind::NewDate(_) => "attributes",
                 PromptKind::Prune { .. } => "delete",
                 PromptKind::SearchTagged { .. } => "search",
-                PromptKind::ViewerSearch { .. } | PromptKind::ViewerGoto => "viewer",
+                PromptKind::ViewerSearch { .. }
+                | PromptKind::ViewerGoto
+                | PromptKind::ViewerSqlFilter => "viewer",
+                PromptKind::ViewerLineFilter { .. } => "filter",
                 PromptKind::CreateArchive(_) => "archives",
                 PromptKind::BookmarkJump | PromptKind::BookmarkSet => "bookmarks",
                 PromptKind::MakeDir(_) => "tree",

@@ -55,6 +55,9 @@ jobs:
         with:
           key: x86_64-unknown-linux-musl
 
+      # SQLite and zstd are compiled from C, for musl too.
+      - name: C compiler for musl
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
       - name: Build
         run: cargo build --release --locked --target x86_64-unknown-linux-musl
       - name: Packages
