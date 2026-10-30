@@ -127,12 +127,14 @@ The values come from a file that may be hostile and may go into something you ru
 | `:json` | a JSON value: numbers bare, text with its quotes | `.json` `.jsonl` `.ndjson` |
 | `:xml` or `:html` | text or an attribute | `.xml` `.html` `.htm` `.xhtml` `.svg` |
 | `:sql` | a literal with its quotes, `NULL`, `X'00ff'` | `.sql` |
+| `:mysql` | the same for MySQL and MariaDB, where a backslash also escapes | |
 | `:csv` | a field, quoted when needed | `.csv` `.tsv` |
 | `:csvsafe` | the same, with a `'` before what a spreadsheet would take for a formula | |
 | `:line` | the value, with control characters as spaces, so it never starts a new line | any other |
 | `:raw` | the value as it is: **do not use it in a script** | |
 
 - A blob comes out in hexadecimal, except in `:raw` and in `:sql`, which has its own form.
+- For MySQL and MariaDB, name `:mysql`, in a file read as `utf8mb4`: there, a backslash in a `:sql` literal can close it, and the preview warns about those values. With `NO_BACKSLASH_ESCAPES` on the server, `:sql` is the right one.
 - A filter on a table applies to all the file, with the rules of the screen: `code = 7` also finds a cell with `007`, which comes out as `007`. So the file can have rows the screen, limited to 50,000, does not show.
 - A `.sh` starts with `#!/bin/sh` but **is not made executable**: read it before running it. `.bat` and `.cmd` are refused, because `cmd` expands `%VAR%` even inside quotes.
 - The preview and the final message warn about values with control or text direction characters, and in a CSV about values that start like a formula. The preview counts only what it looked at.

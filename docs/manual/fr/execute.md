@@ -137,12 +137,14 @@ Les valeurs viennent d'un fichier qui peut être hostile et peuvent aller dans c
 | `:json` | une valeur JSON : nombres nus, texte entre guillemets | `.json` `.jsonl` `.ndjson` |
 | `:xml` ou `:html` | texte ou attribut | `.xml` `.html` `.htm` `.xhtml` `.svg` |
 | `:sql` | un littéral entre guillemets, `NULL`, `X'00ff'` | `.sql` |
+| `:mysql` | la même chose pour MySQL et MariaDB, où la barre oblique inverse échappe aussi | |
 | `:csv` | un champ, entre guillemets si nécessaire | `.csv` `.tsv` |
 | `:csvsafe` | la même chose, avec un `'` devant ce qu'un tableur prendrait pour une formule | |
 | `:line` | la valeur, avec les caractères de contrôle en espaces, pour qu'elle n'ouvre jamais une nouvelle ligne | les autres |
 | `:raw` | la valeur telle quelle : **à ne pas utiliser dans un script** | |
 
 - Un blob sort en hexadécimal, sauf avec `:raw` et avec `:sql`, qui a sa propre forme.
+- Pour MySQL et MariaDB, utilisez `:mysql`, dans un fichier lu en `utf8mb4` : chez eux, une barre oblique inverse dans un littéral `:sql` peut le fermer, et l'aperçu signale ces valeurs. Avec `NO_BACKSLASH_ESCAPES` sur le serveur, c'est `:sql` qui convient.
 - Le filtre d'un tableau s'applique à tout le fichier, avec les règles de l'écran : `code = 7` trouve aussi une cellule avec `007`, qui sort comme `007`. Le fichier peut donc avoir des lignes que l'écran, limité à 50 000, ne montre pas.
 - Un `.sh` commence par `#!/bin/sh` mais **ne reçoit pas le droit d'exécution** : lisez-le avant de le lancer. `.bat` et `.cmd` sont refusés, car `cmd` développe `%VAR%` même entre guillemets.
 - L'aperçu et le message final signalent les valeurs avec des caractères de contrôle ou de direction du texte et, dans un CSV, celles qui commencent comme une formule. L'aperçu ne compte que ce qu'il a examiné.

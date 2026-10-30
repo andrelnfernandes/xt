@@ -50,6 +50,8 @@ pub enum Escape {
     Xml,
     /// A SQL literal, with its quotes.
     Sql,
+    /// A SQL literal for MySQL and MariaDB, where a backslash also escapes.
+    Mysql,
     /// A CSV field, quoted when needed.
     Csv,
     /// A CSV field that a spreadsheet will not take for a formula.
@@ -69,6 +71,7 @@ impl Escape {
             "json" => Escape::Json,
             "xml" | "html" => Escape::Xml,
             "sql" => Escape::Sql,
+            "mysql" => Escape::Mysql,
             "csv" => Escape::Csv,
             "csvsafe" => Escape::CsvSafe,
             "line" => Escape::Line,
@@ -204,13 +207,30 @@ fn escape_into(cell: &Cell<'_>, escape: Escape, out: &mut Vec<u8>) {
                 }
             }
         }
-        Escape::Sql => match cell {
+        Escape::Sql | Escape::Mysql => match cell {
             Cell::Null => out.extend_from_slice(b"NULL"),
             Cell::Bool(b) => out.extend_from_slice(if *b { b"TRUE" } else { b"FALSE" }),
             Cell::Int(i) => out.extend_from_slice(i.to_string().as_bytes()),
             Cell::Float(f) if f.is_finite() => out.extend_from_slice(f.to_string().as_bytes()),
             Cell::Float(_) => out.extend_from_slice(b"NULL"),
             Cell::Bytes(b) => out.extend_from_slice(format!("X'{}'", hex(b)).as_bytes()),
+            Cell::Text(s) if escape == Escape::Mysql => {
+                out.push(b'\'');
+                for c in s.chars() {
+                    match c {
+                        '\\' => out.extend_from_slice(b"\\\\"),
+                        '\'' => out.extend_from_slice(b"''"),
+                        '\0' => out.extend_from_slice(b"\\0"),
+                        // Ends the input of mysql on Windows.
+                        '\u{1A}' => out.extend_from_slice(b"\\Z"),
+                        c => {
+                            let mut buf = [0; 4];
+                            out.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
+                        }
+                    }
+                }
+                out.push(b'\'');
+            }
             Cell::Text(s) => {
                 out.push(b'\'');
                 out.extend_from_slice(s.replace('\0', "").replace('\'', "''").as_bytes());
@@ -377,6 +397,9 @@ pub struct Stats {
     pub suspicious: u64,
     /// Going into a CSV starting like a spreadsheet formula.
     pub formulas: u64,
+    /// Going into a `:sql` literal with a backslash, which in MySQL escapes
+    /// the quote that ends it.
+    pub backslashes: u64,
     /// Whole records only: columns of JSON Lines found after the preview,
     /// and so not written.
     pub late_columns: u64,
@@ -394,6 +417,9 @@ impl Stats {
         if escape == Escape::Csv && starts_like_formula(text) {
             self.formulas += 1;
         }
+        if escape == Escape::Sql && text.contains('\\') {
+            self.backslashes += 1;
+        }
     }
 
     /// The warnings, in one line.
@@ -409,6 +435,12 @@ impl Stats {
             parts.push(format!(
                 "{} values a spreadsheet may take for formulas (:csvsafe avoids it)",
                 self.formulas
+            ));
+        }
+        if self.backslashes > 0 {
+            parts.push(format!(
+                "{} values with a backslash (for MySQL or MariaDB, use :mysql)",
+                self.backslashes
             ));
         }
         if self.late_columns > 0 {
@@ -1451,6 +1483,71 @@ mod tests {
         assert_eq!(escaped(Cell::Bytes(&[0xAB]), Escape::Line), "ab");
     }
 
+    /// What a MySQL literal at the start of `text` holds and what comes after
+    /// it, read with the rules of MySQL's default mode.
+    fn read_mysql_literal(text: &str) -> Option<(String, &str)> {
+        let mut chars = text.strip_prefix('\'')?.char_indices();
+        let body = &text[1..];
+        let mut value = String::new();
+        while let Some((i, c)) = chars.next() {
+            match c {
+                '\\' => match chars.next()?.1 {
+                    '0' => value.push('\0'),
+                    'Z' => value.push('\u{1A}'),
+                    other => value.push(other),
+                },
+                '\'' if body[i + 1..].starts_with('\'') => {
+                    chars.next();
+                    value.push('\'');
+                }
+                '\'' => return Some((value, &body[i + 1..])),
+                c => value.push(c),
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn a_mysql_literal_cannot_be_closed_by_a_backslash() {
+        let hostile = r"\'; DROP TABLE t; -- ";
+        let mysql = escaped(t(hostile), Escape::Mysql);
+        assert_eq!(mysql, r"'\\''; DROP TABLE t; -- '");
+        assert_eq!(read_mysql_literal(&mysql), Some((hostile.to_string(), "")));
+        // The problem this avoids: read by MySQL, :sql ends the literal early.
+        let sql = escaped(t(hostile), Escape::Sql);
+        let (_, after) = read_mysql_literal(&sql).unwrap();
+        assert!(after.contains("DROP TABLE"), "{after}");
+
+        assert_eq!(escaped(t("a\0\u{1A}"), Escape::Mysql), r"'a\0\Z'");
+        assert_eq!(escaped(Cell::Null, Escape::Mysql), "NULL");
+        assert_eq!(escaped(Cell::Int(7), Escape::Mysql), "7");
+        assert_eq!(escaped(Cell::Bytes(&[0, 255]), Escape::Mysql), "X'00ff'");
+        assert_eq!(
+            mask("%{a:mysql}", Escape::Line).parts,
+            [Part::Field {
+                name: "a".into(),
+                escape: Escape::Mysql
+            }]
+        );
+    }
+
+    #[test]
+    fn a_backslash_in_a_sql_literal_gets_a_warning() {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("in.csv");
+        fs::write(&path, "v\na\\b\nc\n").unwrap();
+        let found = |m: &str| {
+            preview(&table_source(&path, None), mask(m, Escape::Line))
+                .unwrap()
+                .stats
+        };
+        let stats = found("%{v:sql}");
+        assert_eq!(stats.backslashes, 1);
+        assert!(stats.warning().unwrap().contains(":mysql"));
+        assert_eq!(found("%{v:mysql}").backslashes, 0);
+        assert_eq!(found("%{v:line}").backslashes, 0);
+    }
+
     #[test]
     fn the_default_escape_follows_the_extension() {
         let of = |name: &str| Escape::for_file(Path::new(name));
@@ -1629,6 +1726,7 @@ mod tests {
             Stats {
                 suspicious: 1,
                 formulas: 1,
+                backslashes: 0,
                 late_columns: 0,
             }
         );
@@ -2090,6 +2188,13 @@ mod tests {
     }
 
     proptest! {
+        /// Whatever the value, it stays one literal and reads back the same.
+        #[test]
+        fn a_mysql_literal_reads_back_the_value(text in "[\\\\'a0Z\\x00\\x1a\\n ;-]{0,30}") {
+            let mysql = escaped(t(&text), Escape::Mysql);
+            prop_assert_eq!(read_mysql_literal(&mysql), Some((text.clone(), "")));
+        }
+
         #[test]
         fn a_template_never_panics(text in "(%%|%|\\{|\\}|header|record|footer|\\n|.){0,40}") {
             let _ = parse_template(&text, Escape::Shell, Path::new("/a/b"), 1);

@@ -132,12 +132,14 @@ Os valores vêm de um arquivo que pode ser hostil e podem ir para algo que você
 | `:json` | um valor JSON: número sem aspas, texto com aspas | `.json` `.jsonl` `.ndjson` |
 | `:xml` ou `:html` | texto ou atributo | `.xml` `.html` `.htm` `.xhtml` `.svg` |
 | `:sql` | um literal com aspas, `NULL`, `X'00ff'` | `.sql` |
+| `:mysql` | o mesmo para MySQL e MariaDB, onde a barra invertida também escapa | |
 | `:csv` | um campo, entre aspas quando precisa | `.csv` `.tsv` |
 | `:csvsafe` | o mesmo, com um `'` antes do que a planilha tomaria por fórmula | |
 | `:line` | o valor, com caracteres de controle como espaços, para nunca abrir uma linha nova | os demais |
 | `:raw` | o valor como está: **não use em um script** | |
 
 - Um blob sai em hexadecimal, menos em `:raw` e em `:sql`, que tem a sua forma.
+- Para MySQL e MariaDB, use `:mysql`, em um arquivo lido como `utf8mb4`: neles, uma barra invertida em um literal `:sql` pode fechá-lo, e a prévia avisa sobre esses valores. Com `NO_BACKSLASH_ESCAPES` no servidor, o certo é `:sql`.
 - O filtro de uma tabela vale para o arquivo todo, com as regras da tela: `code = 7` também acha uma célula com `007`, que sai como `007`. Por isso o arquivo pode ter linhas que a tela, limitada a 50.000, não mostra.
 - Um `.sh` começa com `#!/bin/sh`, mas **não recebe permissão de execução**: leia antes de rodar. `.bat` e `.cmd` são recusados, porque o `cmd` expande `%VAR%` até entre aspas.
 - A prévia e a mensagem final avisam sobre valores com caracteres de controle ou de direção do texto e, em um CSV, sobre valores que começam como fórmula. A prévia conta só o que olhou.

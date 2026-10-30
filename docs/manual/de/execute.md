@@ -137,12 +137,14 @@ Die Werte stammen aus einer möglicherweise feindlichen Datei und können in etw
 | `:json` | einen JSON-Wert: Zahlen ohne, Text mit Anführungszeichen | `.json` `.jsonl` `.ndjson` |
 | `:xml` oder `:html` | Text oder Attribut | `.xml` `.html` `.htm` `.xhtml` `.svg` |
 | `:sql` | ein Literal mit Anführungszeichen, `NULL`, `X'00ff'` | `.sql` |
+| `:mysql` | dasselbe für MySQL und MariaDB, wo auch der Backslash maskiert | |
 | `:csv` | ein Feld, bei Bedarf in Anführungszeichen | `.csv` `.tsv` |
 | `:csvsafe` | dasselbe, mit einem `'` vor dem, was eine Tabellenkalkulation für eine Formel hielte | |
 | `:line` | der Wert, Steuerzeichen als Leerzeichen, damit er nie eine neue Zeile beginnt | alle anderen |
 | `:raw` | der Wert, wie er ist: **nicht in einem Skript verwenden** | |
 
 - Ein Blob kommt hexadezimal, außer bei `:raw` und bei `:sql`, das eine eigene Form hat.
+- Für MySQL und MariaDB nehmen Sie `:mysql`, in einer als `utf8mb4` gelesenen Datei: Dort kann ein Backslash ein `:sql`-Literal schließen, und die Vorschau warnt vor solchen Werten. Mit `NO_BACKSLASH_ESCAPES` auf dem Server ist `:sql` richtig.
 - Der Filter einer Tabelle gilt für die ganze Datei, nach den Regeln des Bildschirms: `code = 7` findet auch eine Zelle mit `007`, die als `007` herauskommt. Die Datei kann also Zeilen enthalten, die der auf 50.000 begrenzte Bildschirm nicht zeigt.
 - Eine `.sh` beginnt mit `#!/bin/sh`, wird aber **nicht ausführbar gemacht**: Lesen Sie sie vor dem Ausführen. `.bat` und `.cmd` werden abgelehnt, weil `cmd` `%VAR%` auch in Anführungszeichen auflöst.
 - Vorschau und Abschlussmeldung warnen vor Werten mit Steuer- oder Textrichtungszeichen und in einer CSV vor Werten, die wie eine Formel beginnen. Die Vorschau zählt nur, was sie angesehen hat.
