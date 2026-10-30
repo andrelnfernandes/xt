@@ -40,3 +40,12 @@ dernier commit (son `git diff HEAD`, en couleurs) et **D** à nouveau revient au
 fichier, au même endroit. « Diff » n'apparaît dans le pied de page que pour les
 fichiers modifiés ; **E** édite toujours le fichier, et le diff est mis à jour
 au retour.
+
+## Dépôts que vous n'avez pas créés
+
+Le `.git` d'un dépôt peut nommer des commandes que Git exécutera, et un dossier téléchargé ou extrait arrive avec son `.git` (un `git clone` ne l'apporte pas). C'est pourquoi les marqueurs de fichiers et Status, Log, Graph, Diff et Blame n'en exécutent aucune : ni hooks, ni `core.fsmonitor`, ni diffs externes, ni conversions de texte, ni vérification de signatures. Ce que cela coûte :
+
+- Un dépôt qui définit ses propres filtres, comme le fait `git-crypt`, n'a ici ni marqueurs, ni Status, ni Diff, ni Blame, avec un message qui explique pourquoi. Log et Graph fonctionnent. Si vous lui faites confiance, utilisez un terminal. Les filtres de votre configuration globale, comme Git LFS, sont considérés comme fiables.
+- Un sous-module avec des fichiers modifiés, mais sans nouveau commit, n'apparaît pas comme modifié.
+
+Add, Unstage et Commit sont des demandes de votre part et suivent la configuration du dépôt : ils peuvent exécuter ce qu'elle nomme.

@@ -35,3 +35,12 @@ In the viewer, **D** shows what changed in the file since the last commit (its
 `git diff HEAD`, with colors) and **D** again goes back to the file, at the
 same place. "Diff" appears in the footer only for files with changes; **E**
 still edits the file, and the diff is updated on return.
+
+## Repositories you did not create
+
+A repository's `.git` can name commands for Git to run, and a downloaded or extracted folder comes with its `.git` (a `git clone` does not bring it). So the file markers and Status, Log, Graph, Diff and Blame run none of them: no hooks, `core.fsmonitor`, external diffs, text conversions or signature checks. What this costs:
+
+- A repository that defines its own filters, as `git-crypt` does, gets no markers, Status, Diff or Blame here, with a message saying why. Log and Graph work. If you trust it, use a terminal. Filters in your global configuration, such as Git LFS, are trusted.
+- A submodule with changed files but no new commit does not show as changed.
+
+Add, Unstage and Commit are things you ask for, and follow the repository's configuration: they can run what it names.

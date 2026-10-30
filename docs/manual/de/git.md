@@ -40,3 +40,12 @@ geändert hat (ihr `git diff HEAD`, farbig hervorgehoben), und ein erneutes
 **D** kehrt an dieselbe Stelle der Datei zurück. „Diff" erscheint in der
 Fußzeile nur bei Dateien mit Änderungen; **E** bearbeitet weiterhin die Datei,
 und das Diff wird bei der Rückkehr aktualisiert.
+
+## Repositorys, die Sie nicht selbst erstellt haben
+
+Das `.git` eines Repositorys kann Befehle nennen, die Git ausführt, und ein heruntergeladener oder entpackter Ordner kommt mit seinem `.git` (ein `git clone` bringt es nicht mit). Darum führen die Dateimarkierungen und Status, Log, Graph, Diff und Blame keinen davon aus: keine Hooks, kein `core.fsmonitor`, keine externen Diffs, Textkonvertierungen oder Signaturprüfungen. Das kostet Folgendes:
+
+- Ein Repository mit eigenen Filtern, wie bei `git-crypt`, hat hier keine Markierungen, kein Status, Diff oder Blame, mit einer Meldung, die den Grund nennt. Log und Graph funktionieren. Wenn Sie ihm vertrauen, nutzen Sie ein Terminal. Filter aus Ihrer globalen Konfiguration, etwa Git LFS, gelten als vertrauenswürdig.
+- Ein Submodul mit geänderten Dateien, aber ohne neuen Commit, erscheint nicht als geändert.
+
+Add, Unstage und Commit sind Ihre eigenen Aufträge und folgen der Konfiguration des Repositorys: Sie können ausführen, was sie nennt.

@@ -11,38 +11,31 @@ Leftovers of the security pass that came from an external audit
 ([docs/plans/security.md](docs/plans/security.md); PRs #37 to #40 did the
 rest).
 
-1. **Ctrl+G still runs the repository's `core.fsmonitor`.** Only the
-   automatic `git status` (file markers) runs with
-   `-c core.fsmonitor=false` and skips repositories that define their own
-   filters. Status, Log, Diff and Blame from the Ctrl+G menu still follow
-   the repository's `.git/config`, so pressing Ctrl+G S in a downloaded or
-   extracted repository can run a command it names. Small: add the same
-   option to the commands that only read (`git::report`).
-2. **Entering a compressed TAR still freezes the screen.** Listing a
+1. **Entering a compressed TAR still freezes the screen.** Listing a
    `.tar.gz`/`.xz`/`.bz2`/`.zst` decompresses all of it, synchronously, in
    `pane.rs` (`Reader::list`); a decompression bomb freezes Xylem there.
    Copying out of it lists it again (`Operation::reading_archive`), a
    second full pass. Medium: list once, in the background and cancellable
    (like `archive::Extractor`), and reuse the list for the copy.
-3. **eXecute (`%f`, `%t`) on Windows.** `cmd` expands `%VAR%` even inside
+2. **eXecute (`%f`, `%t`) on Windows.** `cmd` expands `%VAR%` even inside
    quotes, so a name with `%PATH%` in it changes. E and O already avoid it
    by passing the file in `XY_FILE`; commands typed with X still put the
    names in the line. Could pass each file in a variable of its own.
-4. **ssh password through a file on Windows.** On Unix the askpass answer
+3. **ssh password through a file on Windows.** On Unix the askpass answer
    goes through a named pipe (mode 0600); on Windows it is written to a file
    under `%LOCALAPPDATA%` (private to the user) for a moment. A Windows
    named pipe would avoid the disk. Low priority; needs testing on Windows.
-5. **Searching inside an archive reads each entry in one step.** Memory is
+4. **Searching inside an archive reads each entry in one step.** Memory is
    bounded now (streamed), but a huge entry holds the screen up while it is
    searched, as a huge file on disk does. The search could keep the open
    reader between steps.
 
-6. **What the table readers still cannot limit.** The time limit stops them
+5. **What the table readers still cannot limit.** The time limit stops them
    between records, and SQLite midway, but a spreadsheet's reader loads the whole
    sheet first: its size is checked before that, by what the ZIP declares, so a
    ZIP that lies about its sizes gets through. A Parquet page is decompressed
    whole too. Esc cannot interrupt a table being read, only the time limit can.
-7. **SQLite and Parquet's zstd are C libraries: replace them with Rust as soon
+6. **SQLite and Parquet's zstd are C libraries: replace them with Rust as soon
    as a usable option appears.** The author's decision. They run only with V,
    never in Autoview, and that is meant to be temporary. What to watch:
    - zstd: a way for the `parquet` crate to decode through a Rust codec; Xylem
@@ -87,5 +80,5 @@ as a link is what `cp -a` and `rsync -l` do).
   line filter, the record stream, and Ctrl+B in the viewer with masks and with
   JSON, CSV, XML and HTML of whole records, and template files (steps 1 to 5).
   Next: environment variables, macros, totals and conditions in templates (5b),
-  binary outputs (6) and tagging records (7). Records into `.bat`/`.cmd` wait for item 3
+  binary outputs (6) and tagging records (7). Records into `.bat`/`.cmd` wait for item 2
   of Security; the filter on screen sees 50,000 rows, while Ctrl+B sees them all.

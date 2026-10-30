@@ -80,7 +80,7 @@ Regras:
   por escrito.
 - **Quebras de linha:** um valor com newline em `:raw` não pode criar uma linha
   nova em um `.sh`.
-- **Windows:** o `quote` só põe aspas duplas e `%VAR%` ainda expande (item 3 de
+- **Windows:** o `quote` só põe aspas duplas e `%VAR%` ainda expande (item 2 de
   Security no [BACKLOG](../../BACKLOG.md)). Registros em `.bat` só depois de
   resolver isso.
 - **Prévia:** mostrar as primeiras linhas antes de gravar, com a contagem de

@@ -4,6 +4,10 @@
 //!
 //! Everything runs the `git` program: it follows the user's own
 //! configuration (aliases, hooks, editor) and adds no dependencies.
+//!
+//! A repository's own `.git` can name commands, and one that was downloaded or
+//! extracted comes with its `.git`. Looking at it must not run them, so what
+//! only reads goes through `reading`.
 
 use std::collections::{HashMap, HashSet};
 use std::ffi::{OsStr, OsString};
@@ -86,10 +90,43 @@ fn git(root: &Path) -> Command {
     cmd
 }
 
+/// `git` for what only reads: nothing the repository names is run. The hooks
+/// run when the index is written, and what would write it is an optional lock;
+/// the options of each command do the rest (see `report`). Clean filters cannot
+/// be turned off: see `has_own_filters`.
+fn reading(root: &Path) -> Command {
+    let mut cmd = git(root);
+    cmd.arg("--no-optional-locks");
+    for option in [
+        "core.fsmonitor=false",
+        // A format can check signatures too (`format.pretty = %G?`).
+        "gpg.program=false",
+        "gpg.openpgp.program=false",
+        "gpg.x509.program=false",
+        "gpg.ssh.program=false",
+        // These show a submodule by running git in it.
+        "diff.submodule=short",
+        "status.submoduleSummary=false",
+    ] {
+        cmd.args(["-c", option]);
+    }
+    // A partial clone fetches what it lacks from a remote it names.
+    cmd.env("GIT_NO_LAZY_FETCH", "1");
+    cmd
+}
+
 /// Runs `git args -- paths` and returns whether it worked and what it wrote
 /// (stdout, then stderr).
 fn run(root: &Path, args: &[&str], paths: &[PathBuf]) -> io::Result<(bool, Vec<u8>)> {
-    let mut cmd = git(root);
+    run_command(git(root), args, paths)
+}
+
+/// `run`, for what only reads.
+fn run_reading(root: &Path, args: &[&str], paths: &[PathBuf]) -> io::Result<(bool, Vec<u8>)> {
+    run_command(reading(root), args, paths)
+}
+
+fn run_command(mut cmd: Command, args: &[&str], paths: &[PathBuf]) -> io::Result<(bool, Vec<u8>)> {
     cmd.args(args);
     if !paths.is_empty() {
         cmd.arg("--").args(paths);
@@ -104,7 +141,7 @@ fn run(root: &Path, args: &[&str], paths: &[PathBuf]) -> io::Result<(bool, Vec<u
 }
 
 fn has_head(root: &Path) -> bool {
-    run(root, &["rev-parse", "--verify", "-q", "HEAD"], &[]).is_ok_and(|(ok, _)| ok)
+    run_reading(root, &["rev-parse", "--verify", "-q", "HEAD"], &[]).is_ok_and(|(ok, _)| ok)
 }
 
 /// Text for the viewer: its title, contents and the kind of file whose
@@ -117,9 +154,27 @@ pub struct Report {
 
 /// Status, Log, Diff or Blame of `paths` (files, or a directory).
 pub fn report(action: Action, root: &Path, paths: &[PathBuf]) -> io::Result<Report> {
+    // These read the files, and git would pass them through the filters.
+    if matches!(action, Action::Status | Action::Diff | Action::Blame) && has_own_filters(root) {
+        return Err(io::Error::other(
+            "this repository defines filters that git would run; if you trust it, use a terminal",
+        ));
+    }
+    const DIFF: [&str; 3] = [
+        "--no-ext-diff",
+        "--no-textconv",
+        "--ignore-submodules=dirty",
+    ];
+    let run = run_reading;
     let (title, (_, mut text)) = match action {
-        Action::Status => ("git status", run(root, &["status"], paths)?),
-        Action::Log => ("git log", run(root, &["log", "-n", "1000"], paths)?),
+        Action::Status => (
+            "git status",
+            run(root, &["status", "--ignore-submodules=dirty"], paths)?,
+        ),
+        Action::Log => (
+            "git log",
+            run(root, &["log", "--no-show-signature", "-n", "1000"], paths)?,
+        ),
         // git's own colors (one per branch line), read by the viewer; no
         // gpg even with log.showSignature on.
         Action::Graph => (
@@ -141,9 +196,19 @@ pub fn report(action: Action, root: &Path, paths: &[PathBuf]) -> io::Result<Repo
             )?,
         ),
         // Against HEAD: what is staged and what is not, together.
-        Action::Diff if has_head(root) => ("git diff", run(root, &["diff", "HEAD"], paths)?),
-        Action::Diff => ("git diff", run(root, &["diff", "--cached"], paths)?),
-        Action::Blame => ("git blame", run(root, &["blame"], paths)?),
+        Action::Diff if has_head(root) => (
+            "git diff",
+            run(root, &["diff", DIFF[0], DIFF[1], DIFF[2], "HEAD"], paths)?,
+        ),
+        Action::Diff => (
+            "git diff",
+            run(
+                root,
+                &["diff", DIFF[0], DIFF[1], DIFF[2], "--cached"],
+                paths,
+            )?,
+        ),
+        Action::Blame => ("git blame", run(root, &["blame", "--no-textconv"], paths)?),
         _ => unreachable!("{action:?} does not make a report"),
     };
     if text.is_empty() {
@@ -263,10 +328,9 @@ impl StatusCache {
 }
 
 /// Reads the status by itself, just because the user walked into the
-/// directory, so it must not run commands that the repository's own
-/// `.git/config` names: a downloaded or extracted repository could carry
-/// them. `core.fsmonitor` is turned off; clean filters cannot be, so a
-/// repository that defines its own is left without markers.
+/// directory, so it must not run commands that the repository names: see
+/// `reading`. Clean filters cannot be turned off, so a repository that defines
+/// its own is left without markers.
 fn read_status(root: &Path) -> RepoStatus {
     let mut status = RepoStatus {
         files: HashMap::new(),
@@ -278,13 +342,12 @@ fn read_status(root: &Path) -> RepoStatus {
         return status;
     }
     let args = [
-        "-c",
-        "core.fsmonitor=false",
         "status",
         "--porcelain=v1",
         "-z",
+        "--ignore-submodules=dirty",
     ];
-    let Ok((true, out)) = run(root, &args, &[]) else {
+    let Ok((true, out)) = run_reading(root, &args, &[]) else {
         return status;
     };
     parse_status(&out, &mut status.files, &mut status.untracked_dirs);
@@ -292,20 +355,33 @@ fn read_status(root: &Path) -> RepoStatus {
 }
 
 /// Whether the repository's own configuration defines filters (the user's
-/// global ones, such as Git LFS, are trusted).
+/// global ones, such as Git LFS, are trusted). Asks for all of it with where
+/// each came from, since `--local` misses `include.path` and `config.worktree`.
+/// In doubt, the answer is yes.
 fn has_own_filters(root: &Path) -> bool {
-    run(
-        root,
-        &[
+    let out = reading(root)
+        .args([
             "config",
-            "--local",
+            "--show-scope",
             "--name-only",
             "--get-regexp",
             r"^filter\.",
-        ],
-        &[],
-    )
-    .map_or(true, |(found, _)| found)
+        ])
+        .output();
+    let Ok(out) = out else { return true };
+    match out.status.code() {
+        // Git's answer to a search that found nothing.
+        Some(1) => false,
+        Some(0) => !only_trusted_scopes(&out.stdout),
+        _ => true,
+    }
+}
+
+fn only_trusted_scopes(found: &[u8]) -> bool {
+    found
+        .split(|&b| b == b'\n')
+        .filter(|line| !line.is_empty())
+        .all(|line| line.starts_with(b"global\t") || line.starts_with(b"system\t"))
 }
 
 /// `git status --porcelain=v1 -z`: `XY path\0`, with the old name in a
@@ -416,6 +492,18 @@ mod tests {
     }
 
     #[test]
+    fn only_the_user_configuration_is_trusted_for_filters() {
+        assert!(only_trusted_scopes(b""));
+        assert!(only_trusted_scopes(
+            b"global\tfilter.lfs.clean\nsystem\tfilter.x.clean\n"
+        ));
+        for scope in ["local", "worktree", "command", "other"] {
+            let found = format!("global\tfilter.lfs.clean\n{scope}\tfilter.x.clean\n");
+            assert!(!only_trusted_scopes(found.as_bytes()), "{scope}");
+        }
+    }
+
+    #[test]
     fn a_stray_git_folder_is_not_a_repository() {
         let tmp = crate::testing::tempdir();
         let root = tmp.path();
@@ -451,6 +539,300 @@ mod tests {
         cache.refresh([root.clone()]);
         assert_eq!(cache.marker(&root.join("a.txt")), None, "not read");
         assert!(!marker.exists());
+    }
+
+    /// A repository whose `a.txt` has changed, with a command that would leave
+    /// a marker if something ran it.
+    #[cfg(unix)]
+    struct Hostile {
+        _tmp: tempfile::TempDir,
+        root: PathBuf,
+        marker: PathBuf,
+        touch: String,
+        /// Files that git has to read to know whether they changed.
+        changed: Vec<PathBuf>,
+        tick: std::cell::Cell<u64>,
+    }
+
+    #[cfg(unix)]
+    impl Hostile {
+        fn new() -> Self {
+            let tmp = crate::testing::tempdir();
+            let base = dunce::canonicalize(tmp.path()).unwrap();
+            let root = base.join("repo");
+            let marker = base.join("ran");
+            let touch = format!("touch '{}'", marker.display());
+            let hostile = Hostile {
+                _tmp: tmp,
+                changed: vec![root.join("a.txt")],
+                root,
+                marker,
+                touch,
+                tick: std::cell::Cell::new(0),
+            };
+            hostile.commit_a_file(&hostile.root);
+            fs::write(hostile.root.join("a.txt"), "two\n").unwrap();
+            hostile
+        }
+
+        fn commit_a_file(&self, dir: &Path) {
+            fs::create_dir_all(dir).unwrap();
+            git_ok(dir, &["init", "-q"]);
+            fs::write(dir.join("a.txt"), "one\n").unwrap();
+            git_ok(dir, &["add", "a.txt"]);
+            git_ok(dir, &["commit", "-q", "-m", "first"]);
+        }
+
+        fn config(&self, key: &str, value: &str) {
+            git_ok(&self.root, &["config", key, value]);
+        }
+
+        fn run_when(&self, key: &str) {
+            self.config(key, &self.touch);
+        }
+
+        fn script(&self, path: &Path, body: &str) {
+            use std::os::unix::fs::PermissionsExt;
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, format!("#!/bin/sh\n{body}\n")).unwrap();
+            fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+
+        /// Commits with `sign` as the signing program. It was just written: while
+        /// another test's thread forks, running it can fail as "text file busy".
+        fn sign_a_commit(&self, sign: &Path) {
+            let program = format!("gpg.program={}", sign.display());
+            let signed = || {
+                Command::new("git")
+                    .arg("-C")
+                    .arg(&self.root)
+                    .args([
+                        "-c",
+                        "user.name=Xylem",
+                        "-c",
+                        "user.email=xylem@example.com",
+                    ])
+                    .args(["-c", &program, "-c", "commit.gpgsign=true"])
+                    .args(["commit", "-q", "--allow-empty", "-m", "signed"])
+                    .output()
+                    .unwrap()
+                    .status
+                    .success()
+            };
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while !signed() {
+                assert!(Instant::now() < deadline, "the commit was not signed");
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        }
+
+        /// A new date on each changed file, with the same size, so that git
+        /// must read the contents again.
+        fn touch_changed(&self) {
+            self.tick.set(self.tick.get() + 1);
+            let date = std::time::SystemTime::now() + Duration::from_secs(self.tick.get());
+            for file in &self.changed {
+                let file = fs::OpenOptions::new().write(true).open(file).unwrap();
+                file.set_modified(date).unwrap();
+            }
+        }
+
+        /// The reads that ran the command.
+        fn reads_that_ran_it(&self) -> Vec<&'static str> {
+            let a = self.root.join("a.txt");
+            let root = self.root.as_path();
+            let reads: [(&str, &dyn Fn()); 6] = [
+                ("markers", &|| {
+                    StatusCache::default().refresh([root.to_path_buf()])
+                }),
+                ("status", &|| drop(report(Action::Status, root, &[]))),
+                ("log", &|| drop(report(Action::Log, root, &[]))),
+                ("graph", &|| drop(report(Action::Graph, root, &[]))),
+                ("diff", &|| {
+                    drop(report(Action::Diff, root, std::slice::from_ref(&a)))
+                }),
+                ("blame", &|| {
+                    drop(report(Action::Blame, root, std::slice::from_ref(&a)))
+                }),
+            ];
+            let mut ran = Vec::new();
+            for (name, read) in reads {
+                let _ = fs::remove_file(&self.marker);
+                self.touch_changed();
+                read();
+                if self.marker.exists() {
+                    ran.push(name);
+                }
+            }
+            ran
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn no_read_runs_what_the_configuration_names() {
+        let cases: [(&str, &str); 3] = [
+            ("core.fsmonitor", ""),
+            ("diff.external", ""),
+            ("diff.evil.command", "* diff=evil\n"),
+        ];
+        for (key, attributes) in cases {
+            let hostile = Hostile::new();
+            hostile.run_when(key);
+            fs::write(hostile.root.join(".gitattributes"), attributes).unwrap();
+            assert_eq!(hostile.reads_that_ran_it(), [""; 0], "{key}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn no_read_runs_a_text_conversion() {
+        let hostile = Hostile::new();
+        let convert = hostile.root.join(".git/convert");
+        let body = format!("{}\ncat \"$1\"", hostile.touch);
+        hostile.script(&convert, &body);
+        hostile.config("diff.evil.textconv", convert.to_str().unwrap());
+        fs::write(hostile.root.join(".gitattributes"), "* diff=evil\n").unwrap();
+        assert_eq!(hostile.reads_that_ran_it(), [""; 0]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn no_read_checks_a_signature_with_the_repository_program() {
+        for (key, value) in [("log.showSignature", "true"), ("format.pretty", "%G?")] {
+            let hostile = Hostile::new();
+            let sign = hostile.root.join(".git/sign");
+            hostile.script(
+                &sign,
+                "echo '[GNUPG:] SIG_CREATED x' >&2\n\
+                 echo '-----BEGIN PGP SIGNATURE-----'\n\
+                 echo x\n\
+                 echo '-----END PGP SIGNATURE-----'",
+            );
+            hostile.sign_a_commit(&sign);
+            let check = hostile.root.join(".git/check");
+            hostile.script(&check, &hostile.touch);
+            hostile.config("gpg.program", check.to_str().unwrap());
+            hostile.config(key, value);
+            assert_eq!(hostile.reads_that_ran_it(), [""; 0], "{key}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn no_read_runs_a_hook() {
+        let hostile = Hostile::new();
+        let hook = hostile.root.join(".git/hooks/post-index-change");
+        hostile.script(&hook, &hostile.touch);
+        assert_eq!(hostile.reads_that_ran_it(), [""; 0], "its usual place");
+
+        let hostile = Hostile::new();
+        let hook = hostile.root.join("hooks/post-index-change");
+        hostile.script(&hook, &hostile.touch);
+        hostile.config("core.hooksPath", "hooks");
+        assert_eq!(hostile.reads_that_ran_it(), [""; 0], "core.hooksPath");
+    }
+
+    /// Filters may hide in other files of the repository's configuration.
+    #[cfg(unix)]
+    #[test]
+    fn no_read_runs_a_filter_of_the_repository() {
+        let filter = |hostile: &Hostile| {
+            fs::write(hostile.root.join(".gitattributes"), "* filter=evil\n").unwrap();
+            format!("{}; cat", hostile.touch)
+        };
+
+        let hostile = Hostile::new();
+        let clean = filter(&hostile);
+        hostile.config("filter.evil.clean", &clean);
+        assert_eq!(hostile.reads_that_ran_it(), [""; 0], ".git/config");
+
+        let hostile = Hostile::new();
+        let clean = filter(&hostile);
+        let more = format!("[filter \"evil\"]\n\tclean = {clean}\n");
+        fs::write(hostile.root.join(".git/more"), more).unwrap();
+        hostile.config("include.path", "more");
+        assert_eq!(hostile.reads_that_ran_it(), [""; 0], "an included file");
+
+        let hostile = Hostile::new();
+        let clean = filter(&hostile);
+        hostile.config("extensions.worktreeConfig", "true");
+        git_ok(
+            &hostile.root,
+            &["config", "--worktree", "filter.evil.clean", &clean],
+        );
+        assert_eq!(hostile.reads_that_ran_it(), [""; 0], "config.worktree");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_repository_with_its_own_filters_says_why_it_shows_nothing() {
+        let hostile = Hostile::new();
+        hostile.config("filter.evil.clean", "cat");
+        let (root, a) = (hostile.root.as_path(), hostile.root.join("a.txt"));
+        for (action, paths) in [
+            (Action::Status, &[][..]),
+            (Action::Diff, std::slice::from_ref(&a)),
+            (Action::Blame, std::slice::from_ref(&a)),
+        ] {
+            let error = report(action, root, paths).err().expect("no report");
+            assert!(error.to_string().contains("filters"), "{error}");
+        }
+        assert!(report(Action::Log, root, &[]).is_ok());
+        assert!(report(Action::Graph, root, &[]).is_ok());
+    }
+
+    /// `hostile` with a submodule `sub`, whose `a.txt` changed.
+    #[cfg(unix)]
+    fn with_submodule(hostile: &mut Hostile) -> PathBuf {
+        let source = hostile.root.with_file_name("source");
+        hostile.commit_a_file(&source);
+        git_ok(
+            &hostile.root,
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "--quiet",
+                "add",
+                source.to_str().unwrap(),
+                "sub",
+            ],
+        );
+        git_ok(&hostile.root, &["commit", "-q", "-m", "sub"]);
+        let sub = hostile.root.join("sub");
+        fs::write(sub.join("a.txt"), "two\n").unwrap();
+        hostile.changed.push(sub.join("a.txt"));
+        sub
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn no_read_runs_what_a_submodule_names() {
+        let mut hostile = Hostile::new();
+        let sub = with_submodule(&mut hostile);
+        let clean = format!("{}; cat", hostile.touch);
+        git_ok(&sub, &["config", "filter.evil.clean", &clean]);
+        fs::write(sub.join(".gitattributes"), "* filter=evil\n").unwrap();
+        assert_eq!(hostile.reads_that_ran_it(), [""; 0], "a filter");
+
+        let mut hostile = Hostile::new();
+        with_submodule(&mut hostile);
+        let hook = hostile
+            .root
+            .join(".git/modules/sub/hooks/post-index-change");
+        hostile.script(&hook, &hostile.touch);
+        assert_eq!(hostile.reads_that_ran_it(), [""; 0], "a hook");
+
+        // Moved to another commit, which its repository shows if asked to.
+        let mut hostile = Hostile::new();
+        let sub = with_submodule(&mut hostile);
+        git_ok(&sub, &["commit", "-q", "-am", "second"]);
+        git_ok(&sub, &["config", "diff.external", &hostile.touch]);
+        hostile.changed.pop();
+        hostile.config("diff.submodule", "diff");
+        hostile.config("status.submoduleSummary", "true");
+        assert_eq!(hostile.reads_that_ran_it(), [""; 0], "its diff");
     }
 
     #[test]
