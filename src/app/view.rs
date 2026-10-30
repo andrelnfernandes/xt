@@ -1,5 +1,5 @@
 use super::*;
-use crate::viewer::{LoadOptions, ViewMode};
+use crate::viewer::{LoadOptions, ViewMode, tabular_loader};
 
 /// View of the tagged files (Ctrl+V): the files and which one is open.
 pub struct TaggedView {
@@ -127,6 +127,9 @@ impl App {
                 None => Viewer::open(path, load)?,
             }
         };
+        if !v.on_disk && v.note.is_none() && tabular_loader::is_tabular_candidate(&v.path) {
+            v.note = Some("Tables are shown only for files on this disk".into());
+        }
         v.wrap = self.options.viewer_wrap;
         v.line_numbers = self.options.viewer_line_numbers;
         Ok(v)
