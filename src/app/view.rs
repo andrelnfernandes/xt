@@ -298,8 +298,25 @@ impl App {
                         let max = v.size.saturating_sub(1);
                         format!("GOTO offset (0-{max:X}): ")
                     }
+                    ViewMode::Table => {
+                        let total = v.table.as_ref().map(|t| t.visible_row_count()).unwrap_or(1);
+                        format!("GOTO row (1-{total}): ")
+                    }
                 };
                 self.open_prompt(PromptKind::ViewerGoto, label, "");
+            }
+            ViewerAction::FilterSql => {
+                let Some(v) = &self.viewer else { return };
+                let current = v
+                    .table
+                    .as_ref()
+                    .and_then(|t| t.active_filter.clone())
+                    .unwrap_or_default();
+                self.open_prompt(
+                    PromptKind::ViewerSqlFilter,
+                    "SQL Filter (WHERE ...): ".to_string(),
+                    &current,
+                );
             }
             ViewerAction::Untag => {
                 let Some(f) = self

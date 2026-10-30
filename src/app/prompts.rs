@@ -67,6 +67,8 @@ pub(crate) enum PromptKind {
     BookmarkSet,
     /// Goto line in the viewer (g / :).
     ViewerGoto,
+    /// SQL filter in the viewer (WHERE ... / query).
+    ViewerSqlFilter,
     /// A question from ssh while connecting: a password (`secret`, shown
     /// masked) or a yes/no.
     Askpass {
@@ -91,6 +93,7 @@ impl PromptKind {
             PromptKind::RenameTagged { .. } => "rename_mask",
             PromptKind::SearchTagged { .. } | PromptKind::ViewerSearch { .. } => "search",
             PromptKind::ViewerGoto => "goto",
+            PromptKind::ViewerSqlFilter => "sql_filter",
             PromptKind::Chmod(_) => "chmod",
             PromptKind::RenameFile(_)
             | PromptKind::RenameDir(_)
@@ -587,7 +590,16 @@ impl App {
             PromptKind::ViewerGoto => {
                 let clean = text.trim().trim_start_matches(':').trim();
                 if let Some(v) = &mut self.viewer {
-                    if v.mode == ViewMode::Text {
+                    if v.mode == ViewMode::Table {
+                        if let Some(t) = &mut v.table
+                            && let Ok(row) = clean.parse::<usize>()
+                            && row > 0
+                            && row <= t.visible_row_count()
+                        {
+                            t.cursor_row = row - 1;
+                            t.scroll_row = (row - 1).saturating_sub(v.page / 2);
+                        }
+                    } else if v.mode == ViewMode::Text {
                         match clean.parse::<usize>() {
                             Ok(line) if line > 0 => v.goto_line(line),
                             _ => v.note = Some(format!("Invalid line number: {text}")),
@@ -601,6 +613,26 @@ impl App {
                         match offset {
                             Ok(off) => v.goto_line(off),
                             _ => v.note = Some(format!("Invalid offset: {text}")),
+                        }
+                    }
+                }
+                Ok(())
+            }
+            PromptKind::ViewerSqlFilter => {
+                if let Some(v) = &mut self.viewer
+                    && let Some(t) = &mut v.table
+                {
+                    let query = if text.trim().is_empty() {
+                        None
+                    } else {
+                        Some(text.as_str())
+                    };
+                    match t.apply_filter(query) {
+                        Ok(count) => {
+                            v.note = Some(format!("Filter matched {count} rows"));
+                        }
+                        Err(e) => {
+                            v.note = Some(format!("SQL error: {e}"));
                         }
                     }
                 }

@@ -1,6 +1,10 @@
 //! File viewer (`V` key; Ctrl+V for the tagged files), in text or
 //! hexadecimal mode, with search.
 
+pub mod sql_filter;
+pub mod table;
+pub mod tabular_loader;
+
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
@@ -27,6 +31,7 @@ const PAN_STEP: usize = 8;
 pub enum ViewMode {
     Text,
     Hex,
+    Table,
 }
 
 /// Where a new search starts.
@@ -67,6 +72,8 @@ pub enum Action {
     CopyPath,
     /// Prompts for line number to go to.
     GotoLine,
+    /// Prompts for a SQL WHERE filter in table mode.
+    FilterSql,
 }
 
 /// How a file is read: how much of it, and whether a compressed file is
@@ -170,6 +177,8 @@ pub struct Viewer {
     /// What went wrong decompressing, for the header: the note says it
     /// too, but any key clears the note.
     problem: Option<String>,
+    /// Tabular grid for CSV, spreadsheet, SQLite, or DBF files.
+    pub table: Option<table::TableGrid>,
 }
 
 /// A piece of a displayed line: text, its color and whether it is part of
@@ -249,9 +258,32 @@ impl Viewer {
         });
         let found = charset::detect(&data, load.fallback);
         let limit = load.limits.output;
-        let mut v = Self::build(path, size, data, found.charset, found.binary, limit);
+        let mut v = Self::build(path.clone(), size, data, found.charset, found.binary, limit);
         if let Some(name) = name {
             v = v.colored_as(&name);
+        }
+
+        // Auto-load tabular candidate files into Table mode if on disk
+        if tabular_loader::is_tabular_candidate(&path) {
+            let ext = path
+                .extension()
+                .and_then(|s| s.to_str())
+                .map(|s| s.to_ascii_lowercase())
+                .unwrap_or_default();
+
+            let grid_res = match ext.as_str() {
+                "csv" | "tsv" | "tab" => tabular_loader::load_csv(&path, None),
+                "jsonl" | "ndjson" => tabular_loader::load_jsonl(&path),
+                "xlsx" | "ods" | "xls" | "xlsb" => tabular_loader::load_spreadsheet(&path),
+                "dbf" => tabular_loader::load_dbf(&path),
+                "sqlite" | "sqlite3" | "db" => tabular_loader::load_sqlite(&path, None),
+                _ => Err("Not supported".to_string()),
+            };
+
+            if let Ok(grid) = grid_res {
+                v.table = Some(grid);
+                v.mode = ViewMode::Table;
+            }
         }
         if failed {
             // The raw bytes of a compressed file that gave nothing.
@@ -474,6 +506,7 @@ impl Viewer {
             cut: size > data_len,
             lines_cut: text.cut,
             problem: None,
+            table: None,
         }
     }
 
@@ -566,6 +599,11 @@ impl Viewer {
         match self.mode {
             ViewMode::Text => self.lines.len(),
             ViewMode::Hex => self.data.len().div_ceil(HEX_WIDTH),
+            ViewMode::Table => self
+                .table
+                .as_ref()
+                .map(|t| t.visible_row_count())
+                .unwrap_or(0),
         }
     }
 
@@ -637,6 +675,7 @@ impl Viewer {
                     })
                     .collect()
             }
+            ViewMode::Table => Vec::new(),
         }
     }
 
@@ -744,12 +783,33 @@ impl Viewer {
                     })
                     .collect()
             }
+            ViewMode::Table => Vec::new(),
         }
     }
 
     /// Handles a key; what does not belong to the viewer itself (close, switch
     /// file, search) comes back as an `Action`.
     pub fn handle_key(&mut self, key: KeyEvent) -> Action {
+        // Route movement keys to table when in Table mode
+        if self.mode == ViewMode::Table
+            && let Some(t) = &mut self.table
+        {
+            match key.code {
+                KeyCode::Up
+                | KeyCode::Down
+                | KeyCode::Left
+                | KeyCode::Right
+                | KeyCode::PageUp
+                | KeyCode::PageDown
+                | KeyCode::Home
+                | KeyCode::End => {
+                    t.handle_key(key.code, self.page);
+                    return Action::None;
+                }
+                _ => {}
+            }
+        }
+
         let page = self.page.max(1);
         let max_top = self.line_count().saturating_sub(page);
         self.note = None;
@@ -805,6 +865,56 @@ impl Viewer {
                 Action::None
             }
             KeyCode::Char('g' | 'G' | ':') => Action::GotoLine,
+            KeyCode::Char('t' | 'T') => {
+                if self.table.is_some() {
+                    self.mode = match self.mode {
+                        ViewMode::Table => ViewMode::Text,
+                        _ => ViewMode::Table,
+                    };
+                }
+                Action::None
+            }
+            KeyCode::Char('\\') => {
+                if self.mode == ViewMode::Table {
+                    Action::FilterSql
+                } else {
+                    Action::Search {
+                        forward: false,
+                        from: SearchFrom::Page,
+                    }
+                }
+            }
+            KeyCode::Char(']') => {
+                if let Some(t) = &mut self.table
+                    && !t.sheets.is_empty()
+                {
+                    t.current_sheet = (t.current_sheet + 1) % t.sheets.len();
+                    // Reload table for sqlite sheet change if needed
+                    let sheet_name = t.sheets[t.current_sheet].clone();
+                    if let Ok(new_grid) = tabular_loader::load_sqlite(&self.path, Some(&sheet_name))
+                    {
+                        *t = new_grid;
+                    }
+                }
+                Action::None
+            }
+            KeyCode::Char('[') => {
+                if let Some(t) = &mut self.table
+                    && !t.sheets.is_empty()
+                {
+                    t.current_sheet = if t.current_sheet == 0 {
+                        t.sheets.len() - 1
+                    } else {
+                        t.current_sheet - 1
+                    };
+                    let sheet_name = t.sheets[t.current_sheet].clone();
+                    if let Ok(new_grid) = tabular_loader::load_sqlite(&self.path, Some(&sheet_name))
+                    {
+                        *t = new_grid;
+                    }
+                }
+                Action::None
+            }
             KeyCode::Char(c) => match c.to_ascii_lowercase() {
                 'h' => {
                     self.toggle_mode();
@@ -874,7 +984,14 @@ impl Viewer {
     fn toggle_mode(&mut self) {
         self.mode = match self.mode {
             ViewMode::Text => ViewMode::Hex,
-            ViewMode::Hex => ViewMode::Text,
+            ViewMode::Hex => {
+                if self.table.is_some() {
+                    ViewMode::Table
+                } else {
+                    ViewMode::Text
+                }
+            }
+            ViewMode::Table => ViewMode::Text,
         };
         self.top = 0;
         self.sub_top = 0;
@@ -928,6 +1045,7 @@ impl Viewer {
                     end: e,
                 })
             }
+            ViewMode::Table => None,
         };
         match hit {
             Some(h) => {
