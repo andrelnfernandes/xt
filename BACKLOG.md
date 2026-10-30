@@ -41,11 +41,7 @@ rest).
    path, so Autoview's 1 MiB and its time limit do not apply: passing the cursor
    over a big spreadsheet or CSV can hold the screen up. The row and column
    limits do apply. A SQLite query cannot be cancelled either.
-7. **Tables of remote files and archive entries.** `Viewer::from_file` gives the
-   loaders the path it received, which is opened on the local disk, so a remote
-   `foo.csv` may show a local file with the same path, or fail. Seen in the code,
-   not tested. Should load tables only from files on disk.
-8. **SQLite and Parquet's zstd are C libraries: replace them with Rust as soon
+7. **SQLite and Parquet's zstd are C libraries: replace them with Rust as soon
    as a usable option appears.** The author's decision. They run only with V,
    never in Autoview, and that is meant to be temporary. What to watch:
    - zstd: a way for the `parquet` crate to decode through a Rust codec; Xylem

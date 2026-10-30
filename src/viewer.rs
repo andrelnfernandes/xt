@@ -225,10 +225,79 @@ impl Viewer {
         let size = file.metadata()?.len();
         let mut raw = Vec::new();
         file.take(load.limits.output as u64).read_to_end(&mut raw)?;
-        Ok(Viewer {
+        let mut v = Viewer {
             on_disk: true,
             ..Self::from_file(path, size, raw, load)
-        })
+        };
+        v.load_table();
+        Ok(v)
+    }
+
+    /// Shows a tabular file as a table. Only for a file on disk: the loaders
+    /// open it by its path, and a remote file or an archive entry has none
+    /// here (the same path could even be another file on this machine).
+    fn load_table(&mut self) {
+        let path = self.path.clone();
+        if !tabular_loader::is_tabular_candidate(&path)
+            || self.compression.is_some()
+            || self.problem.is_some()
+        {
+            return;
+        }
+        // Autoview runs on whatever the cursor passes over, so it never
+        // reaches a parser written in C.
+        if !self.load.c_parsers && tabular_loader::uses_c_parser(&path) {
+            if self.note.is_none() {
+                self.note = Some("Parquet or SQLite: V opens the table".into());
+            }
+            return;
+        }
+        let ext = path
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_ascii_lowercase())
+            .unwrap_or_default();
+        let grid = match ext.as_str() {
+            "csv" | "tsv" | "tab" => tabular_loader::load_csv(&path, None),
+            "jsonl" | "ndjson" => tabular_loader::load_jsonl(&path),
+            "xlsx" | "ods" | "xls" | "xlsb" => tabular_loader::load_spreadsheet(&path, 0),
+            "dbf" => tabular_loader::load_dbf(&path),
+            "sqlite" | "sqlite3" | "db" => tabular_loader::load_sqlite(&path, None),
+            "parquet" => tabular_loader::load_parquet(&path),
+            _ => Err("Not supported".to_string()),
+        };
+        match grid {
+            Ok(grid) => {
+                self.table = Some(grid);
+                self.mode = ViewMode::Table;
+            }
+            Err(e) if self.note.is_none() => self.note = Some(format!("Table mode: {e}")),
+            Err(_) => {}
+        }
+    }
+
+    /// `[` and `]`: another sheet of a spreadsheet or table of a database.
+    /// Stays where it is, saying why, if that one cannot be read.
+    fn switch_sheet(&mut self, forward: bool) {
+        let Some(t) = &self.table else { return };
+        let count = t.sheets.len();
+        if count < 2 {
+            return;
+        }
+        let target = if forward {
+            (t.current_sheet + 1) % count
+        } else {
+            (t.current_sheet + count - 1) % count
+        };
+        let grid = if tabular_loader::uses_c_parser(&self.path) {
+            tabular_loader::load_sqlite(&self.path, Some(&t.sheets[target]))
+        } else {
+            tabular_loader::load_spreadsheet(&self.path, target)
+        };
+        match grid {
+            Ok(grid) => self.table = Some(grid),
+            Err(e) => self.note = Some(format!("Table mode: {e}")),
+        }
     }
 
     /// Views the start of a file (`raw`, of `size` bytes in all), decompressed
@@ -281,42 +350,6 @@ impl Viewer {
             v = v.colored_as(&name);
         }
 
-        // Autoview runs on whatever the cursor passes over, so it never
-        // reaches a parser written in C.
-        let c_refused = !load.c_parsers && tabular_loader::uses_c_parser(&path);
-        if c_refused && note.is_none() {
-            note = Some("Parquet or SQLite: V opens the table".into());
-        }
-
-        // Auto-load tabular candidate files into Table mode if on disk
-        if tabular_loader::is_tabular_candidate(&path) && !c_refused {
-            let ext = path
-                .extension()
-                .and_then(|s| s.to_str())
-                .map(|s| s.to_ascii_lowercase())
-                .unwrap_or_default();
-
-            let grid_res = match ext.as_str() {
-                "csv" | "tsv" | "tab" => tabular_loader::load_csv(&path, None),
-                "jsonl" | "ndjson" => tabular_loader::load_jsonl(&path),
-                "xlsx" | "ods" | "xls" | "xlsb" => tabular_loader::load_spreadsheet(&path),
-                "dbf" => tabular_loader::load_dbf(&path),
-                "sqlite" | "sqlite3" | "db" => tabular_loader::load_sqlite(&path, None),
-                "parquet" => tabular_loader::load_parquet(&path),
-                _ => Err("Not supported".to_string()),
-            };
-
-            match grid_res {
-                Ok(grid) => {
-                    v.table = Some(grid);
-                    v.mode = ViewMode::Table;
-                }
-                Err(e) if v.note.is_none() => {
-                    v.note = Some(format!("Table mode: {e}"));
-                }
-                _ => {}
-            }
-        }
         if failed {
             // The raw bytes of a compressed file that gave nothing.
             v.mode = ViewMode::Hex;
@@ -1040,34 +1073,11 @@ impl Viewer {
                 }
             }
             KeyCode::Char(']') => {
-                if let Some(t) = &mut self.table
-                    && !t.sheets.is_empty()
-                {
-                    t.current_sheet = (t.current_sheet + 1) % t.sheets.len();
-                    // Reload table for sqlite sheet change if needed
-                    let sheet_name = t.sheets[t.current_sheet].clone();
-                    if let Ok(new_grid) = tabular_loader::load_sqlite(&self.path, Some(&sheet_name))
-                    {
-                        *t = new_grid;
-                    }
-                }
+                self.switch_sheet(true);
                 Action::None
             }
             KeyCode::Char('[') => {
-                if let Some(t) = &mut self.table
-                    && !t.sheets.is_empty()
-                {
-                    t.current_sheet = if t.current_sheet == 0 {
-                        t.sheets.len() - 1
-                    } else {
-                        t.current_sheet - 1
-                    };
-                    let sheet_name = t.sheets[t.current_sheet].clone();
-                    if let Ok(new_grid) = tabular_loader::load_sqlite(&self.path, Some(&sheet_name))
-                    {
-                        *t = new_grid;
-                    }
-                }
+                self.switch_sheet(false);
                 Action::None
             }
             KeyCode::Char(c) => match c.to_ascii_lowercase() {
@@ -1664,6 +1674,146 @@ mod tests {
         let v = Viewer::open(path, LoadOptions::view(1 << 20)).unwrap();
         assert!(v.table.is_some(), "V opens it");
         assert_eq!(v.mode, ViewMode::Table);
+    }
+
+    #[test]
+    fn a_table_never_comes_from_a_local_file_with_the_path_of_a_remote_one() {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("data.csv");
+        std::fs::write(&path, "local,secret\n1,2\n").unwrap();
+        // What the remote or the archive gave for that path.
+        let data = b"remote,text\n".to_vec();
+        let v = Viewer::from_file(path, data.len() as u64, data, LOAD);
+        assert!(v.table.is_none());
+        assert_eq!(v.mode, ViewMode::Text);
+        assert_eq!(v.visible_lines(5), ["remote,text"]);
+    }
+
+    #[test]
+    fn a_compressed_file_is_not_a_table() {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("data.csv");
+        std::fs::write(&path, gz(b"a,b\n1,2\n")).unwrap();
+        let v = Viewer::open(path, LOAD).unwrap();
+        assert!(v.table.is_none());
+        assert_eq!(v.visible_lines(5), ["a,b", "1,2"]);
+    }
+
+    #[test]
+    fn a_table_that_cannot_be_read_says_why() {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("bad.xlsx");
+        std::fs::write(&path, "not a spreadsheet").unwrap();
+        let v = Viewer::open(path, LOAD).unwrap();
+        assert!(v.table.is_none());
+        assert!(v.note.as_deref().unwrap().starts_with("Table mode: "));
+    }
+
+    /// A spreadsheet with a sheet named after each string, with that string
+    /// in its first cell.
+    fn xlsx_file(path: &Path, sheets: &[&str]) {
+        use std::io::Write;
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        let mut add = |name: &str, body: String| {
+            zip.start_file(name, options).unwrap();
+            zip.write_all(body.as_bytes()).unwrap();
+        };
+        let ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+        let rel = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+        let pkg = "http://schemas.openxmlformats.org/package/2006";
+        let main = "application/vnd.openxmlformats-officedocument.spreadsheetml";
+        let mut types = format!(
+            r#"<Types xmlns="{pkg}/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/xl/workbook.xml" ContentType="{main}.sheet.main+xml"/>"#
+        );
+        let (mut list, mut rels) = (String::new(), String::new());
+        for (i, name) in sheets.iter().enumerate() {
+            let n = i + 1;
+            types += &format!(
+                r#"<Override PartName="/xl/worksheets/sheet{n}.xml" ContentType="{main}.worksheet+xml"/>"#
+            );
+            list += &format!(r#"<sheet name="{name}" sheetId="{n}" r:id="rId{n}"/>"#);
+            rels += &format!(
+                r#"<Relationship Id="rId{n}" Type="{rel}/worksheet" Target="worksheets/sheet{n}.xml"/>"#
+            );
+        }
+        add("[Content_Types].xml", types + "</Types>");
+        add(
+            "_rels/.rels",
+            format!(
+                r#"<Relationships xmlns="{pkg}/relationships"><Relationship Id="rId1" Type="{rel}/officeDocument" Target="xl/workbook.xml"/></Relationships>"#
+            ),
+        );
+        add(
+            "xl/workbook.xml",
+            format!(r#"<workbook xmlns="{ns}" xmlns:r="{rel}"><sheets>{list}</sheets></workbook>"#),
+        );
+        add(
+            "xl/_rels/workbook.xml.rels",
+            format!(r#"<Relationships xmlns="{pkg}/relationships">{rels}</Relationships>"#),
+        );
+        for (i, name) in sheets.iter().enumerate() {
+            add(
+                &format!("xl/worksheets/sheet{}.xml", i + 1),
+                format!(
+                    r#"<worksheet xmlns="{ns}"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>{name}</t></is></c></row></sheetData></worksheet>"#
+                ),
+            );
+        }
+        zip.finish().unwrap();
+    }
+
+    #[test]
+    fn brackets_switch_the_sheets_of_a_spreadsheet() {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("book.xlsx");
+        xlsx_file(&path, &["one", "two", "three"]);
+        let mut v = Viewer::open(path, LOAD).unwrap();
+        let state = |v: &Viewer| {
+            let t = v.table.as_ref().unwrap();
+            (t.current_sheet, t.active_cell().unwrap().to_string())
+        };
+        assert_eq!(state(&v), (0, "one".to_string()));
+        press(&mut v, KeyCode::Char(']'));
+        assert_eq!(state(&v), (1, "two".to_string()));
+        press(&mut v, KeyCode::Char('['));
+        press(&mut v, KeyCode::Char('['));
+        assert_eq!(state(&v), (2, "three".to_string()), "wraps around");
+        press(&mut v, KeyCode::Char(']'));
+        assert_eq!(state(&v), (0, "one".to_string()));
+    }
+
+    #[test]
+    fn brackets_switch_the_tables_of_a_database() {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("data.db");
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE a (x); INSERT INTO a VALUES ('in a');
+             CREATE TABLE b (x); INSERT INTO b VALUES ('in b');",
+        )
+        .unwrap();
+        drop(conn);
+        let mut v = Viewer::open(path, LOAD).unwrap();
+        let cell = |v: &Viewer| v.table.as_ref().unwrap().active_cell().unwrap().to_string();
+        assert_eq!(cell(&v), "in a");
+        press(&mut v, KeyCode::Char(']'));
+        assert_eq!(cell(&v), "in b");
+        assert_eq!(v.table.as_ref().unwrap().current_sheet, 1);
+    }
+
+    #[test]
+    fn a_sheet_that_cannot_be_read_keeps_the_one_on_screen() {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("book.xlsx");
+        xlsx_file(&path, &["one", "two"]);
+        let mut v = Viewer::open(path.clone(), LOAD).unwrap();
+        std::fs::write(&path, "gone").unwrap();
+        press(&mut v, KeyCode::Char(']'));
+        let t = v.table.as_ref().unwrap();
+        assert_eq!(t.current_sheet, 0);
+        assert_eq!(t.active_cell(), Some("one"));
+        assert!(v.note.as_deref().unwrap().starts_with("Table mode: "));
     }
 
     #[test]

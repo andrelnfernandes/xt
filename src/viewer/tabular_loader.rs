@@ -353,25 +353,24 @@ pub fn load_dbf(path: &Path) -> Result<TableGrid, String> {
     Ok(grid)
 }
 
-/// Load an Excel / ODS spreadsheet using `calamine`.
-pub fn load_spreadsheet(path: &Path) -> Result<TableGrid, String> {
+/// Load a sheet (by position) of an Excel / ODS spreadsheet using `calamine`.
+pub fn load_spreadsheet(path: &Path, sheet: usize) -> Result<TableGrid, String> {
     let mut workbook = open_workbook_auto(path)
         .map_err(|e| format!("Failed to open spreadsheet {}: {e}", path.display()))?;
 
-    let sheet_names: Vec<String> = workbook
-        .sheet_names()
-        .into_iter()
-        .map(|s| TableGrid::sanitize_cell(&s))
+    let raw_names = workbook.sheet_names();
+    let Some(raw_name) = raw_names.get(sheet) else {
+        return Err("Spreadsheet has no such sheet".to_string());
+    };
+    let sheet_names: Vec<String> = raw_names
+        .iter()
+        .map(|s| TableGrid::sanitize_cell(s))
         .collect();
 
-    if sheet_names.is_empty() {
-        return Err("Spreadsheet has no sheets".to_string());
-    }
-
-    let first_sheet_name = sheet_names[0].clone();
-    let range = workbook
-        .worksheet_range(&first_sheet_name)
-        .map_err(|e| format!("Failed to read sheet '{first_sheet_name}': {e}"))?;
+    let range = workbook.worksheet_range(raw_name).map_err(|e| {
+        let shown = &sheet_names[sheet];
+        format!("Failed to read sheet '{shown}': {e}")
+    })?;
 
     let (height, width) = range.get_size();
     let max_cols = width.min(MAX_TABLE_COLS);
@@ -394,7 +393,7 @@ pub fn load_spreadsheet(path: &Path) -> Result<TableGrid, String> {
 
     let mut grid = TableGrid::new(path.display().to_string(), headers, rows);
     grid.sheets = sheet_names;
-    grid.current_sheet = 0;
+    grid.current_sheet = sheet;
     Ok(grid)
 }
 
