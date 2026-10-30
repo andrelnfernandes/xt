@@ -160,3 +160,18 @@ Em ordem de prioridade; cada um é um commit pequeno com teste.
 2. Passos 4 e 6 (pequenos, mesmo arquivo).
 3. Passo 5 (o maior; mexe em `Operation` e `archive::Reader`).
 4. Passos 7–9.
+
+## Depois: leituras do Git (2026-10-30)
+
+O passo 2 tinha desligado só o `core.fsmonitor`, e só nos marcadores. Testes com
+repositórios hostis mostraram que os marcadores ainda executavam ganchos, filtros
+via `include.path`, `config.worktree` e de submódulos, e que o menu Ctrl+G executava
+também `diff.external`, `textconv` e o programa de assinatura. Toda leitura agora
+passa por `git::reading`, e os filtros próprios são procurados com `--show-scope`.
+Add, Unstage e Commit continuam seguindo a configuração do repositório.
+
+Quem precisa de filtros próprios ou diffs externos usa `git_trusted`, vazio por
+padrão: uma lista de pastas, resolvidas antes de comparar e por nomes inteiros, para
+um link não levar a confiança junto e `~/work` não valer para `~/work-downloads`. É
+por pasta, e não uma chave geral, porque uma chave ficaria ligada por causa de um
+projeto e valeria para o próximo `.zip`.

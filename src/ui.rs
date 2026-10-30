@@ -1761,6 +1761,16 @@ fn draw_settings(frame: &mut Frame, s: &Settings) {
         Span::styled(s.config.theme.clone(), bold),
         Span::styled("  (F4 to choose)", Style::new().fg(theme().dim)),
     ]));
+    if items.get(s.selected).map(|item| item.2) == Some(settings::Opt::GitTrusted) {
+        lines.push(Line::default());
+        for text in [
+            "  DANGER: in these folders, just walking into a repository lets Git",
+            "  run what it names (hooks, filters, external diffs). Never extract",
+            "  or download anything from others there.",
+        ] {
+            lines.push(Line::styled(text, Style::new().fg(theme().error)));
+        }
+    }
     frame.render_widget(Paragraph::new(lines), inner);
 
     if let Some(picker) = &s.picker {
@@ -1792,7 +1802,13 @@ fn draw_settings(frame: &mut Frame, s: &Settings) {
         let label = match opt {
             settings::Opt::Opener => "Open with: ",
             settings::Opt::BinaryEditor => "Binary editor: ",
+            settings::Opt::GitTrusted => "Trusted Git folders: ",
             _ => "Editor: ",
+        };
+        let hint = match (&s.message, opt) {
+            (Some(message), _) => message.as_str(),
+            (None, settings::Opt::GitTrusted) => "; between folders, empty = trust none",
+            (None, _) => "empty = default",
         };
         let col = menu.x + (label.len() + input.cursor) as u16;
         frame.set_cursor_position((col.min(menu.right().saturating_sub(1)), menu.y));
@@ -1801,14 +1817,7 @@ fn draw_settings(frame: &mut Frame, s: &Settings) {
                 Span::styled(label, bold),
                 Span::raw(input.text.clone()),
             ]),
-            menu_line(
-                "",
-                &[
-                    ("Enter", "accept"),
-                    ("Esc", "cancel"),
-                    ("", "empty = default"),
-                ],
-            ),
+            menu_line("", &[("Enter", "accept"), ("Esc", "cancel"), ("", hint)]),
         ]
     } else if s.picker.is_some() {
         vec![

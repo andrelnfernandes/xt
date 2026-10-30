@@ -7,7 +7,7 @@ ventana y nunca llega a Xylem) abre cuatro páginas:
 
 | Página | Opciones |
 |---|---|
-| 1. Programas y formatos | editor, abrir el editor dentro del marco de Xylem, tema de Xylem en el editor, editar archivos binarios con E, editor binario, idioma de la ayuda, programa para abrir, formato de fecha, formato numérico, comandos de Git |
+| 1. Programas y formatos | editor, abrir el editor dentro del marco de Xylem, tema de Xylem en el editor, editar archivos binarios con E, editor binario, idioma de la ayuda, programa para abrir, formato de fecha, formato numérico, comandos de Git, carpetas Git de confianza |
 | 2. Visualización y orden | archivos ocultos, orden y dirección iniciales, qué hace Enter en la ventana de archivos, modo de visualización inicial, colores de sintaxis, ajuste de línea, números de línea, archivos comprimidos, la codificación de textos antiguos, el límite de tamaño de lo que lee el visor, iconos y glifos (Nerd Fonts), colores de la terminal integrada |
 | 3. Confirmaciones e historial | confirmar al salir, eliminar a la papelera, confirmación de Prune, no guardar entradas con `@`, historial propio de la terminal integrada |
 | 4. Copiar, comparar y actualizar | ignorar 2 s, ignorar 1 h, actualización automática, dónde empiezan las rutas de Alt+C/Alt+M |

@@ -5,6 +5,7 @@
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::config::{self, Choice, Config, CopyPaths, THEMES, TerminalTheme, Theme};
+use crate::git;
 use crate::input::{LineEvent, LineInput};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,6 +39,7 @@ pub enum Opt {
     CompareIgnore1h,
     AutoRefresh,
     Git,
+    GitTrusted,
     CopyPaths,
     TerminalTheme,
     TerminalHistory,
@@ -88,6 +90,11 @@ pub const PAGES: &[Page] = &[
             ),
             ('I', "Edit binary files with E", Opt::EditBinary),
             ('J', BINARY_EDITOR_LABEL, Opt::BinaryEditor),
+            (
+                'K',
+                "Trusted Git folders, separated by ; (empty: none)",
+                Opt::GitTrusted,
+            ),
         ],
     ),
     (
@@ -259,6 +266,8 @@ impl Opt {
             Opt::CompareIgnore1h => yes_no(o.compare_ignore_1h),
             Opt::AutoRefresh => yes_no(o.auto_refresh),
             Opt::Git => yes_no(o.git),
+            Opt::GitTrusted if o.git_trusted.is_empty() => "(none: all are hostile)".into(),
+            Opt::GitTrusted => o.git_trusted.join("; "),
             Opt::CopyPaths => match o.copy_paths {
                 CopyPaths::Full => "Full (root of the disk)",
                 CopyPaths::Tree => "Tree (root of Xylem's tree)",
@@ -284,7 +293,7 @@ impl Opt {
     fn cycle(self, c: &mut Config) -> bool {
         let o = &mut c.options;
         match self {
-            Opt::Editor | Opt::Opener | Opt::BinaryEditor => return false,
+            Opt::Editor | Opt::Opener | Opt::BinaryEditor | Opt::GitTrusted => return false,
             Opt::EditorInFrame => o.editor_in_frame = !o.editor_in_frame,
             Opt::EditorTheme => o.editor_theme = !o.editor_theme,
             Opt::EditBinary => o.edit_binary = !o.edit_binary,
@@ -398,11 +407,29 @@ impl Settings {
                     match opt {
                         Opt::Opener => self.config.options.opener = text,
                         Opt::BinaryEditor => self.config.options.binary_editor = text,
+                        Opt::GitTrusted => {
+                            let folders: Vec<String> = text
+                                .split(';')
+                                .map(|folder| folder.trim().to_string())
+                                .filter(|folder| !folder.is_empty())
+                                .collect();
+                            // Stays open: a folder that means nothing is a mistake.
+                            if let Some(wrong) = git::invalid_trusted(&folders) {
+                                self.message =
+                                    Some(format!("{wrong}: use a full path or one under ~"));
+                                return Outcome::Stay;
+                            }
+                            self.message = git::trusted_warning(&folders);
+                            self.config.options.git_trusted = folders;
+                        }
                         _ => self.config.options.editor = text,
                     }
                     self.editing = None;
                 }
-                LineEvent::Cancel => self.editing = None,
+                LineEvent::Cancel => {
+                    self.editing = None;
+                    self.message = None;
+                }
                 LineEvent::Editing => {}
             }
             return Outcome::Stay;
@@ -466,11 +493,12 @@ impl Settings {
         let opt = self.items()[i].2;
         if !opt.cycle(&mut self.config) {
             let current = match opt {
-                Opt::Opener => &self.config.options.opener,
-                Opt::BinaryEditor => &self.config.options.binary_editor,
-                _ => &self.config.options.editor,
+                Opt::Opener => self.config.options.opener.clone(),
+                Opt::BinaryEditor => self.config.options.binary_editor.clone(),
+                Opt::GitTrusted => self.config.options.git_trusted.join("; "),
+                _ => self.config.options.editor.clone(),
             };
-            self.editing = Some((opt, LineInput::new(current)));
+            self.editing = Some((opt, LineInput::new(&current)));
         }
     }
 
@@ -594,6 +622,53 @@ mod tests {
         press(&mut s, KeyCode::Enter);
         assert_eq!(s.config.options.opener, "gio open");
         assert_eq!(s.config.options.editor, "nvim");
+    }
+
+    fn type_in(s: &mut Settings, text: &str) {
+        for c in text.chars() {
+            press(s, KeyCode::Char(c));
+        }
+    }
+
+    #[test]
+    fn trusted_folders_start_empty_and_are_typed_with_a_separator() {
+        let mut s = Settings::new(Config::default(), None);
+        assert!(s.config.options.git_trusted.is_empty());
+        assert_eq!(Opt::GitTrusted.value(&s.config), "(none: all are hostile)");
+
+        let tmp = crate::testing::tempdir();
+        let (a, b) = (tmp.path().join("a"), tmp.path().join("my b"));
+        std::fs::create_dir(&a).unwrap();
+        std::fs::create_dir(&b).unwrap();
+        let (a, b) = (a.to_str().unwrap(), b.to_str().unwrap());
+        press(&mut s, KeyCode::Char('k'));
+        type_in(&mut s, &format!(" {a} ;; {b}; "));
+        press(&mut s, KeyCode::Enter);
+        assert!(s.editing.is_none());
+        assert_eq!(s.config.options.git_trusted, [a, b]);
+        assert_eq!(s.message, None);
+        assert_eq!(Opt::GitTrusted.value(&s.config), format!("{a}; {b}"));
+
+        // Opens with what it has, and emptying it trusts nothing again.
+        press(&mut s, KeyCode::Char('k'));
+        assert_eq!(s.editing.as_ref().unwrap().1.text, format!("{a}; {b}"));
+        s.editing.as_mut().unwrap().1 = LineInput::new("");
+        press(&mut s, KeyCode::Enter);
+        assert!(s.config.options.git_trusted.is_empty());
+    }
+
+    #[test]
+    fn a_trusted_folder_that_means_nothing_is_refused() {
+        let mut s = Settings::new(Config::default(), None);
+        press(&mut s, KeyCode::Char('k'));
+        type_in(&mut s, "~/a; projects");
+        press(&mut s, KeyCode::Enter);
+        assert!(s.editing.is_some(), "stays open to be fixed");
+        assert!(s.config.options.git_trusted.is_empty());
+        assert!(s.message.as_deref().unwrap().starts_with("projects: "));
+        press(&mut s, KeyCode::Esc);
+        assert!(s.editing.is_none());
+        assert_eq!(s.message, None);
     }
 
     #[test]

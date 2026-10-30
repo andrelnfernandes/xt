@@ -36,3 +36,24 @@ No visualizador, **D** mostra o que mudou no arquivo desde o último commit (seu
 `git diff HEAD`, com cores) e **D** novamente volta para o arquivo, na mesma
 posição. "Diff" aparece no rodapé apenas para arquivos com alterações; **E**
 continua editando o arquivo, e o diff é atualizado ao retornar.
+
+## Repositórios que você não criou
+
+O `.git` de um repositório pode nomear comandos para o Git executar, e uma pasta baixada ou extraída vem com o seu `.git` (um `git clone` não o traz). Por isso, os marcadores de arquivo e Status, Log, Graph, Diff e Blame não executam nenhum deles: nem ganchos, `core.fsmonitor`, diffs externos, conversões de texto ou verificação de assinaturas. O custo:
+
+- Um repositório que define filtros próprios, como faz o `git-crypt`, fica sem marcadores, Status, Diff e Blame aqui, com uma mensagem explicando o motivo. Log e Graph funcionam. Filtros da sua configuração global, como o Git LFS, são confiáveis.
+- Um submódulo com arquivos alterados, mas sem commit novo, não aparece como alterado.
+
+Add, Unstage e Commit são pedidos seus e seguem a configuração do repositório: podem executar o que ela nomeia.
+
+### Pastas confiáveis
+
+Por padrão, nada é confiável: todo repositório é tratado como hostil. Para os repositórios de uma pasta funcionarem com toda a configuração, como `git-crypt` ou uma ferramenta de diff sua, adicione a pasta em **Trusted Git folders** (**K** na página 1 de **F12**), com `;` entre as pastas:
+
+```
+~/projetos; /trabalho/codigo
+```
+
+No arquivo, é uma lista: `git_trusted = ["~/projetos", "/trabalho/codigo"]`. Uma pasta é um caminho completo ou abaixo de `~`, e vale para tudo o que está dentro dela. Um link que aponta para fora não leva a confiança junto.
+
+**Perigo:** dentro de uma pasta confiável, basta entrar em um repositório para o Git executar o que ele nomeia, com as suas permissões. Nunca extraia nem baixe nada de outras pessoas nela, e não confie em `~` nem em `/`, que contêm o que você baixa.

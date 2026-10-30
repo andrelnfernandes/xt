@@ -13,7 +13,7 @@ impl App {
             .filter(|p| p.archive.is_none() && p.remote.is_none())
             .map(|p| p.current_path())
             .collect();
-        self.git_status.refresh(dirs);
+        self.git_status.refresh(dirs, &self.options.git_trusted);
     }
 
     /// Ctrl+G: opens the Git menu, if the current directory is in a
@@ -60,8 +60,16 @@ impl App {
             return;
         }
         let root = v.path.parent().and_then(git::repo_root);
-        match root.map(|root| git::report(git::Action::Diff, &root, std::slice::from_ref(&v.path)))
-        {
+        let trusted = &self.options.git_trusted;
+        match root.map(|root| {
+            let paths = std::slice::from_ref(&v.path);
+            git::report(
+                git::Action::Diff,
+                &root,
+                paths,
+                git::is_trusted(&root, trusted),
+            )
+        }) {
             Some(Ok(r)) => {
                 let name = v.path.file_name().unwrap_or_default().to_string_lossy();
                 let title = PathBuf::from(format!("git diff {name}"));
@@ -118,7 +126,12 @@ impl App {
             git::Action::Commit => {
                 self.external = Some(shell::command("git commit".into(), &root));
             }
-            a if a.shows_output() => match git::report(a, &root, &paths) {
+            a if a.shows_output() => match git::report(
+                a,
+                &root,
+                &paths,
+                git::is_trusted(&root, &self.options.git_trusted),
+            ) {
                 Ok(r) => {
                     let size = r.text.len() as u64;
                     self.tagged_view = None;
