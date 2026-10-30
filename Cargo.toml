@@ -34,6 +34,7 @@ lzma-rust2 = { version = "0.23", default-features = false, features = ["std", "x
 notify = { version = "8.2.0", default-features = false }
 portable-pty = "0.9.0"
 ratatui = "0.30.2"
+regex = "1.13"
 rusqlite = { version = "0.33", features = ["bundled"] }
 ruzstd = "0.9"
 parquet = { version = "60.1", default-features = false, features = ["arrow", "snap", "flate2-zlib-rs", "lz4_flex", "zstd"] }

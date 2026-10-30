@@ -4,6 +4,10 @@ Xylem's built-in help (**F1** / **Alt+H**) and manual page (`xy --man`) are gene
 
 Contributors can translate single topics or add a new language **without writing any Rust code**.
 
+## Reviews Wanted
+
+The Spanish, French, German and Chinese versions have not been reviewed by native speakers. If you read one of these languages, a review is as welcome as a new translation: fix what is wrong or sounds odd in a Pull Request, or describe it in an [issue](https://github.com/andrelnfernandes/xylem/issues). You do not need to review a whole language at once; a single topic helps.
+
 ## Directory Structure
 
 - `docs/manual/*.md` — Canonical English (`en`) topics (29 files).

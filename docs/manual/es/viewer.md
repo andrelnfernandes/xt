@@ -14,6 +14,7 @@ muestran solo el principio.
 | `W` | activar o desactivar el ajuste de línea |
 | `#` o `L` | activar o desactivar números de línea (en modo texto) |
 | `g` o `:` | saltar a una línea (o desplazamiento de byte en hexadecimal) |
+| `&` | muestra solo las líneas que coinciden, texto simple o regex ([filtrar líneas](filter.md)); en modo tabla, el filtro SQL |
 | `E` | editar el archivo; al volver a Xylem, el visor muestra el contenido nuevo en el mismo lugar (archivos binarios solo con un editor en [`[editors]`](execute.md)) |
 | `D` | con Git activado: qué cambió desde el último commit, y volver ([Git](git.md)) |
 | `T` / `U` | marcar / desmarcar el archivo |

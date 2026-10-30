@@ -20,12 +20,17 @@ Baum- oder Dateifenster die Hilfe zu diesem Fenster. In der Hilfe wählen
 geht zurück, **I** zeigt diesen Index, **K** die aktiven Tasten, **L** wechselt
 die Sprache und **Esc** schließt die Hilfe.
 
+**Hilfe bei der Übersetzung:** Diese Fassung des Handbuchs wurde nicht von
+Muttersprachlern geprüft. Wenn Sie einen Fehler oder eine seltsam klingende
+Stelle finden, schlagen Sie bitte eine Verbesserung vor: `https://github.com/andrelnfernandes/xylem/issues`.
+
 ## Fenster und Ansichten
 
 - [Das Baumfenster](tree.md): Navigation, Einlesen, Branch und Showall
 - [Das Dateifenster](files.md): Anzeigemodi, Autoview, Dateien öffnen
 - [Geteilter Bildschirm](split.md): zwei Fenster nebeneinander
 - [Der Betrachter](viewer.md): Text und Hex, Suche, Syntaxfarben
+- [Zeilen filtern](filter.md): `&` im Betrachter, mit einer Anleitung zu regulären Ausdrücken
 - [Markierte Dateien durchsuchen](search.md): Ctrl+S und Ctrl+V
 - [Informationen](info.md): Info, Avail, Statistiken und Verzeichnisgrößen
 - [Speicherplatzbelegung](usage.md): wohin der Platz geht (Alt+W)

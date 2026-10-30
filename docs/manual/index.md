@@ -17,12 +17,18 @@ tree or the file window, the help for that window. In the help, **Tab** and
 **I** shows this index, **K** the keys in effect, **L** switches the language
 and **Esc** closes.
 
+**Help with the translations:** the versions of this manual in Spanish,
+French, German and Chinese have not been reviewed by native speakers.
+If you read one of these languages and find an error or something that sounds
+odd, please suggest an improvement: `https://github.com/andrelnfernandes/xylem/issues`.
+
 ## Windows and views
 
 - [The tree window](tree.md): moving around, logging, Branch and Showall
 - [The file window](files.md): display modes, Autoview, opening files
 - [Split screen](split.md): two windows side by side
 - [The viewer](viewer.md): text and hex, search, syntax colors
+- [Filtering lines](filter.md): `&` in the viewer, with a regular expression guide
 - [Searching tagged files](search.md): Ctrl+S and Ctrl+V
 - [Information](info.md): Info, Avail, statistics and directory sizes
 - [Disk usage](usage.md): where the space goes (Alt+W)

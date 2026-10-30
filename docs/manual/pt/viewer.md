@@ -14,6 +14,7 @@ apenas o início.
 | `W` | ativa ou desativa a quebra de linha automática |
 | `#` ou `L` | ativa ou desativa os números de linha (no modo texto) |
 | `g` ou `:` | pula para uma linha (ou deslocamento de byte em hexadecimal) |
+| `&` | mostra só as linhas que combinam, texto simples ou regex ([filtrar linhas](filter.md)); no modo tabela, o filtro SQL |
 | `E` | edita o arquivo; de volta ao Xylem, o visualizador mostra o novo conteúdo na mesma posição (arquivos binários somente com um editor em [`[editors]`](execute.md)) |
 | `D` | com Git ativo: mostra o que mudou desde o último commit, e volta ([Git](git.md)) |
 | `T` / `U` | marca / desmarca o arquivo |

@@ -407,6 +407,8 @@ dialog.lightbox img { border-radius: var(--radius); cursor: zoom-out; }
 
 .topics a:hover { border-color: var(--link); color: var(--link); }
 
+.translation-note { margin-top: 20px; color: var(--muted); font-size: 0.9rem; }
+
 /* Footer */
 
 footer { padding: 40px 0 56px; color: var(--muted); font-size: 0.88rem; }

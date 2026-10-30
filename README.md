@@ -193,7 +193,8 @@ mkdir -p ~/.local/share/man/man1 && xy --man > ~/.local/share/man/man1/xy.1
   rename with masks, permissions and dates, Compare between two windows.
 - **Finding things:** Filespec by name, date and size, Treespec to type a path,
   bookmarks, and Ctrl+S to search the tagged files for text.
-- **Looking inside:** a text and hex viewer with search and syntax colors,
+- **Looking inside:** a text and hex viewer with search, a line filter with
+  regular expressions and syntax colors,
   Autoview next to the list, ZIP, 7z and TAR archives opened as directories,
   and display modes that show owners or what each file is.
 - **Where the space goes:** the Usage view (Alt+W) lists a branch's folders
@@ -231,6 +232,10 @@ and the man page (`xy --man`). Some topics:
 [configuration](docs/manual/configuration.md),
 [Windows](docs/manual/windows.md) (experimental) and the
 [comparison with ZTreeWin](docs/manual/ztreewin.md).
+
+The help also comes in Portuguese, Spanish, French, German and Chinese. The
+Spanish, French, German and Chinese translations have not been reviewed by
+native speakers: if you read one of these languages, [suggestions are welcome](docs/manual/TRANSLATING.md#reviews-wanted).
 
 ## Structure
 

@@ -13,6 +13,7 @@ Binary files open in hex. Files over the size limit show only the beginning.
 | `W` | soft wrap on or off |
 | `#` or `L` | line numbers on or off (in text mode) |
 | `g` or `:` | jump to a line (or byte offset in hex) |
+| `&` | show only the lines that match, plain text or regex ([filtering lines](filter.md)); in table mode, the SQL filter |
 | `E` | edit the file; back in Xylem, the viewer shows the new contents at the same place (binary files only with an editor in [`[editors]`](execute.md)) |
 | `D` | with Git on: what changed since the last commit, and back ([Git](git.md)) |
 | `T` / `U` | tag / untag the file |

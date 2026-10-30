@@ -69,6 +69,10 @@ pub(crate) enum PromptKind {
     ViewerGoto,
     /// SQL filter in the viewer (WHERE ... / query).
     ViewerSqlFilter,
+    /// Line filter in the viewer's text mode (F2, F3 and F4 change the options).
+    ViewerLineFilter {
+        spec: LineFilterSpec,
+    },
     /// A question from ssh while connecting: a password (`secret`, shown
     /// masked) or a yes/no.
     Askpass {
@@ -94,6 +98,7 @@ impl PromptKind {
             PromptKind::SearchTagged { .. } | PromptKind::ViewerSearch { .. } => "search",
             PromptKind::ViewerGoto => "goto",
             PromptKind::ViewerSqlFilter => "sql_filter",
+            PromptKind::ViewerLineFilter { .. } => "line_filter",
             PromptKind::Chmod(_) => "chmod",
             PromptKind::RenameFile(_)
             | PromptKind::RenameDir(_)
@@ -123,6 +128,9 @@ impl PromptKind {
             PromptKind::ViewerSearch { spec, forward, .. } => {
                 let dir = if *forward { "FIND" } else { "FIND backward" };
                 format!("{dir} ({}): ", spec.mode_label())
+            }
+            PromptKind::ViewerLineFilter { spec } => {
+                format!("FILTER lines ({}): ", spec.mode_label())
             }
             _ => return None,
         })
@@ -161,6 +169,12 @@ impl Prompt {
             self.kind,
             PromptKind::SearchTagged { .. } | PromptKind::ViewerSearch { .. }
         )
+    }
+
+    /// The line filter's prompt accepts F2 (case), F3 (invert) and F4
+    /// (text/regex).
+    pub fn is_line_filter(&self) -> bool {
+        matches!(self.kind, PromptKind::ViewerLineFilter { .. })
     }
 
     pub fn is_bookmark_jump(&self) -> bool {
@@ -636,6 +650,14 @@ impl App {
                         }
                     }
                 }
+                Ok(())
+            }
+            PromptKind::ViewerLineFilter { mut spec } => {
+                spec.text = text;
+                if let Some(v) = &mut self.viewer {
+                    v.note = Some(v.apply_line_filter(&spec));
+                }
+                self.line_filter = spec;
                 Ok(())
             }
             PromptKind::Prune {

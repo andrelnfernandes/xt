@@ -3637,6 +3637,7 @@ dependencies = [
  "portable-pty",
  "proptest",
  "ratatui",
+ "regex",
  "rusqlite",
  "ruzstd",
  "serde",

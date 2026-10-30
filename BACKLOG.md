@@ -61,3 +61,8 @@ as a link is what `cp -a` and `rsync -l` do).
   viewer, logs, SQLite, external converters; six subprojects, security
   first. Subproject 1 (encodings, compressed files, the size limit) is done
   (PRs #44 to #49); next is subproject 2, the table mode.
+- **Batch over files and records** ([docs/plans/batch.md](docs/plans/batch.md)):
+  Ctrl+B also on what the viewer read (tables with or without a filter, text
+  lines), with escaping by context and structured and binary outputs. The line
+  filter in the text viewer (`&`) is done; next are raw values kept apart from
+  the display and a record iterator without the 50,000-row limit.

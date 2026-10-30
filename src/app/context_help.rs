@@ -64,6 +64,7 @@ impl App {
                 PromptKind::ViewerSearch { .. }
                 | PromptKind::ViewerGoto
                 | PromptKind::ViewerSqlFilter => "viewer",
+                PromptKind::ViewerLineFilter { .. } => "filter",
                 PromptKind::CreateArchive(_) => "archives",
                 PromptKind::BookmarkJump | PromptKind::BookmarkSet => "bookmarks",
                 PromptKind::MakeDir(_) => "tree",

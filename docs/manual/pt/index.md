@@ -19,12 +19,18 @@ sobre o que você está fazendo: dentro de um prompt, a ajuda daquele prompt; na
 **I** mostra este índice, **K** as teclas em vigor, **L** alterna o idioma e
 **Esc** fecha.
 
+**Ajude com as traduções:** as versões deste manual em espanhol, francês, alemão
+e chinês não foram revisadas por falantes nativos. Se você lê um desses idiomas
+e encontrar um erro ou algo que soe estranho, sugira uma melhoria:
+`https://github.com/andrelnfernandes/xylem/issues`.
+
 ## Janelas e visualizações
 
 - [A janela da árvore](tree.md): navegação, leitura (Log), Branch e Showall
 - [A janela de arquivos](files.md): modos de exibição, Autoview, abrir arquivos
 - [Tela dividida](split.md): duas janelas lado a lado
 - [O visualizador](viewer.md): texto e hexadecimal, busca, cores de sintaxe
+- [Filtrar linhas](filter.md): `&` no visualizador, com um guia de expressões regulares
 - [Busca nos arquivos marcados](search.md): Ctrl+S e Ctrl+V
 - [Informações](info.md): Info, Avail, estatísticas e tamanhos de diretórios
 - [Uso do disco](usage.md): para onde vai o espaço (Alt+W)

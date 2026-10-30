@@ -2819,6 +2819,68 @@ fn viewer_goto_line_and_toggles() {
 }
 
 #[test]
+fn line_filter_prompt_toggles_applies_and_opens_its_help() {
+    let (tmp, mut app) = sample();
+    let path = tmp.path().join("log.txt");
+    std::fs::write(&path, "ok\nfail 12\nok\nFAIL 7\n").unwrap();
+    app.viewer = Some(Viewer::open(path, viewer::LoadOptions::view(1 << 20)).unwrap());
+
+    press(&mut app, KeyCode::Char('&'));
+    let label = |app: &App| app.prompt.as_ref().unwrap().label.clone();
+    assert_eq!(label(&app), "FILTER lines (text, ignore case): ");
+    press(&mut app, KeyCode::F(4));
+    assert_eq!(label(&app), "FILTER lines (regex, ignore case): ");
+    press(&mut app, KeyCode::F(2));
+    press(&mut app, KeyCode::F(3));
+    assert_eq!(label(&app), "FILTER lines (regex, match case, inverted): ");
+    press(&mut app, KeyCode::F(2));
+    press(&mut app, KeyCode::F(3));
+
+    // F1 explains regular expressions and comes back to the prompt.
+    let f1 = KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE);
+    assert_eq!(help_topic_after(&mut app, f1), "filter");
+    assert!(app.prompt.as_ref().unwrap().is_line_filter());
+
+    answer_prompt(&mut app, r"^fail \d+$");
+    let v = app.viewer.as_ref().unwrap();
+    assert_eq!(v.line_count(), 2);
+    assert_eq!(v.total_lines(), 4);
+    assert_eq!(v.note.as_deref(), Some("Filter: 2 of 4 lines"));
+
+    // The prompt comes back with the filter in effect, ready to change it.
+    press(&mut app, KeyCode::Char('&'));
+    assert_eq!(label(&app), "FILTER lines (regex, ignore case): ");
+    assert_eq!(app.prompt.as_ref().unwrap().input.text, r"^fail \d+$");
+    let prompt = app.prompt.as_mut().unwrap();
+    prompt.input.text.clear();
+    prompt.input.cursor = 0;
+    press(&mut app, KeyCode::Enter);
+    let v = app.viewer.as_ref().unwrap();
+    assert_eq!(v.line_count(), 4);
+    assert_eq!(v.note.as_deref(), Some("Filter off: 4 lines"));
+
+    // Another file starts with no filter, set the same way.
+    press(&mut app, KeyCode::Char('&'));
+    assert_eq!(label(&app), "FILTER lines (regex, ignore case): ");
+    assert_eq!(app.prompt.as_ref().unwrap().input.text, "");
+}
+
+#[test]
+fn line_filter_survives_editing_the_file() {
+    let (tmp, mut app) = sample();
+    let path = tmp.path().join("log.txt");
+    std::fs::write(&path, "a\nkeep\nb\n").unwrap();
+    app.viewer = Some(Viewer::open(path.clone(), viewer::LoadOptions::view(1 << 20)).unwrap());
+    press(&mut app, KeyCode::Char('&'));
+    answer_prompt(&mut app, "keep");
+    std::fs::write(&path, "keep\na\nkeep\nkeep\n").unwrap();
+    let v = app.viewer.as_mut().unwrap();
+    v.reload().unwrap();
+    assert_eq!(v.line_count(), 3);
+    assert_eq!(v.total_lines(), 4);
+}
+
+#[test]
 fn autoview_supports_wrap_and_line_number_keys() {
     let (_tmp, mut app) = sample();
     app.apply(Command::Autoview);

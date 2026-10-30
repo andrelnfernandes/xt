@@ -1549,6 +1549,13 @@ fn prompt_lines(frame: &mut Frame, prompt: &app::Prompt, area: Rect) -> Vec<Line
             help.push(("F4", "text/hex"));
             help.push(("↑↓", "history"));
         }
+        if prompt.is_line_filter() {
+            help.push(("F1", "regex help"));
+            help.push(("F2", "match case"));
+            help.push(("F3", "invert"));
+            help.push(("F4", "text/regex"));
+            help.push(("↑↓", "history"));
+        }
         if prompt.is_goto() {
             help.push(("↑↓", "history"));
         }
@@ -2094,7 +2101,7 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
         // The hex view shows every byte read: the line budget cuts only
         // the text.
         let shown = if v.lines_cut() && v.mode == ViewMode::Text {
-            Some(format!("{} lines", fmt_num(v.line_count() as u64)))
+            Some(format!("{} lines", fmt_num(v.total_lines() as u64)))
         } else if !v.bytes_cut() {
             None
         } else if v.compression.is_some() {
@@ -2123,6 +2130,19 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
                 if v.bidi_count() == 1 { "" } else { "s" }
             ),
             Style::new().fg(theme().error),
+        ));
+    }
+    if v.mode == ViewMode::Text
+        && let Some(spec) = v.line_filter()
+    {
+        title.push(Span::styled(
+            format!(
+                "  [filter {}: {} of {} lines]",
+                spec.text,
+                fmt_num(v.line_count() as u64),
+                fmt_num(v.total_lines() as u64)
+            ),
+            Style::new().fg(theme().key),
         ));
     }
     if let Some((i, n)) = tagged {
@@ -2154,8 +2174,8 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
     let position = match v.mode {
         ViewMode::Text => format!(
             "Line {} of {}",
-            fmt_num(v.top as u64 + 1),
-            fmt_num(total as u64)
+            fmt_num(v.top_line() as u64 + 1),
+            fmt_num(v.total_lines().max(1) as u64)
         ),
         ViewMode::Hex => format!("Offset {:08X}", v.top * viewer::HEX_WIDTH),
         ViewMode::Table => {
@@ -2192,6 +2212,7 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
             menu_line(
                 "",
                 &[
+                    ("&", "filter"),
                     ("/ \\", "find here"),
                     ("Space", "next hit"),
                     ("Esc", "close"),
@@ -2311,7 +2332,7 @@ fn draw_viewer_body(frame: &mut Frame, v: &mut Viewer, title: String, area: Rect
         return;
     }
     let mark = highlight(true).add_modifier(Modifier::BOLD);
-    let digits = v.line_count().to_string().len().max(1);
+    let digits = v.total_lines().to_string().len().max(1);
     let show_numbers = v.line_numbers && v.mode == ViewMode::Text;
     let t = theme();
     let lines: Vec<Line> = v

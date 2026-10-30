@@ -14,6 +14,7 @@ nur der Anfang angezeigt.
 | `W` | Zeilenumbruch ein oder aus |
 | `#` oder `L` | Zeilennummern ein oder aus (im Textmodus) |
 | `g` oder `:` | zu einer Zeile springen (oder Byte-Offset im Hex-Modus) |
+| `&` | zeigt nur passende Zeilen, einfacher Text oder Regex ([Zeilen filtern](filter.md)); im Tabellenmodus der SQL-Filter |
 | `E` | Datei bearbeiten; zurück in Xylem zeigt der Betrachter den neuen Inhalt an derselben Stelle (Binärdateien nur mit einem Editor unter [`[editors]`](execute.md)) |
 | `D` | bei aktiviertem Git: Änderungen seit dem letzten Commit und zurück ([Git](git.md)) |
 | `T` / `U` | Datei markieren / Markierung aufheben |

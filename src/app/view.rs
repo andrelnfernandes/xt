@@ -291,7 +291,7 @@ impl App {
                 let Some(v) = &self.viewer else { return };
                 let label = match v.mode {
                     ViewMode::Text => {
-                        let total = v.line_count().max(1);
+                        let total = v.total_lines().max(1);
                         format!("GOTO line (1-{total}): ")
                     }
                     ViewMode::Hex => {
@@ -317,6 +317,17 @@ impl App {
                     "SQL Filter (WHERE ...): ".to_string(),
                     &current,
                 );
+            }
+            ViewerAction::FilterLines => {
+                let Some(v) = &self.viewer else { return };
+                let spec = v.line_filter().cloned().unwrap_or_else(|| LineFilterSpec {
+                    text: String::new(),
+                    ..self.line_filter.clone()
+                });
+                let text = spec.text.clone();
+                let kind = PromptKind::ViewerLineFilter { spec };
+                let label = kind.search_label().unwrap_or_default();
+                self.open_prompt(kind, label, &text);
             }
             ViewerAction::Untag => {
                 let Some(f) = self

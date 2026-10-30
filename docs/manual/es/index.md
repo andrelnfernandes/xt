@@ -19,12 +19,17 @@ el árbol o en la ventana de archivos, la ayuda de esa ventana. En la ayuda,
 vuelve atrás, **I** muestra este índice, **K** las teclas activas, **L** cambia
 el idioma y **Esc** cierra.
 
+**Ayuda con la traducción:** esta versión del manual no ha sido revisada por un
+hablante nativo. Si encuentras un error o algo que suene raro, sugiere una
+mejora: `https://github.com/andrelnfernandes/xylem/issues`.
+
 ## Ventanas y vistas
 
 - [La ventana del árbol](tree.md): moverse, registrar, Branch y Showall
 - [La ventana de archivos](files.md): modos de visualización, Autoview, abrir archivos
 - [Pantalla dividida](split.md): dos ventanas lado a lado
 - [El visor](viewer.md): texto y hexadecimal, búsqueda, colores de sintaxis
+- [Filtrar líneas](filter.md): `&` en el visor, con una guía de expresiones regulares
 - [Buscar en archivos marcados](search.md): Ctrl+S y Ctrl+V
 - [Información](info.md): Info, Avail, estadísticas y tamaños de directorios
 - [Uso de disco](usage.md): adónde va el espacio (Alt+W)
