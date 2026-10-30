@@ -101,6 +101,41 @@ In lowercase they come out quoted, safe for the shell (`convert %f %b.png`); in
 uppercase, as plain text, for lists (`%N;%S`). A `.sh` file gets `#!/bin/sh`
 and execute permission (run it with `X`). An existing file is not overwritten.
 
+## Batch in the viewer
+
+With a table or text open in the [viewer](viewer.md), **Ctrl+B** writes one line per record, from the whole file: past the 50,000 rows of the screen, with values whole and exactly as in the file. It respects the filter in use (the SQL filter on a table, the [line filter](filter.md) on text). A table is read again when it runs; text comes as the viewer read it, up to the size limit. It asks for the file, then the mask, and shows the first lines before writing: **Enter** writes, **Esc** gives up. While writing, Esc cancels and removes the incomplete file. An existing file is not overwritten.
+
+| Field | Value |
+|---|---|
+| `%{name}` `%{A}` `%{2}` | a column of a table, by name, letter or position |
+| `%{line}` | the whole line of text, with its tabs |
+| `%{ip}` `%{1}` `%{0}` | a group of the line filter's regular expression, by name or number; 0 is all it matched |
+| `%{#}` | the record's number among those written: 1, 2, 3... |
+| `%{#line}` | the line's number in the file (text only) |
+| `%f %d %n %b %e %s` | the open file, as in Batch above |
+| `%%` | a `%` |
+
+A field that does not exist is an error in the preview, never an empty value. Since a preview looks at 1,000 records at most, a JSON Lines key that only appears after them counts as not existing.
+
+The values come from a file that may be hostile and may go into something you run, so each field has an escape. Name it after the field: `curl "https://api/x?id=%{id:url}"`.
+
+| Escape | For | Default for |
+|---|---|---|
+| `:sh` | one quoted argument of a shell command | `.sh` `.bash` `.zsh` |
+| `:url` | a part of a URL, percent-encoded | |
+| `:json` | a JSON value: numbers bare, text with its quotes | `.json` `.jsonl` `.ndjson` |
+| `:xml` or `:html` | text or an attribute | `.xml` `.html` `.htm` `.xhtml` `.svg` |
+| `:sql` | a literal with its quotes, `NULL`, `X'00ff'` | `.sql` |
+| `:csv` | a field, quoted when needed | `.csv` `.tsv` |
+| `:csvsafe` | the same, with a `'` before what a spreadsheet would take for a formula | |
+| `:line` | the value, with control characters as spaces, so it never starts a new line | any other |
+| `:raw` | the value as it is: **do not use it in a script** | |
+
+- A blob comes out in hexadecimal, except in `:raw` and in `:sql`, which has its own form.
+- A filter on a table applies to all the file, with the rules of the screen: `code = 7` also finds a cell with `007`, which comes out as `007`. So the file can have rows the screen, limited to 50,000, does not show.
+- A `.sh` starts with `#!/bin/sh` but **is not made executable**: read it before running it. `.bat` and `.cmd` are refused, because `cmd` expands `%VAR%` even inside quotes.
+- The preview and the final message warn about values with control or text direction characters, and in a CSV about values that start like a formula. The preview counts only what it looked at.
+
 ## History
 
 At every prompt, ↑ and ↓ bring up earlier entries. Each kind of prompt

@@ -69,6 +69,11 @@ pub(crate) enum PromptKind {
     ViewerGoto,
     /// SQL filter in the viewer (WHERE ... / query).
     ViewerSqlFilter,
+    /// Batch in the viewer: first the file to create, then the line mask.
+    ViewerBatchFile,
+    ViewerBatchMask {
+        file: PathBuf,
+    },
     /// Line filter in the viewer's text mode (F2, F3 and F4 change the options).
     ViewerLineFilter {
         spec: LineFilterSpec,
@@ -89,8 +94,8 @@ impl PromptKind {
             PromptKind::Log => "log",
             PromptKind::Treespec { .. } => "treespec",
             PromptKind::NewDate(_) => "date",
-            PromptKind::BatchFile => "batch_file",
-            PromptKind::BatchMask { .. } => "batch_mask",
+            PromptKind::BatchFile | PromptKind::ViewerBatchFile => "batch_file",
+            PromptKind::BatchMask { .. } | PromptKind::ViewerBatchMask { .. } => "batch_mask",
             PromptKind::CreateArchive(_) => "archive",
             PromptKind::Execute => "execute",
             PromptKind::MakeDir(_) => "mkdir",
@@ -650,6 +655,14 @@ impl App {
                         }
                     }
                 }
+                Ok(())
+            }
+            PromptKind::ViewerBatchFile => {
+                self.viewer_batch_file(&text);
+                Ok(())
+            }
+            PromptKind::ViewerBatchMask { file } => {
+                self.viewer_batch_mask(file, &text);
                 Ok(())
             }
             PromptKind::ViewerLineFilter { mut spec } => {

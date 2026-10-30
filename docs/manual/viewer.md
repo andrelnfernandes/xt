@@ -15,6 +15,7 @@ Spreadsheets, CSV, DBF, SQLite and Parquet open as a table (see Table mode).
 | `#` or `L` | line numbers on or off (in text mode) |
 | `g` or `:` | jump to a line (a byte offset in hex, a row in table mode) |
 | `&` | show only the lines that match, plain text or regex ([filtering lines](filter.md)); in table mode, the SQL filter |
+| Ctrl+B | a line of output per record or line shown ([Batch in the viewer](execute.md)) |
 | `E` | edit the file; back in Xylem, the viewer shows the new contents at the same place (binary files only with an editor in [`[editors]`](execute.md)) |
 | `D` | with Git on: what changed since the last commit, and back ([Git](git.md)) |
 | `T` | table or text, in a file that opened as a table |

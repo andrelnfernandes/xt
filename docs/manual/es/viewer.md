@@ -16,6 +16,7 @@ Las hojas de cálculo, CSV, DBF, SQLite y Parquet se abren como tabla (véase Mo
 | `#` o `L` | activar o desactivar números de línea (en modo texto) |
 | `g` o `:` | saltar a una línea (un desplazamiento de byte en hexadecimal, una fila en modo tabla) |
 | `&` | muestra solo las líneas que coinciden, texto simple o regex ([filtrar líneas](filter.md)); en modo tabla, el filtro SQL |
+| Ctrl+B | una línea de salida por registro o línea mostrada ([Batch en el visor](execute.md)) |
 | `E` | editar el archivo; al volver a Xylem, el visor muestra el contenido nuevo en el mismo lugar (archivos binarios solo con un editor en [`[editors]`](execute.md)) |
 | `D` | con Git activado: qué cambió desde el último commit, y volver ([Git](git.md)) |
 | `T` | tabla o texto, en un archivo que se abrió como tabla |

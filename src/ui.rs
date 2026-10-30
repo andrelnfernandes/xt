@@ -2176,7 +2176,10 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
             }
         }
     };
-    draw_viewer_body(frame, v, mode, body);
+    match &app.batch_preview {
+        Some(preview) => draw_batch_preview(frame, preview, body),
+        None => draw_viewer_body(frame, v, mode, body),
+    }
 
     let total = v.line_count().max(1);
     let position = match v.mode {
@@ -2205,6 +2208,15 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
     let note = v.note.clone();
     let lines = if let Some(prompt) = &app.prompt {
         prompt_lines(frame, prompt, menu)
+    } else if app.batch_preview.is_some() {
+        vec![menu_line(
+            "BATCH",
+            &[
+                ("Enter", "write the file"),
+                ("Esc", "cancel"),
+                ("F1", "help"),
+            ],
+        )]
     } else {
         let mut words = vec![
             "Find", "Backward", "Hex", "Colors", "Wrap", "#Num", "Goto", "Edit", "cOdepage",
@@ -2253,6 +2265,26 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
         vec![first, second]
     };
     frame.render_widget(Paragraph::new(lines), menu);
+}
+
+/// What a Batch of the viewer would write, for the user to look at first.
+fn draw_batch_preview(frame: &mut Frame, preview: &app::BatchPreview, area: Rect) {
+    let t = theme();
+    let found = &preview.preview;
+    let scanned = fmt_num(found.scanned);
+    let count = if found.complete {
+        format!("{scanned} records")
+    } else {
+        format!("{scanned} records looked at; the rest are read when writing")
+    };
+    let mut lines = vec![Line::styled(count, Style::new().fg(t.key))];
+    if let Some(warning) = found.stats.warning() {
+        lines.push(Line::styled(warning, Style::new().fg(t.error)));
+    }
+    lines.push(Line::raw(""));
+    lines.extend(found.lines.iter().map(|l| Line::raw(l.clone())));
+    let title = format!(" Batch: {} ", app::fit_name(&preview.file));
+    frame.render_widget(Paragraph::new(lines).block(panel(title, true)), area);
 }
 
 fn draw_editor(frame: &mut Frame, app: &mut App) {

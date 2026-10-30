@@ -117,6 +117,16 @@ impl App {
             }
             return;
         }
+        if self.batch_preview.is_some() {
+            self.batch_preview_key(key);
+            return;
+        }
+        if let Some(job) = &self.batch_job {
+            if key.code == KeyCode::Esc {
+                job.cancel();
+            }
+            return;
+        }
         if self.archive_job.is_some() {
             if key.code == KeyCode::Esc
                 && let Some(job) = self.archive_job.take()

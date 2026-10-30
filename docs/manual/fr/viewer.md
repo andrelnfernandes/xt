@@ -16,6 +16,7 @@ Les feuilles de calcul, CSV, DBF, SQLite et Parquet s'ouvrent en tableau (voir M
 | `#` ou `L` | activer ou désactiver les numéros de ligne (en mode texte) |
 | `g` ou `:` | aller à une ligne (un décalage d'octet en hexadécimal, une ligne de la grille en mode tableau) |
 | `&` | n'affiche que les lignes qui correspondent, texte simple ou regex ([filtrer les lignes](filter.md)) ; en mode tableau, le filtre SQL |
+| Ctrl+B | une ligne de sortie par enregistrement ou ligne affichée ([Batch dans la visionneuse](execute.md)) |
 | `E` | éditer le fichier ; de retour dans Xylem, la visionneuse affiche le nouveau contenu au même endroit (fichiers binaires uniquement avec un éditeur dans [`[editors]`](execute.md)) |
 | `D` | avec Git activé : ce qui a changé depuis le dernier commit, et retour ([Git](git.md)) |
 | `T` | tableau ou texte, dans un fichier ouvert en tableau |

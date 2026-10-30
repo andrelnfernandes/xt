@@ -111,6 +111,41 @@ En minuscules, ils sont protégés par des guillemets, prêts pour le shell
 (`%N;%S`). Un fichier `.sh` reçoit `#!/bin/sh` et la permission d'exécution
 (lancez-le avec `X`). Un fichier existant n'est pas écrasé.
 
+## Batch dans la visionneuse
+
+Avec un tableau ou un texte ouvert dans la [visionneuse](viewer.md), **Ctrl+B** écrit une ligne par enregistrement, à partir du fichier entier : au-delà des 50 000 lignes de l'écran, avec les valeurs entières et telles qu'elles sont dans le fichier. Il respecte le filtre en cours (le filtre SQL sur un tableau, le [filtre de lignes](filter.md) sur le texte). Un tableau est relu à ce moment-là ; le texte sort tel que la visionneuse l'a lu, jusqu'à la limite de taille. Il demande le fichier, puis le masque, et affiche les premières lignes avant d'écrire : **Entrée** écrit, **Échap** renonce. Pendant l'écriture, Échap annule et supprime le fichier incomplet. Un fichier existant n'est pas écrasé.
+
+| Champ | Valeur |
+|---|---|
+| `%{nom}` `%{A}` `%{2}` | une colonne du tableau, par nom, lettre ou position |
+| `%{line}` | la ligne entière du texte, avec ses tabulations |
+| `%{ip}` `%{1}` `%{0}` | un groupe de l'expression régulière du filtre de lignes, par nom ou numéro ; 0 est tout ce qu'elle a trouvé |
+| `%{#}` | le numéro de l'enregistrement parmi ceux écrits : 1, 2, 3... |
+| `%{#line}` | le numéro de la ligne dans le fichier (texte seulement) |
+| `%f %d %n %b %e %s` | le fichier ouvert, comme dans le Batch ci-dessus |
+| `%%` | un `%` |
+
+Un champ qui n'existe pas est une erreur dans l'aperçu, jamais une valeur vide. Comme l'aperçu examine 1 000 enregistrements au plus, une clé JSON Lines qui n'apparaît qu'après compte comme inexistante.
+
+Les valeurs viennent d'un fichier qui peut être hostile et peuvent aller dans ce que vous exécuterez : chaque champ a donc un échappement. Écrivez-le après le champ : `curl "https://api/x?id=%{id:url}"`.
+
+| Échappement | Pour | Par défaut pour |
+|---|---|---|
+| `:sh` | un argument entre guillemets d'une commande shell | `.sh` `.bash` `.zsh` |
+| `:url` | une partie d'URL, encodée en pourcentage | |
+| `:json` | une valeur JSON : nombres nus, texte entre guillemets | `.json` `.jsonl` `.ndjson` |
+| `:xml` ou `:html` | texte ou attribut | `.xml` `.html` `.htm` `.xhtml` `.svg` |
+| `:sql` | un littéral entre guillemets, `NULL`, `X'00ff'` | `.sql` |
+| `:csv` | un champ, entre guillemets si nécessaire | `.csv` `.tsv` |
+| `:csvsafe` | la même chose, avec un `'` devant ce qu'un tableur prendrait pour une formule | |
+| `:line` | la valeur, avec les caractères de contrôle en espaces, pour qu'elle n'ouvre jamais une nouvelle ligne | les autres |
+| `:raw` | la valeur telle quelle : **à ne pas utiliser dans un script** | |
+
+- Un blob sort en hexadécimal, sauf avec `:raw` et avec `:sql`, qui a sa propre forme.
+- Le filtre d'un tableau s'applique à tout le fichier, avec les règles de l'écran : `code = 7` trouve aussi une cellule avec `007`, qui sort comme `007`. Le fichier peut donc avoir des lignes que l'écran, limité à 50 000, ne montre pas.
+- Un `.sh` commence par `#!/bin/sh` mais **ne reçoit pas le droit d'exécution** : lisez-le avant de le lancer. `.bat` et `.cmd` sont refusés, car `cmd` développe `%VAR%` même entre guillemets.
+- L'aperçu et le message final signalent les valeurs avec des caractères de contrôle ou de direction du texte et, dans un CSV, celles qui commencent comme une formule. L'aperçu ne compte que ce qu'il a examiné.
+
 ## Historique
 
 Dans chaque invite, ↑ et ↓ rappellent les saisies précédentes. Chaque type

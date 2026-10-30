@@ -106,6 +106,41 @@ maiúsculas, como texto puro, para listas (`%N;%S`). Um arquivo `.sh` recebe
 `#!/bin/sh` e permissão de execução (execute-o com `X`). Um arquivo existente
 não é sobrescrito.
 
+## Batch no visualizador
+
+Com uma tabela ou um texto aberto no [visualizador](viewer.md), **Ctrl+B** escreve uma linha por registro, a partir do arquivo inteiro: além das 50.000 linhas da tela, com os valores inteiros e exatamente como estão no arquivo. Ele respeita o filtro em uso (o filtro SQL na tabela, o [filtro de linhas](filter.md) no texto). A tabela é relida na hora; o texto sai como o visualizador leu, até o limite de tamanho. Ele pede o arquivo, depois a máscara, e mostra as primeiras linhas antes de gravar: **Enter** grava, **Esc** desiste. Durante a gravação, Esc cancela e remove o arquivo incompleto. Um arquivo existente não é sobrescrito.
+
+| Campo | Valor |
+|---|---|
+| `%{nome}` `%{A}` `%{2}` | uma coluna da tabela, por nome, letra ou posição |
+| `%{line}` | a linha inteira do texto, com as tabulações |
+| `%{ip}` `%{1}` `%{0}` | um grupo da expressão regular do filtro de linhas, por nome ou número; 0 é tudo o que ela encontrou |
+| `%{#}` | o número do registro entre os escritos: 1, 2, 3... |
+| `%{#line}` | o número da linha no arquivo (só no texto) |
+| `%f %d %n %b %e %s` | o arquivo aberto, como no Batch acima |
+| `%%` | um `%` |
+
+Um campo que não existe é erro na prévia, nunca um valor vazio. Como a prévia olha no máximo 1.000 registros, uma chave de JSON Lines que só apareça depois deles conta como inexistente.
+
+Os valores vêm de um arquivo que pode ser hostil e podem ir para algo que você vai executar, então cada campo tem um escape. Escreva-o depois do campo: `curl "https://api/x?id=%{id:url}"`.
+
+| Escape | Para | Padrão em |
+|---|---|---|
+| `:sh` | um argumento entre aspas de um comando do shell | `.sh` `.bash` `.zsh` |
+| `:url` | uma parte de uma URL, com percent-encoding | |
+| `:json` | um valor JSON: número sem aspas, texto com aspas | `.json` `.jsonl` `.ndjson` |
+| `:xml` ou `:html` | texto ou atributo | `.xml` `.html` `.htm` `.xhtml` `.svg` |
+| `:sql` | um literal com aspas, `NULL`, `X'00ff'` | `.sql` |
+| `:csv` | um campo, entre aspas quando precisa | `.csv` `.tsv` |
+| `:csvsafe` | o mesmo, com um `'` antes do que a planilha tomaria por fórmula | |
+| `:line` | o valor, com caracteres de controle como espaços, para nunca abrir uma linha nova | os demais |
+| `:raw` | o valor como está: **não use em um script** | |
+
+- Um blob sai em hexadecimal, menos em `:raw` e em `:sql`, que tem a sua forma.
+- O filtro de uma tabela vale para o arquivo todo, com as regras da tela: `code = 7` também acha uma célula com `007`, que sai como `007`. Por isso o arquivo pode ter linhas que a tela, limitada a 50.000, não mostra.
+- Um `.sh` começa com `#!/bin/sh`, mas **não recebe permissão de execução**: leia antes de rodar. `.bat` e `.cmd` são recusados, porque o `cmd` expande `%VAR%` até entre aspas.
+- A prévia e a mensagem final avisam sobre valores com caracteres de controle ou de direção do texto e, em um CSV, sobre valores que começam como fórmula. A prévia conta só o que olhou.
+
 ## Histórico
 
 Em todos os prompts, ↑ e ↓ trazem entradas anteriores. Cada tipo de prompt

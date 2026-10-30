@@ -321,6 +321,7 @@ impl App {
                     &current,
                 );
             }
+            ViewerAction::Batch => self.viewer_batch(),
             ViewerAction::FilterLines => {
                 let Some(v) = &self.viewer else { return };
                 let spec = v.line_filter().cloned().unwrap_or_else(|| LineFilterSpec {

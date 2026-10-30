@@ -111,6 +111,41 @@ Shell (`convert %f %b.png`); in Großbuchstaben als reiner Text für Listen
 (`%N;%S`). Eine `.sh`-Datei erhält `#!/bin/sh` und Ausführungsrechte (starten
 Sie sie mit `X`). Eine bereits vorhandene Datei wird nicht überschrieben.
 
+## Batch im Betrachter
+
+Bei einer im [Betrachter](viewer.md) geöffneten Tabelle oder einem Text schreibt **Ctrl+B** eine Zeile pro Datensatz aus der ganzen Datei: über die 50.000 Zeilen des Bildschirms hinaus, mit vollständigen Werten, genau wie in der Datei. Der aktive Filter gilt (der SQL-Filter bei Tabellen, der [Zeilenfilter](filter.md) bei Text). Eine Tabelle wird dafür neu gelesen; Text kommt so, wie der Betrachter ihn gelesen hat, bis zum Größenlimit. Es fragt nach der Datei, dann nach der Maske, und zeigt vor dem Schreiben die ersten Zeilen: **Enter** schreibt, **Esc** gibt auf. Während des Schreibens bricht Esc ab und entfernt die unvollständige Datei. Eine vorhandene Datei wird nicht überschrieben.
+
+| Feld | Wert |
+|---|---|
+| `%{name}` `%{A}` `%{2}` | eine Tabellenspalte, nach Name, Buchstabe oder Position |
+| `%{line}` | die ganze Textzeile, mit ihren Tabulatoren |
+| `%{ip}` `%{1}` `%{0}` | eine Gruppe des regulären Ausdrucks des Zeilenfilters, nach Name oder Nummer; 0 ist alles, was er gefunden hat |
+| `%{#}` | die Nummer des Datensatzes unter den geschriebenen: 1, 2, 3... |
+| `%{#line}` | die Nummer der Zeile in der Datei (nur Text) |
+| `%f %d %n %b %e %s` | die geöffnete Datei, wie beim Batch oben |
+| `%%` | ein `%` |
+
+Ein Feld, das es nicht gibt, ist ein Fehler in der Vorschau, nie ein leerer Wert. Da die Vorschau höchstens 1.000 Datensätze ansieht, gilt ein JSON-Lines-Schlüssel, der erst danach auftaucht, als nicht vorhanden.
+
+Die Werte stammen aus einer möglicherweise feindlichen Datei und können in etwas gelangen, das Sie ausführen. Deshalb hat jedes Feld eine Maskierung. Schreiben Sie sie hinter das Feld: `curl "https://api/x?id=%{id:url}"`.
+
+| Maskierung | Für | Standard bei |
+|---|---|---|
+| `:sh` | ein Argument in Anführungszeichen für einen Shell-Befehl | `.sh` `.bash` `.zsh` |
+| `:url` | einen Teil einer URL, prozentkodiert | |
+| `:json` | einen JSON-Wert: Zahlen ohne, Text mit Anführungszeichen | `.json` `.jsonl` `.ndjson` |
+| `:xml` oder `:html` | Text oder Attribut | `.xml` `.html` `.htm` `.xhtml` `.svg` |
+| `:sql` | ein Literal mit Anführungszeichen, `NULL`, `X'00ff'` | `.sql` |
+| `:csv` | ein Feld, bei Bedarf in Anführungszeichen | `.csv` `.tsv` |
+| `:csvsafe` | dasselbe, mit einem `'` vor dem, was eine Tabellenkalkulation für eine Formel hielte | |
+| `:line` | der Wert, Steuerzeichen als Leerzeichen, damit er nie eine neue Zeile beginnt | alle anderen |
+| `:raw` | der Wert, wie er ist: **nicht in einem Skript verwenden** | |
+
+- Ein Blob kommt hexadezimal, außer bei `:raw` und bei `:sql`, das eine eigene Form hat.
+- Der Filter einer Tabelle gilt für die ganze Datei, nach den Regeln des Bildschirms: `code = 7` findet auch eine Zelle mit `007`, die als `007` herauskommt. Die Datei kann also Zeilen enthalten, die der auf 50.000 begrenzte Bildschirm nicht zeigt.
+- Eine `.sh` beginnt mit `#!/bin/sh`, wird aber **nicht ausführbar gemacht**: Lesen Sie sie vor dem Ausführen. `.bat` und `.cmd` werden abgelehnt, weil `cmd` `%VAR%` auch in Anführungszeichen auflöst.
+- Vorschau und Abschlussmeldung warnen vor Werten mit Steuer- oder Textrichtungszeichen und in einer CSV vor Werten, die wie eine Formel beginnen. Die Vorschau zählt nur, was sie angesehen hat.
+
 ## Verlauf
 
 In jeder Eingabezeile rufen ↑ und ↓ frühere Eingaben auf. Jede Art von

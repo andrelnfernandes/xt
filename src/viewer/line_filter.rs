@@ -72,6 +72,14 @@ impl LineMatcher {
         &self.spec
     }
 
+    /// The regular expression, when what it matches is what was kept.
+    pub fn regex(&self) -> Option<&Regex> {
+        match &self.how {
+            How::Regex(regex) if !self.spec.invert => Some(regex),
+            _ => None,
+        }
+    }
+
     pub fn matches(&self, line: &str) -> bool {
         let found = match &self.how {
             How::Text(pattern) => pattern.find_in_line(line, 0).is_some(),
