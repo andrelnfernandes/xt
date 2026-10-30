@@ -75,10 +75,11 @@ as a link is what `cp -a` and `rsync -l` do).
 - **Xylem in its own window**, further ahead: see "For later" in the README.
 - Postponed by choice: macros, chown, Graft, macOS.
 - **New file viewers** ([docs/plans/viewers.md](docs/plans/viewers.md)):
-  charsets and compressed files, table mode (DBF, CSV, SDF), windowed
-  viewer, logs, SQLite, external converters; six subprojects, security
-  first. Subproject 1 (encodings, compressed files, the size limit) is done
-  (PRs #44 to #49); next is subproject 2, the table mode.
+  six subprojects, security first. Done: subproject 1 (encodings, compressed
+  files, the size limit; PRs #44 to #49), and the table mode with SQLite and the
+  SQL filter (subprojects 2 and 5; PR #63), documented in
+  [the manual](docs/manual/viewer.md). Still to do: SDF in the table mode, as an
+  extra; the windowed viewer (3); logs (4); external converters (6).
 - **Batch over files and records** ([docs/plans/batch.md](docs/plans/batch.md)):
   Ctrl+B also on what the viewer read (tables with or without a filter, text
   lines), with escaping by context and structured and binary outputs. The line

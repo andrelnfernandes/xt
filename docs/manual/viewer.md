@@ -2,6 +2,7 @@
 
 `V` opens the file in the viewer (Autoview, F7, shows it next to the list).
 Binary files open in hex. Files over the size limit show only the beginning.
+Spreadsheets, CSV, DBF, SQLite and Parquet open as a table (see Table mode).
 
 | Key | What it does |
 |---|---|
@@ -12,11 +13,12 @@ Binary files open in hex. Files over the size limit show only the beginning.
 | `C` | syntax colors on or off |
 | `W` | soft wrap on or off |
 | `#` or `L` | line numbers on or off (in text mode) |
-| `g` or `:` | jump to a line (or byte offset in hex) |
+| `g` or `:` | jump to a line (a byte offset in hex, a row in table mode) |
 | `&` | show only the lines that match, plain text or regex ([filtering lines](filter.md)); in table mode, the SQL filter |
 | `E` | edit the file; back in Xylem, the viewer shows the new contents at the same place (binary files only with an editor in [`[editors]`](execute.md)) |
 | `D` | with Git on: what changed since the last commit, and back ([Git](git.md)) |
-| `T` / `U` | tag / untag the file |
+| `T` | table or text, in a file that opened as a table |
+| `U` | in the view of the tagged files (Ctrl+V): untag the file |
 | `y` or Ctrl+Insert | copy the file's path to the clipboard |
 | Esc | close |
 
@@ -77,6 +79,65 @@ Autoview shows the note in its title. In hex mode (`H`) you see the decompressed
 For a `.tar.gz` (or `.tar.xz`...) the note says `TAR archive: Alt+F5 opens it as a folder`.
 
 To see the raw compressed bytes, turn off `viewer_decompress` (**J** on page 2 of the [configuration](configuration.md)).
+
+## Table mode
+
+Some files open as a grid instead of text. Xylem goes by the extension, and only for uncompressed files on this disk: a file on a remote machine or inside an archive shows as ordinary contents, with the note `Tables are shown only for files on this disk`.
+
+| Format | Extensions | Column names |
+|---|---|---|
+| CSV, TSV | `.csv` `.tsv` `.tab` | the first row, when at least half of it is not numbers; otherwise A, B, C... |
+| JSON Lines | `.jsonl` `.ndjson` | the keys of the objects |
+| Spreadsheets | `.xlsx` `.xls` `.xlsb` `.ods` | A, B, C... (the first row is a row like any other) |
+| dBase, Clipper, FoxPro | `.dbf`, with its `.dbt` memo file | the field names |
+| SQLite | `.db` `.sqlite` `.sqlite3` | the columns of the table |
+| Parquet | `.parquet` | the columns of the file |
+
+The CSV separator (comma, semicolon, tab or vertical bar) is detected from the start of the file.
+
+| Key | What it does |
+|---|---|
+| ↑ ↓ | previous or next row |
+| ← → | previous or next column |
+| PgUp PgDn | a page of rows up or down |
+| Home End | first or last column |
+| `[` `]` | previous or next sheet of a spreadsheet, or table of a SQLite database, going around; this clears the filter |
+| `g` or `:` | jump to a row, counting only the rows the filter kept |
+| `\` or `&` | the SQL filter |
+| `T` | to the file's text and back |
+| `H` | from the table to text, then hex, then back to the table |
+
+The frame shows `TABLE [2/5]` when there is more than one sheet or table, and the bottom line where the cursor is: `Cell B7 (Row 7 of 120)`. The last line of the grid has the whole contents of the cell and the filter in use. Searching (`F`, `B`, `/`) does not look inside the grid and finds nothing there; it works in text mode.
+
+### The SQL filter
+
+`\` or `&` asks for a condition, like the `WHERE` of SQL (the word `WHERE` itself is optional), and shows only the rows that meet it. The prompt starts with the current filter; leave it empty to see all the rows again. A note says `Filter matched N rows` or `SQL error: ...`; after an error, the previous filter stays.
+
+```
+age >= 30 AND name LIKE 'Ali%'
+WHERE status IN ('open', 'late') OR total > 1000.50
+NOT (city = 'Rio' OR city IS NULL)
+B ILIKE '%silva%'
+```
+
+| Operator | What it does |
+|---|---|
+| `=` `!=` `<>` `<` `<=` `>` `>=` | compare |
+| `AND` `OR` `NOT` and parentheses | combine conditions (`AND` comes before `OR`) |
+| `LIKE` `ILIKE` | match a pattern, `%` for any text and `_` for one character; `ILIKE` ignores case |
+| `IN (...)` `NOT IN (...)` | is, or is not, in the list |
+| `IS NULL` `IS NOT NULL` | the cell is, or is not, empty |
+
+Keywords can be in any case.
+
+- **Columns:** the name of the column, in any case and without quotes, or its letter from `A` to `Z`. The letter is the way to reach a name with spaces or symbols. A column that does not exist counts as empty, without an error.
+- **Values:** text in single or double quotes (`\'` for a quote inside it), numbers, `TRUE`, `FALSE` and `NULL`. Anything in quotes is text, never a column.
+- **Cells:** the type comes from what the cell looks like. Empty is `NULL`, `true` and `false` are booleans, numbers are numbers, and the rest is text. So write `code = 7`, not `code = '7'`: text and a number are never equal, and a cell with `007` is the number 7. Text comparisons distinguish upper and lower case.
+- **Size:** a filter has at most 1,024 bytes and 128 terms.
+
+### Limits
+
+A table holds at most 50,000 rows and 256 columns. What lies beyond them is not read: it does not show, the filter does not see it, and nothing on the screen warns about it. A cell shows at most 2,048 characters and then `…`. Control and text direction characters show as `·`.
 
 ## Tables in C libraries
 

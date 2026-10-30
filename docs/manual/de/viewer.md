@@ -3,6 +3,7 @@
 `V` öffnet die Datei im Betrachter (Autoview, F7, zeigt sie neben der Liste
 an). Binärdateien werden im Hex-Modus geöffnet. Bei Dateien über dem Größenlimit wird
 nur der Anfang angezeigt.
+Tabellenkalkulationen, CSV, DBF, SQLite und Parquet öffnen sich als Tabelle (siehe Tabellenmodus).
 
 | Taste | Funktion |
 |---|---|
@@ -13,11 +14,12 @@ nur der Anfang angezeigt.
 | `C` | Syntaxfarben ein oder aus |
 | `W` | Zeilenumbruch ein oder aus |
 | `#` oder `L` | Zeilennummern ein oder aus (im Textmodus) |
-| `g` oder `:` | zu einer Zeile springen (oder Byte-Offset im Hex-Modus) |
+| `g` oder `:` | zu einer Zeile springen (Byte-Offset im Hex-Modus, Tabellenzeile im Tabellenmodus) |
 | `&` | zeigt nur passende Zeilen, einfacher Text oder Regex ([Zeilen filtern](filter.md)); im Tabellenmodus der SQL-Filter |
 | `E` | Datei bearbeiten; zurück in Xylem zeigt der Betrachter den neuen Inhalt an derselben Stelle (Binärdateien nur mit einem Editor unter [`[editors]`](execute.md)) |
 | `D` | bei aktiviertem Git: Änderungen seit dem letzten Commit und zurück ([Git](git.md)) |
-| `T` / `U` | Datei markieren / Markierung aufheben |
+| `T` | Tabelle oder Text, bei einer Datei, die sich als Tabelle geöffnet hat |
+| `U` | in der Ansicht der markierten Dateien (Ctrl+V): Markierung der Datei aufheben |
 | `y` oder Ctrl+Insert | Dateipfad in die Zwischenablage kopieren |
 | Esc | schließen |
 
@@ -80,6 +82,65 @@ Autoview zeigt den Hinweis in seinem Titel. Im Hex-Modus (`H`) sehen Sie die ent
 Bei einer `.tar.gz` (oder `.tar.xz` ...) lautet der Hinweis `TAR archive: Alt+F5 opens it as a folder` (Alt+F5 öffnet sie als Ordner).
 
 Um die rohen komprimierten Bytes zu sehen, schalten Sie `viewer_decompress` aus (**J** auf Seite 2 der [Konfiguration](configuration.md)).
+
+## Tabellenmodus
+
+Manche Dateien öffnen sich als Raster statt als Text. Xylem richtet sich nach der Endung, und nur bei unkomprimierten Dateien auf dieser Festplatte: Eine Datei auf einem entfernten Rechner oder in einem Archiv erscheint als gewöhnlicher Inhalt, mit dem Hinweis `Tables are shown only for files on this disk`.
+
+| Format | Endungen | Spaltennamen |
+|---|---|---|
+| CSV, TSV | `.csv` `.tsv` `.tab` | die erste Zeile, wenn mindestens die Hälfte davon keine Zahlen sind; sonst A, B, C... |
+| JSON Lines | `.jsonl` `.ndjson` | die Schlüssel der Objekte |
+| Tabellenkalkulationen | `.xlsx` `.xls` `.xlsb` `.ods` | A, B, C... (die erste Zeile ist eine Zeile wie jede andere) |
+| dBase, Clipper, FoxPro | `.dbf`, mit der Memodatei `.dbt` | die Feldnamen |
+| SQLite | `.db` `.sqlite` `.sqlite3` | die Spalten der Tabelle |
+| Parquet | `.parquet` | die Spalten der Datei |
+
+Das CSV-Trennzeichen (Komma, Semikolon, Tabulator oder senkrechter Strich) wird am Anfang der Datei erkannt.
+
+| Taste | Funktion |
+|---|---|
+| ↑ ↓ | vorherige oder nächste Zeile |
+| ← → | vorherige oder nächste Spalte |
+| PgUp PgDn | eine Seite Zeilen nach oben oder unten |
+| Home End | erste oder letzte Spalte |
+| `[` `]` | vorheriges oder nächstes Blatt einer Tabellenkalkulation oder vorherige oder nächste Tabelle einer SQLite-Datenbank, im Kreis; das löscht den Filter |
+| `g` oder `:` | zu einer Zeile springen, gezählt werden nur die vom Filter behaltenen |
+| `\` oder `&` | der SQL-Filter |
+| `T` | zum Text der Datei und zurück |
+| `H` | von der Tabelle zum Text, dann Hex, dann zurück zur Tabelle |
+
+Der Rahmen zeigt `TABLE [2/5]`, wenn es mehrere Blätter oder Tabellen gibt, und die untere Zeile die Position des Cursors: `Cell B7 (Row 7 of 120)`. Die letzte Zeile des Rasters enthält den ganzen Zellinhalt und den aktiven Filter. Die Suche (`F`, `B`, `/`) schaut nicht in das Raster und findet dort nichts; sie funktioniert im Textmodus.
+
+### Der SQL-Filter
+
+`\` oder `&` fragt nach einer Bedingung, wie beim `WHERE` von SQL (das Wort `WHERE` ist optional), und zeigt nur die Zeilen, die sie erfüllen. Die Eingabe beginnt mit dem aktuellen Filter; lassen Sie sie leer, um wieder alle Zeilen zu sehen. Ein Hinweis meldet `Filter matched N rows` oder `SQL error: ...`; nach einem Fehler bleibt der vorherige Filter aktiv.
+
+```
+age >= 30 AND name LIKE 'Ali%'
+WHERE status IN ('open', 'late') OR total > 1000.50
+NOT (city = 'Rio' OR city IS NULL)
+B ILIKE '%silva%'
+```
+
+| Operator | Funktion |
+|---|---|
+| `=` `!=` `<>` `<` `<=` `>` `>=` | vergleichen |
+| `AND` `OR` `NOT` und Klammern | verknüpfen Bedingungen (`AND` vor `OR`) |
+| `LIKE` `ILIKE` | passen auf ein Muster, `%` für beliebigen Text und `_` für ein Zeichen; `ILIKE` ignoriert die Groß- und Kleinschreibung |
+| `IN (...)` `NOT IN (...)` | steht, oder steht nicht, in der Liste |
+| `IS NULL` `IS NOT NULL` | die Zelle ist, oder ist nicht, leer |
+
+Schlüsselwörter können groß oder klein geschrieben werden.
+
+- **Spalten:** der Name der Spalte, ohne Anführungszeichen und in beliebiger Schreibung, oder ihr Buchstabe von `A` bis `Z`. Mit dem Buchstaben erreichen Sie einen Namen mit Leerzeichen oder Symbolen. Eine Spalte, die es nicht gibt, gilt ohne Fehler als leer.
+- **Werte:** Text in einfachen oder doppelten Anführungszeichen (`\'` für ein Anführungszeichen darin), Zahlen, `TRUE`, `FALSE` und `NULL`. Was in Anführungszeichen steht, ist immer Text, nie eine Spalte.
+- **Zellen:** Der Typ ergibt sich aus dem Aussehen der Zelle. Leer ist `NULL`, `true` und `false` sind Wahrheitswerte, Zahlen sind Zahlen und der Rest ist Text. Schreiben Sie also `code = 7`, nicht `code = '7'`: Text und Zahl sind nie gleich, und eine Zelle mit `007` ist die Zahl 7. Textvergleiche unterscheiden Groß- und Kleinschreibung.
+- **Größe:** Ein Filter hat höchstens 1.024 Byte und 128 Terme.
+
+### Grenzen
+
+Eine Tabelle fasst höchstens 50.000 Zeilen und 256 Spalten. Was darüber hinausgeht, wird nicht gelesen: Es erscheint nicht, der Filter sieht es nicht, und nichts auf dem Bildschirm weist darauf hin. Eine Zelle zeigt höchstens 2.048 Zeichen und dann `…`. Steuerzeichen und Zeichen für die Schreibrichtung erscheinen als `·`.
 
 ## Tabellen in C-Bibliotheken
 

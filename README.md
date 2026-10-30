@@ -197,7 +197,8 @@ mkdir -p ~/.local/share/man/man1 && xy --man > ~/.local/share/man/man1/xy.1
 - **Finding things:** Filespec by name, date and size, Treespec to type a path,
   bookmarks, and Ctrl+S to search the tagged files for text.
 - **Looking inside:** a text and hex viewer with search, a line filter with
-  regular expressions and syntax colors,
+  regular expressions and syntax colors, a table mode with a SQL filter for
+  spreadsheets, CSV, JSON Lines, DBF, SQLite and Parquet,
   Autoview next to the list, ZIP, 7z and TAR archives opened as directories,
   and display modes that show owners or what each file is.
 - **Where the space goes:** the Usage view (Alt+W) lists a branch's folders
@@ -285,8 +286,10 @@ native speakers: if you read one of these languages, [suggestions are welcome](d
   Nerd Fonts icons, the help in six languages and an experimental Windows
   build.
 - The viewer: encodings found by itself, compressed files, a configurable
-  size limit, soft wrap, line numbers, goto line, and protection against
-  hidden text direction characters.
+  size limit, soft wrap, line numbers, goto line, a line filter, protection
+  against hidden text direction characters, and a [table mode](docs/manual/viewer.md)
+  with a SQL filter for spreadsheets (XLSX, ODS), CSV, JSON Lines, DBF with its
+  memo files, SQLite and Parquet.
 
 ### Next
 
@@ -294,11 +297,10 @@ native speakers: if you read one of these languages, [suggestions are welcome](d
   writing to it (copy to it, move, delete, rename, make directories,
   permissions, dates), then Edit and Open (through a temporary copy that
   goes back when saved), eXecute and Git over ssh, and periodic refresh.
-- **Viewer:** a table mode for DBF (with memo files) and CSV, and SDF as an
-  extra; a viewer that reads in windows, like `less`, with no size limit for
-  uncompressed files; logs (follow, jump to the end, filter lines, colors by
-  level); SQLite; and, optional and isolated, external converters such as
-  `pdftotext` or `exiftool`.
+- **Viewer:** SDF in the table mode, as an extra; a viewer that reads in
+  windows, like `less`, with no size limit for uncompressed files; logs
+  (follow, jump to the end, colors by level); and, optional and isolated,
+  external converters such as `pdftotext` or `exiftool`.
 - **Disk usage:** actions inside the Usage view (tag, delete, prune, view),
   then an optional treemap, grouping by type and export.
 - **Duplicate files:** on this machine (by size, then by content), on Google
