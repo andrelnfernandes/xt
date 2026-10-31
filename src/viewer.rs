@@ -3,6 +3,7 @@
 
 pub mod batch;
 pub mod line_filter;
+pub mod markdown;
 pub mod records;
 pub mod sql_filter;
 pub mod table;
@@ -14,7 +15,7 @@ use std::path::{Path, PathBuf};
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use ratatui::style::Color;
+use ratatui::style::{Color, Modifier};
 
 use crate::charset::{self, Charset};
 use crate::decompress::{
@@ -37,6 +38,8 @@ pub enum ViewMode {
     Text,
     Hex,
     Table,
+    /// A Markdown file as a document (see `markdown`).
+    Rendered,
 }
 
 /// Where a new search starts.
@@ -196,6 +199,10 @@ pub struct Viewer {
     /// Text mode shows only the lines this filter kept. `lines` stays whole:
     /// the margin keeps each line's number, and the colors their context.
     filter: Option<LineFilter>,
+    /// The document of a Markdown file, unless it is too big for that.
+    md: Option<markdown::Doc>,
+    /// The file's name says Markdown: the document follows a new encoding.
+    md_file: bool,
 }
 
 /// The line filter in effect and the lines it kept, in order.
@@ -205,8 +212,8 @@ struct LineFilter {
 }
 
 /// A piece of a displayed line: text, its color and whether it is part of
-/// the search match.
-pub type Segment = (String, Option<Color>, bool);
+/// the search match, and its modifiers (bold, italic...).
+pub type Segment = (String, Option<Color>, bool, Modifier);
 
 /// A displayed visual row: its line number (if first visual row and line numbers
 /// are enabled) and its styled text segments.
@@ -317,6 +324,14 @@ impl Viewer {
                     .and_then(|f| f.matcher.regex().cloned()),
                 cut: self.truncated(),
             }),
+            // The source's lines; the line filter is for the text mode.
+            ViewMode::Rendered => Ok(batch::Source::Text {
+                text: charset::decode(&self.data, self.charset),
+                total: self.lines.len(),
+                kept: None,
+                regex: None,
+                cut: self.truncated(),
+            }),
             ViewMode::Hex => Err("Batch works on text and tables (H)".into()),
         }
     }
@@ -392,8 +407,10 @@ impl Viewer {
         let found = charset::detect(&data, load.fallback);
         let limit = load.limits.output;
         let mut v = Self::build(path.clone(), size, data, found.charset, found.binary, limit);
-        if let Some(name) = name {
-            v = v.colored_as(&name);
+        let shown_name = name.as_deref().unwrap_or(&path);
+        v.md_file = !failed && !found.binary && markdown::is_markdown(shown_name);
+        if let Some(name) = &name {
+            v = v.colored_as(name);
         }
 
         if failed {
@@ -407,7 +424,42 @@ impl Viewer {
         v.cut = cut;
         v.note = note;
         v.problem = problem;
+        if v.render_markdown() {
+            v.mode = ViewMode::Rendered;
+        }
         v
+    }
+
+    /// Reads the text as a document, if it is Markdown and within the limits.
+    /// Anything else leaves the source, and the note says why.
+    fn render_markdown(&mut self) -> bool {
+        self.md = None;
+        if !self.md_file {
+            return false;
+        }
+        if self.data.len() > markdown::MAX_INPUT {
+            if self.note.is_none() {
+                self.note = Some(format!(
+                    "Too large to render (over {} MiB): showing the source",
+                    markdown::MAX_INPUT >> 20
+                ));
+            }
+            return false;
+        }
+        let text = charset::decode(&self.data, self.charset);
+        let limits = self.load.limits;
+        let budget = limits.output.min(markdown::MAX_INPUT).saturating_mul(16);
+        let width = self.content_width();
+        let doc = crate::panic_guard::catch(|| {
+            let mut doc = markdown::parse(&text, limits.time, budget);
+            doc.layout(width);
+            doc
+        });
+        self.md = doc.filter(|d| !d.is_empty_cut());
+        if self.md.is_none() && self.note.is_none() {
+            self.note = Some("Could not render this file: showing the source".into());
+        }
+        self.md.is_some()
     }
 
     pub fn limit(&self) -> u64 {
@@ -428,7 +480,17 @@ impl Viewer {
             self.set_charset(old.charset);
             self.charset_manual = true;
         }
-        self.mode = old.mode;
+        self.mode = match old.mode {
+            ViewMode::Rendered if self.md.is_none() => ViewMode::Text,
+            mode => mode,
+        };
+        self.page = old.page;
+        self.width = old.width;
+        self.line_numbers = old.line_numbers;
+        let width = self.content_width();
+        if let Some(md) = &mut self.md {
+            md.layout(width);
+        }
         self.filter = old.filter.map(|f| LineFilter {
             matcher: f.matcher,
             rows: Vec::new(),
@@ -436,11 +498,8 @@ impl Viewer {
         self.refilter();
         self.top = old.top.min(self.line_count().saturating_sub(1));
         self.left = old.left;
-        self.page = old.page;
-        self.width = old.width;
         self.colors_on = old.colors_on && self.colors.is_some();
         self.wrap = old.wrap;
-        self.line_numbers = old.line_numbers;
         self.sub_top = old.sub_top;
         Ok(())
     }
@@ -514,6 +573,10 @@ impl Viewer {
     }
 
     pub fn toggle_wrap(&mut self) {
+        if self.mode == ViewMode::Rendered {
+            self.note = Some("Rendered text always fits the window".into());
+            return;
+        }
         self.wrap = !self.wrap;
         self.sub_top = 0;
         self.left = 0;
@@ -542,6 +605,12 @@ impl Viewer {
             } else {
                 format!("Line {line} is filtered out: showing line {shown}")
             });
+        } else if self.mode == ViewMode::Rendered {
+            let max_line = self.lines.len().max(1);
+            let line = target_1_indexed.clamp(1, max_line);
+            self.top = self.md.as_ref().map_or(0, |d| d.row_of_source(line - 1));
+            self.left = 0;
+            self.note = Some(format!("Line {line} of {max_line}"));
         } else {
             let max_offset = self.data.len();
             let offset = target_1_indexed.min(max_offset);
@@ -551,7 +620,7 @@ impl Viewer {
     }
 
     pub fn gutter_width(&self) -> usize {
-        if self.line_numbers && self.mode == ViewMode::Text {
+        if self.line_numbers && matches!(self.mode, ViewMode::Text | ViewMode::Rendered) {
             self.lines.len().to_string().len().max(1) + 3 // e.g. " 42 │ "
         } else {
             0
@@ -632,6 +701,8 @@ impl Viewer {
             problem: None,
             table: None,
             filter: None,
+            md: None,
+            md_file: false,
         }
     }
 
@@ -678,8 +749,13 @@ impl Viewer {
             .flatten();
         self.colors_on = self.colors.is_some() && (self.colors_on || !had_colors);
         self.hit = None;
+        if !self.render_markdown() && self.mode == ViewMode::Rendered {
+            self.mode = ViewMode::Text;
+        }
         if self.mode == ViewMode::Text {
             self.top = self.top.min(self.text_rows().saturating_sub(1));
+        } else if let Some(md) = self.md.as_ref().filter(|_| self.mode == ViewMode::Rendered) {
+            self.top = self.top.min(md.row_count().saturating_sub(1));
         }
         self.sub_top = 0;
     }
@@ -697,7 +773,25 @@ impl Viewer {
 
     /// How many bidi controls were hidden behind a `·`.
     pub fn bidi_count(&self) -> usize {
-        self.bidi.len()
+        match &self.md {
+            Some(md) if self.mode == ViewMode::Rendered => md.bidi(),
+            _ => self.bidi.len(),
+        }
+    }
+
+    /// The file has a rendered mode.
+    pub fn can_render(&self) -> bool {
+        self.md.is_some()
+    }
+
+    /// Not all of the document is rendered.
+    pub fn rendered_cut(&self) -> bool {
+        self.mode == ViewMode::Rendered && self.md.as_ref().is_some_and(markdown::Doc::cut)
+    }
+
+    /// The source line at the top of the rendered mode's window.
+    pub fn rendered_line(&self) -> usize {
+        self.md.as_ref().map_or(0, |d| d.source_of(self.top))
     }
 
     /// Not all of the file is shown: its bytes, or its text's lines.
@@ -730,6 +824,7 @@ impl Viewer {
                 .as_ref()
                 .map(|t| t.visible_row_count())
                 .unwrap_or(0),
+            ViewMode::Rendered => self.md.as_ref().map_or(0, markdown::Doc::row_count),
         }
     }
 
@@ -897,7 +992,7 @@ impl Viewer {
                     })
                     .collect()
             }
-            ViewMode::Table => Vec::new(),
+            ViewMode::Table | ViewMode::Rendered => Vec::new(),
         }
     }
 
@@ -1004,13 +1099,48 @@ impl Viewer {
                         let marked = hit.is_some_and(|h| h.line == row);
                         StyledRow {
                             line_num: None,
-                            segments: vec![(line, None, marked)],
+                            segments: vec![(line, None, marked, Modifier::empty())],
                         }
                     })
                     .collect()
             }
             ViewMode::Table => Vec::new(),
+            ViewMode::Rendered => self.rendered_rows(height),
         }
+    }
+
+    /// The rendered mode's rows on screen, laid out for the current width.
+    /// The text at the top stays there when the width changes.
+    fn rendered_rows(&mut self, height: usize) -> Vec<StyledRow> {
+        let width = self.content_width();
+        let (top, left, colors) = (self.top, self.left, self.colors_on);
+        let numbers = self.line_numbers;
+        let hit = self
+            .hit
+            .filter(|h| h.mode == ViewMode::Rendered)
+            .map(|h| (h.line, h.start, h.end));
+        let Some(md) = &mut self.md else {
+            return Vec::new();
+        };
+        let mut top = top;
+        if md.width() != width {
+            // At the very top it stays there: above the first text there can
+            // be a label or a rule.
+            let anchor = md.anchor(top).filter(|_| top > 0);
+            md.layout(width);
+            if let Some((line, at)) = anchor {
+                top = md.row_of(line, at);
+            }
+        }
+        let end = (top + height).min(md.row_count());
+        let rows = (top..end)
+            .map(|row| StyledRow {
+                line_num: md.number_of(row).filter(|_| numbers),
+                segments: md.row_segments(row, left, colors, hit),
+            })
+            .collect();
+        self.top = top;
+        rows
     }
 
     /// Handles a key; what does not belong to the viewer itself (close, switch
@@ -1076,11 +1206,11 @@ impl Viewer {
                 }
                 Action::None
             }
-            KeyCode::Left if self.mode == ViewMode::Text && !self.wrap => {
+            KeyCode::Left if self.mode == ViewMode::Rendered || self.pans() => {
                 self.left = self.left.saturating_sub(PAN_STEP);
                 Action::None
             }
-            KeyCode::Right if self.mode == ViewMode::Text && !self.wrap => {
+            KeyCode::Right if self.mode == ViewMode::Rendered || self.pans() => {
                 self.left += PAN_STEP;
                 Action::None
             }
@@ -1099,11 +1229,26 @@ impl Viewer {
                         ViewMode::Table => ViewMode::Text,
                         _ => ViewMode::Table,
                     };
+                } else if self.md.is_some() {
+                    match self.mode {
+                        ViewMode::Rendered => self.rendered_to_text(),
+                        ViewMode::Text => self.text_to_rendered(),
+                        _ => {
+                            self.mode = ViewMode::Rendered;
+                            self.top = 0;
+                            self.left = 0;
+                        }
+                    }
                 }
                 Action::None
             }
             KeyCode::Char('&') => match self.mode {
                 ViewMode::Text => Action::FilterLines,
+                // Lines exist in the source: the filter opens over it.
+                ViewMode::Rendered => {
+                    self.rendered_to_text();
+                    Action::FilterLines
+                }
                 ViewMode::Table => Action::FilterSql,
                 ViewMode::Hex => {
                     self.note = Some("The line filter works in text mode (H)".into());
@@ -1143,7 +1288,12 @@ impl Viewer {
                         Some(h) => {
                             self.colors_on = !self.colors_on;
                             let state = if self.colors_on { "on" } else { "off" };
-                            format!("{} colors {state}", h.language)
+                            let what = if self.mode == ViewMode::Rendered {
+                                "Code"
+                            } else {
+                                h.language.as_str()
+                            };
+                            format!("{what} colors {state}")
                         }
                     });
                     Action::None
@@ -1189,13 +1339,42 @@ impl Viewer {
         if self.mode == ViewMode::Text && self.wrap {
             self.top = self.top.min(self.text_rows().saturating_sub(1));
         } else {
-            self.top = self.top.min(max_top);
+            // The mode may have just changed.
+            self.top = self.top.min(self.line_count().saturating_sub(page));
         }
         action
     }
 
+    /// The arrows scroll sideways in text mode without wrap.
+    fn pans(&self) -> bool {
+        self.mode == ViewMode::Text && !self.wrap
+    }
+
+    /// To the source, at the line the document was showing.
+    fn rendered_to_text(&mut self) {
+        let line = self.rendered_line();
+        self.mode = ViewMode::Text;
+        self.top = self.row_of_line(line);
+        self.sub_top = 0;
+        self.left = 0;
+    }
+
+    /// To the document, at the line the source was showing.
+    fn text_to_rendered(&mut self) {
+        let line = self.top_line();
+        self.mode = ViewMode::Rendered;
+        self.top = self.md.as_ref().map_or(0, |d| d.row_of_source(line));
+        self.sub_top = 0;
+        self.left = 0;
+    }
+
     fn toggle_mode(&mut self) {
+        match self.mode {
+            ViewMode::Rendered => return self.rendered_to_text(),
+            ViewMode::Text | ViewMode::Hex | ViewMode::Table => {}
+        }
         self.mode = match self.mode {
+            ViewMode::Hex if self.md.is_some() => ViewMode::Rendered,
             ViewMode::Text => ViewMode::Hex,
             ViewMode::Hex => {
                 if self.table.is_some() {
@@ -1204,7 +1383,7 @@ impl Viewer {
                     ViewMode::Text
                 }
             }
-            ViewMode::Table => ViewMode::Text,
+            ViewMode::Table | ViewMode::Rendered => ViewMode::Text,
         };
         self.top = 0;
         self.sub_top = 0;
@@ -1219,6 +1398,18 @@ impl Viewer {
             (SearchFrom::Edge, false) => (usize::MAX, usize::MAX),
             (SearchFrom::Page, true) => (self.top, 0),
             (SearchFrom::Page, false) => ((self.top + self.page).saturating_sub(1), usize::MAX),
+        };
+        // The rendered mode searches its logical lines, not the rows.
+        let pos = match (&self.md, self.mode, from) {
+            (Some(md), ViewMode::Rendered, SearchFrom::Page) => {
+                let at = if forward {
+                    md.anchor(pos.0)
+                } else {
+                    md.anchor_back(pos.0)
+                };
+                at.unwrap_or(pos)
+            }
+            _ => pos,
         };
         self.find_from(pattern, forward, pos)
     }
@@ -1263,6 +1454,7 @@ impl Viewer {
                 })
             }
             ViewMode::Table => None,
+            ViewMode::Rendered => self.find_rendered(pattern, forward, line, col),
         };
         match hit {
             Some(h) => {
@@ -1270,6 +1462,46 @@ impl Viewer {
                 true
             }
             None => false,
+        }
+    }
+
+    /// Searches the document's logical lines; `line` and `col` are in them.
+    fn find_rendered(
+        &self,
+        pattern: &Pattern,
+        forward: bool,
+        line: usize,
+        col: usize,
+    ) -> Option<Hit> {
+        let md = self.md.as_ref()?;
+        let n = md.line_count();
+        if n == 0 {
+            return None;
+        }
+        let at = |i: usize, (s, e): (usize, usize)| Hit {
+            mode: ViewMode::Rendered,
+            line: i,
+            start: s,
+            end: e,
+        };
+        if forward {
+            if line >= n {
+                return None;
+            }
+            if let Some(r) = pattern.find_in_line(md.line(line), col) {
+                return Some(at(line, r));
+            }
+            (line + 1..n).find_map(|i| pattern.find_in_line(md.line(i), 0).map(|r| at(i, r)))
+        } else {
+            let line = line.min(n - 1);
+            if let Some(r) = pattern.rfind_in_line(md.line(line), col) {
+                return Some(at(line, r));
+            }
+            (0..line).rev().find_map(|i| {
+                pattern
+                    .rfind_in_line(md.line(i), usize::MAX)
+                    .map(|r| at(i, r))
+            })
         }
     }
 
@@ -1319,6 +1551,21 @@ impl Viewer {
     fn show(&mut self, hit: Hit) {
         self.hit = Some(hit);
         let page = self.page.max(1);
+        if hit.mode == ViewMode::Rendered {
+            let Some(md) = &self.md else { return };
+            let row = md.row_of(hit.line, hit.start);
+            if row < self.top || row >= self.top + page {
+                self.top = row.saturating_sub(page / 3);
+            }
+            self.top = self.top.min(md.row_count().saturating_sub(page));
+            // A column of a table too wide for the window.
+            let col = md.column_of(row, hit.line, hit.start);
+            let width = self.content_width().max(10);
+            if col < self.left || col >= self.left + width {
+                self.left = col.saturating_sub(width / 4);
+            }
+            return;
+        }
         let row = match hit.mode {
             ViewMode::Text => self.row_of_line(hit.line),
             _ => hit.line,
@@ -1525,8 +1772,8 @@ fn segments_of(
         };
         let marked = mark.is_some_and(|(s, e)| j >= s && j < e);
         match segments.last_mut() {
-            Some((text, c, m)) if *c == color && *m == marked => text.push(ch),
-            _ => segments.push((ch.to_string(), color, marked)),
+            Some((text, c, m, _)) if *c == color && *m == marked => text.push(ch),
+            _ => segments.push((ch.to_string(), color, marked, Modifier::empty())),
         }
     }
     segments
@@ -2357,17 +2604,21 @@ mod tests {
         let rows = v.styled(5);
         let line1: String = rows[1].iter().map(|(t, ..)| t.as_str()).collect();
         assert_eq!(line1, "    let senha = 1;");
-        assert!(rows[1].iter().any(|(t, _, marked)| *marked && t == "senha"));
         assert!(
             rows[1]
                 .iter()
-                .any(|(t, c, _)| t.contains("let") && c.is_some())
+                .any(|(t, _, marked, _)| *marked && t == "senha")
+        );
+        assert!(
+            rows[1]
+                .iter()
+                .any(|(t, c, ..)| t.contains("let") && c.is_some())
         );
 
         // C turns colors off; the text stays the same.
         press(&mut v, KeyCode::Char('c'));
         assert_eq!(v.language(), None);
-        assert!(v.styled(5)[1].iter().all(|(_, c, _)| c.is_none()));
+        assert!(v.styled(5)[1].iter().all(|(_, c, ..)| c.is_none()));
         assert_eq!(v.note.as_deref(), Some("Rust colors off"));
 
         let mut plain = viewer(b"just text\n");
@@ -2887,5 +3138,275 @@ mod tests {
         }
         assert_eq!(v.charset(), crate::charset::Charset::Utf16Le);
         assert_eq!(v.bidi_count(), 1);
+    }
+
+    fn md(text: &str) -> Viewer {
+        let n = text.len() as u64;
+        let mut v = Viewer::from_file("doc.md".into(), n, text.as_bytes().to_vec(), LOAD);
+        v.page = 10;
+        v.width = 40;
+        v
+    }
+
+    fn shown(v: &mut Viewer, height: usize) -> Vec<String> {
+        v.styled(height)
+            .iter()
+            .map(|r| r.iter().map(|(t, ..)| t.as_str()).collect())
+            .collect()
+    }
+
+    const DOC: &str = "# Title\n\nOne two three four five six seven eight nine ten eleven twelve\n\n- item\n\nlast\n";
+
+    #[test]
+    fn markdown_opens_rendered_by_name_only() {
+        let mut v = md(DOC);
+        assert_eq!(v.mode, ViewMode::Rendered);
+        assert_eq!(shown(&mut v, 2), ["Title", "═════"]);
+        let n = DOC.len() as u64;
+        let raw = DOC.as_bytes().to_vec();
+        for name in ["a.markdown", "A.MD"] {
+            let v = Viewer::from_file(name.into(), n, raw.clone(), LOAD);
+            assert_eq!(v.mode, ViewMode::Rendered, "{name}");
+        }
+        let v = Viewer::from_file("a.txt".into(), n, raw.clone(), LOAD);
+        assert_eq!(v.mode, ViewMode::Text);
+        // git's output and the program's own screens stay text.
+        let v = Viewer::from_bytes("a.md".into(), n, raw.clone());
+        assert_eq!(v.mode, ViewMode::Text);
+        // The name inside the compressed file counts.
+        let packed = gz(DOC.as_bytes());
+        assert_eq!(from_gz("a.md.gz", packed, LOAD).mode, ViewMode::Rendered);
+        // Autoview too.
+        let v = Viewer::from_file("a.md".into(), n, raw, LoadOptions::autoview());
+        assert_eq!(v.mode, ViewMode::Rendered);
+        // A binary file does not.
+        let v = Viewer::from_file("a.md".into(), 2, vec![0, 1], LOAD);
+        assert_eq!(v.mode, ViewMode::Hex);
+    }
+
+    #[test]
+    fn markdown_keys_cycle_the_modes_and_keep_the_place() {
+        let mut v = md(DOC);
+        v.page = 3;
+        shown(&mut v, 3);
+        press(&mut v, KeyCode::Char('h'));
+        assert_eq!(v.mode, ViewMode::Text);
+        press(&mut v, KeyCode::Char('h'));
+        assert_eq!(v.mode, ViewMode::Hex);
+        press(&mut v, KeyCode::Char('h'));
+        assert_eq!(v.mode, ViewMode::Rendered);
+
+        // T goes to the same line of the source, and comes back to it.
+        press(&mut v, KeyCode::End);
+        let line = v.rendered_line();
+        assert!(line >= 4);
+        press(&mut v, KeyCode::Char('t'));
+        assert_eq!(v.mode, ViewMode::Text);
+        assert_eq!(v.top_line(), line);
+        press(&mut v, KeyCode::Char('t'));
+        assert_eq!(v.mode, ViewMode::Rendered);
+        assert_eq!(v.rendered_line(), line);
+    }
+
+    #[test]
+    fn markdown_goto_and_line_numbers_follow_the_source() {
+        let mut v = md(DOC);
+        v.goto_line(5);
+        assert_eq!(v.rendered_line(), 4);
+        assert_eq!(v.note.as_deref(), Some("Line 5 of 7"));
+        v.toggle_line_numbers();
+        v.top = 0;
+        let rows = v.styled(10);
+        assert_eq!(rows[0].line_num, Some(1));
+        assert_eq!(rows[1].line_num, None, "the heading's underline");
+        assert!(rows.iter().any(|r| r.line_num == Some(7)));
+        assert!(v.gutter_width() > 0);
+    }
+
+    #[test]
+    fn markdown_search_finds_text_across_a_wrapped_line() {
+        let mut v = md(DOC);
+        shown(&mut v, 10);
+        // On the screen these words are on different rows.
+        let rows = shown(&mut v, 10);
+        assert!(
+            !rows
+                .iter()
+                .any(|r| r.contains("seven eight nine ten eleven"))
+        );
+        assert!(v.search(&pat("seven eight nine ten eleven"), true, SearchFrom::Edge));
+        let hit = v.hit.unwrap();
+        assert_eq!(hit.mode, ViewMode::Rendered);
+        let marked: String = v
+            .styled(10)
+            .iter()
+            .flat_map(|r| r.segments.clone())
+            .filter(|s| s.2)
+            .map(|s| s.0)
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert_eq!(marked, "seven eight nine ten eleven");
+
+        // Markup is not part of what is searched, and the address is.
+        let mut v = md("**bold** text and [a](http://x.example)\n");
+        assert!(v.search(&pat("bold text"), true, SearchFrom::Edge));
+        assert!(v.search(&pat("x.example"), true, SearchFrom::Edge));
+        assert!(!v.search(&pat("**"), true, SearchFrom::Edge));
+    }
+
+    #[test]
+    fn markdown_search_goes_both_ways_from_the_page() {
+        let mut v = md("alpha\n\nbeta\n\nalpha\n\nbeta\n\nalpha\n");
+        v.page = 3;
+        shown(&mut v, 3);
+        assert!(v.search(&pat("alpha"), true, SearchFrom::Page));
+        let first = v.hit.unwrap().line;
+        assert!(v.search_next(&pat("alpha"), true));
+        let second = v.hit.unwrap().line;
+        assert!(second > first);
+        assert!(v.search_next(&pat("alpha"), false));
+        assert_eq!(v.hit.unwrap().line, first);
+        assert!(!v.search_next(&pat("alpha"), false));
+        assert!(v.search(&pat("beta"), false, SearchFrom::Edge));
+        assert!(v.search(&pat("alpha"), false, SearchFrom::Page));
+    }
+
+    #[test]
+    fn markdown_search_shows_a_column_past_the_window() {
+        let header = (0..30).map(|i| format!("col{i}")).collect::<Vec<_>>();
+        let text = format!("|{}|\n|{}|\n", header.join("|"), vec!["-"; 30].join("|"));
+        let mut v = md(&text);
+        shown(&mut v, 10);
+        assert!(v.search(&pat("col29"), true, SearchFrom::Edge));
+        assert!(v.left > 0);
+        let row = &shown(&mut v, 1)[0];
+        assert!(row.contains("col29"), "{row}");
+    }
+
+    #[test]
+    fn batch_of_a_rendered_file_reads_the_source_lines() {
+        let mut v = md(DOC);
+        let batch::Source::Text {
+            text, total, kept, ..
+        } = v.batch_source().unwrap()
+        else {
+            panic!("not the text");
+        };
+        assert_eq!(text, DOC);
+        assert_eq!(total, 7);
+        assert_eq!(kept, None);
+        assert_eq!(
+            v.handle_key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::CONTROL)),
+            Action::Batch
+        );
+
+        // A filter belongs to the text mode: the document shows all the lines.
+        press(&mut v, KeyCode::Char('t'));
+        v.apply_line_filter(&filter_spec("item", false));
+        press(&mut v, KeyCode::Char('t'));
+        let batch::Source::Text { kept, .. } = v.batch_source().unwrap() else {
+            panic!("not the text");
+        };
+        assert_eq!(kept, None);
+    }
+
+    #[test]
+    fn markdown_filter_opens_over_the_source_and_wrap_stays_on() {
+        let mut v = md(DOC);
+        assert_eq!(press(&mut v, KeyCode::Char('&')), Action::FilterLines);
+        assert_eq!(v.mode, ViewMode::Text);
+        let mut v = md(DOC);
+        press(&mut v, KeyCode::Char('w'));
+        assert!(!v.wrap);
+        assert_eq!(
+            v.note.as_deref(),
+            Some("Rendered text always fits the window")
+        );
+    }
+
+    #[test]
+    fn markdown_follows_the_width_and_keeps_the_text_at_the_top() {
+        let long = "word ".repeat(200);
+        let mut v = md(&long);
+        v.width = 20;
+        shown(&mut v, 5);
+        v.top = 10;
+        let before = shown(&mut v, 1)[0].clone();
+        v.width = 60;
+        let after = shown(&mut v, 1)[0].clone();
+        assert!(v.top < 10);
+        assert!(after.starts_with("word"), "{before} {after}");
+        assert!(after.len() > before.len());
+    }
+
+    #[test]
+    fn markdown_at_the_top_stays_at_the_top_in_another_width() {
+        let mut v = md("```rust\nfn a() {}\n```\n");
+        v.width = 100;
+        assert!(shown(&mut v, 2)[0].starts_with("─ rust ─"));
+        assert_eq!(v.top, 0);
+    }
+
+    #[test]
+    fn a_huge_markdown_file_opens_as_its_source() {
+        let text = "x\n".repeat(markdown::MAX_INPUT / 2 + 1);
+        let v = md(&text);
+        assert_eq!(v.mode, ViewMode::Text);
+        assert!(!v.can_render());
+        assert!(
+            v.note
+                .as_deref()
+                .unwrap()
+                .starts_with("Too large to render")
+        );
+        // T and H then have nothing more to offer.
+        let mut v = v;
+        press(&mut v, KeyCode::Char('t'));
+        assert_eq!(v.mode, ViewMode::Text);
+    }
+
+    #[test]
+    fn markdown_past_the_read_limit_renders_what_was_read() {
+        let v = Viewer::from_file("a.md".into(), 1 << 40, b"# start\n".to_vec(), LOAD);
+        assert_eq!(v.mode, ViewMode::Rendered);
+        assert!(v.truncated());
+    }
+
+    #[test]
+    fn markdown_header_counts_the_controls_entities_become() {
+        let mut v = md("a &#x202E;b\n");
+        assert_eq!(v.bidi_count(), 1);
+        press(&mut v, KeyCode::Char('t'));
+        assert_eq!(v.bidi_count(), 0, "in the source it is plain text");
+    }
+
+    #[test]
+    fn markdown_follows_a_new_encoding() {
+        let mut v = md("# caf\u{e9}\n");
+        assert_eq!(shown(&mut v, 1)[0], "café");
+        v.cycle_charset();
+        assert_eq!(v.mode, ViewMode::Rendered);
+        assert_ne!(shown(&mut v, 1)[0], "café");
+    }
+
+    #[test]
+    fn markdown_reload_keeps_the_mode_and_the_place() {
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("r.md");
+        let long: String = (0..60).map(|i| format!("para {i}\n\n")).collect();
+        std::fs::write(&path, &long).unwrap();
+        let mut v = Viewer::open(path.clone(), LOAD).unwrap();
+        assert!(v.on_disk);
+        v.page = 5;
+        v.width = 30;
+        shown(&mut v, 5);
+        v.top = 20;
+        v.reload().unwrap();
+        assert_eq!(v.mode, ViewMode::Rendered);
+        assert_eq!(v.top, 20);
+        // Too big now: the source, not an empty screen.
+        std::fs::write(&path, "x\n".repeat(markdown::MAX_INPUT)).unwrap();
+        v.reload().unwrap();
+        assert_eq!(v.mode, ViewMode::Text);
     }
 }

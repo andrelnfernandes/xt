@@ -569,3 +569,45 @@ fn remote_machine_asks_through_xylem_and_browses() {
     xy.press("\x1b");
     xy.quit();
 }
+
+#[test]
+fn markdown_opens_rendered_and_the_keys_reach_the_source() {
+    let (home, project) = sample();
+    std::fs::write(
+        project.join("a.md"),
+        "# Heading\n\nSome **bold** words and [safe](https://evil.example/x).\n\n\
+         | Name | Value |\n|---|---|\n| one | two |\n\n```mermaid\ngraph TD\n```\n\n\
+         <!-- hidden -->\n\nA\u{1b}[31mB\n",
+    )
+    .unwrap();
+    let mut xy = Xy::start(home.path(), &[project.to_str().unwrap()]);
+    xy.wait_for("a.md");
+    xy.press("\r"); // file window
+    xy.wait_for("a.md");
+    xy.press("\x1b[H"); // Home: a.md is the first file
+    xy.press("v");
+    xy.wait_for("RENDERED");
+    let screen = xy.contents();
+    assert!(screen.contains("═══════"), "{screen}");
+    assert!(screen.contains("Some bold words"), "{screen}");
+    assert!(screen.contains("safe <https://evil.example/x>"), "{screen}");
+    assert!(screen.contains("Name │ Value"), "{screen}");
+    assert!(screen.contains("─ mermaid ─"), "{screen}");
+    assert!(screen.contains("<!-- hidden -->"), "{screen}");
+    assert!(screen.contains("A·[31mB"), "{screen}");
+    assert!(!screen.contains("**bold**"), "{screen}");
+
+    // A search, then the source, then hex, and back to the document.
+    xy.press("f");
+    xy.press("safe\r");
+    xy.wait_for("RENDERED");
+    xy.press("t");
+    xy.wait_for(" TEXT ");
+    xy.wait_for("**bold**");
+    xy.press("h");
+    xy.wait_for(" HEX ");
+    xy.press("h");
+    xy.wait_for("RENDERED");
+    xy.press("\x1b");
+    xy.quit();
+}

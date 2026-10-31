@@ -9,7 +9,7 @@ Les feuilles de calcul, CSV, DBF, SQLite et Parquet s'ouvrent en tableau (voir M
 |---|---|
 | ↑ ↓ PgUp PgDn Home End | faire défiler |
 | ← → | faire défiler horizontalement |
-| `H` | texte ou hexadécimal |
+| `H` | mode suivant : texte et hexadécimal ; dans un fichier Markdown, rendu, texte et hexadécimal |
 | `O` | encodage suivant (UTF-8, CP850, 1252, CP437, UTF-16) |
 | `C` | activer ou désactiver la coloration syntaxique |
 | `W` | activer ou désactiver le retour à la ligne automatique |
@@ -19,7 +19,7 @@ Les feuilles de calcul, CSV, DBF, SQLite et Parquet s'ouvrent en tableau (voir M
 | Ctrl+B | une ligne de sortie par enregistrement ou ligne affichée ([Batch dans la visionneuse](execute.md)) |
 | `E` | éditer le fichier ; de retour dans Xylem, la visionneuse affiche le nouveau contenu au même endroit (fichiers binaires uniquement avec un éditeur dans [`[editors]`](execute.md)) |
 | `D` | avec Git activé : ce qui a changé depuis le dernier commit, et retour ([Git](git.md)) |
-| `T` | tableau ou texte, dans un fichier ouvert en tableau |
+| `T` | tableau ou texte, dans un fichier ouvert en tableau ; rendu ou source, dans un fichier Markdown |
 | `U` | dans la vue des fichiers marqués (Ctrl+V) : démarquer le fichier |
 | `y` ou Ctrl+Insert | copier le chemin du fichier dans le presse-papiers |
 | Esc | fermer |
@@ -46,6 +46,24 @@ réglage par défaut est `syntax_highlight` (page 2 de la
 du thème actif, et seules les 20 000 premières lignes sont colorées, et aucune
 ligne de plus de 10 000 caractères, afin que les très gros fichiers ne
 ralentissent jamais la visionneuse.
+
+## Markdown rendu
+
+Les fichiers `.md` et `.markdown` s'ouvrent rendus, aussi dans Autoview, dans les archives et compressés (`x.md.gz`), et le cadre indique `RENDERED`. `T` montre la source au même endroit, et revient ; `H` passe par le rendu, le texte et l'hexadécimal.
+
+Vous voyez les titres, le gras, l'italique, le barré, le code, les blocs de code avec coloration syntaxique (`C` la coupe), les listes imbriquées et numérotées, les listes de tâches (`[x]`), les citations, les lignes horizontales et les tableaux. Rien n'est jamais téléchargé, et aucun lien n'ouvre quoi que ce soit :
+
+- Un lien montre sa véritable adresse à côté du texte, comme dans `sûr <https://example.com>`, pour que le texte ne se fasse pas passer pour une autre adresse.
+- Une image est une ligne de texte : `[image] légende <photo.png>`.
+- Un diagramme Mermaid est un bloc de code étiqueté `mermaid`.
+- Le HTML et les commentaires HTML restent visibles comme texte.
+- Le bloc YAML au début d'un fichier est un bloc de code étiqueté `yaml`.
+
+Le texte tient toujours dans la fenêtre, donc `W` ne fait rien ici ; ← → atteignent les colonnes d'un tableau trop large. La recherche regarde le texte à l'écran, adresses comprises, et trouve une phrase qui continue sur la rangée suivante. `g` et `#` comptent les lignes de la source. Ctrl+B agit sur les lignes de la source, toutes. `&` passe en mode texte et y filtre.
+
+Un fichier de plus de 8 Mio s'ouvre en source, avec un avis. Le rendu s'arrête aussi à la limite de temps (3 s, 100 ms dans Autoview) ou à sa limite de mémoire, et l'en-tête indique alors `(rendered only the start)`. Un tableau montre au plus 256 colonnes. Les caractères de contrôle apparaissent en `·`, y compris ceux écrits en entités comme `&#27;`.
+
+Markdown lui-même cache certaines choses : les définitions de liens que rien n'utilise et les cellules au-delà des colonnes de l'en-tête. Pour tout voir, `T` montre la source. L'italique et le barré dépendent du terminal et de sa police, ils ont donc aussi leur propre couleur.
 
 ## Caractères de contrôle de direction
 

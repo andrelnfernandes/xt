@@ -176,7 +176,21 @@ impl Highlighter {
         if !enabled() {
             return None;
         }
-        let syntax = find_syntax(path, first_line)?;
+        Self::with_syntax(find_syntax(path, first_line)?)
+    }
+
+    /// A highlighter for a language named by a Markdown code block.
+    pub fn for_language(token: &str) -> Option<Self> {
+        if !enabled() {
+            return None;
+        }
+        let syntax = syntaxes()
+            .find_syntax_by_token(token)
+            .filter(|s| s.name != "Plain Text")?;
+        Self::with_syntax(syntax)
+    }
+
+    fn with_syntax(syntax: &'static SyntaxReference) -> Option<Self> {
         let (theme_name, background) = *STYLE.read().unwrap_or_else(|e| e.into_inner());
         let theme: &'static Theme = themes().themes.get(theme_name)?;
         Some(Highlighter {

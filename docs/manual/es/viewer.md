@@ -9,7 +9,7 @@ Las hojas de cálculo, CSV, DBF, SQLite y Parquet se abren como tabla (véase Mo
 |---|---|
 | ↑ ↓ PgUp PgDn Home End | desplazar |
 | ← → | desplazar lateralmente |
-| `H` | texto o hexadecimal |
+| `H` | modo siguiente: texto y hexadecimal; en un archivo Markdown, renderizado, texto y hexadecimal |
 | `O` | siguiente codificación (UTF-8, CP850, 1252, CP437, UTF-16) |
 | `C` | activar o desactivar colores de sintaxis |
 | `W` | activar o desactivar el ajuste de línea |
@@ -19,7 +19,7 @@ Las hojas de cálculo, CSV, DBF, SQLite y Parquet se abren como tabla (véase Mo
 | Ctrl+B | una línea de salida por registro o línea mostrada ([Batch en el visor](execute.md)) |
 | `E` | editar el archivo; al volver a Xylem, el visor muestra el contenido nuevo en el mismo lugar (archivos binarios solo con un editor en [`[editors]`](execute.md)) |
 | `D` | con Git activado: qué cambió desde el último commit, y volver ([Git](git.md)) |
-| `T` | tabla o texto, en un archivo que se abrió como tabla |
+| `T` | tabla o texto, en un archivo que se abrió como tabla; renderizado o fuente, en un archivo Markdown |
 | `U` | en la vista de los archivos marcados (Ctrl+V): desmarcar el archivo |
 | `y` o Ctrl+Insert | copiar la ruta del archivo al portapapeles |
 | Esc | cerrar |
@@ -45,6 +45,24 @@ predeterminado es `syntax_highlight` (página 2 de la
 fondo del tema actual, y solo se colorean las primeras 20.000 líneas, y ninguna
 línea de más de 10.000 caracteres, para que los archivos enormes nunca
 ralenticen el visor.
+
+## Markdown renderizado
+
+Los archivos `.md` y `.markdown` se abren renderizados, también en Autoview, dentro de archivadores y comprimidos (`x.md.gz`), y el marco dice `RENDERED`. `T` muestra la fuente en el mismo lugar, y vuelve; `H` pasa por renderizado, texto y hexadecimal.
+
+Se ven títulos, negrita, cursiva, tachado, código, bloques de código con colores de sintaxis (`C` los apaga), listas anidadas y numeradas, listas de tareas (`[x]`), citas, líneas horizontales y tablas. Nunca se descarga nada, y ningún enlace abre nada:
+
+- Un enlace muestra su dirección real junto al texto, como en `seguro <https://example.com>`, para que el texto no pase por otra dirección.
+- Una imagen es una línea de texto: `[image] leyenda <foto.png>`.
+- Un diagrama Mermaid es un bloque de código con la etiqueta `mermaid`.
+- El HTML y los comentarios HTML siguen visibles como texto.
+- El bloque YAML al inicio de un archivo es un bloque de código con la etiqueta `yaml`.
+
+El texto siempre cabe en la ventana, así que `W` no hace nada aquí; ← → alcanzan las columnas de una tabla demasiado ancha. La búsqueda mira el texto de la pantalla, direcciones incluidas, y encuentra una frase que sigue en la fila siguiente. `g` y `#` cuentan las líneas de la fuente. Ctrl+B actúa sobre las líneas de la fuente, todas. `&` pasa al modo texto y filtra allí.
+
+Un archivo de más de 8 MiB se abre como fuente, con un aviso. El renderizado también se detiene en el límite de tiempo (3 s, 100 ms en Autoview) o en su límite de memoria, y la cabecera dice entonces `(rendered only the start)`. Una tabla muestra como máximo 256 columnas. Los caracteres de control aparecen como `·`, incluidos los escritos como entidades, como `&#27;`.
+
+El propio Markdown oculta algunas cosas: definiciones de enlace que nada usa y celdas de tabla más allá de las columnas de la cabecera. Para verlo todo, `T` muestra la fuente. La cursiva y el tachado dependen del terminal y de su fuente, por eso también tienen color propio.
 
 ## Caracteres de control de dirección
 

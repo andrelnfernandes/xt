@@ -74,6 +74,11 @@ as a link is what `cp -a` and `rsync -l` do).
   SQL filter (subprojects 2 and 5; PR #63), documented in
   [the manual](docs/manual/viewer.md). Still to do: SDF in the table mode, as an
   extra; the windowed viewer (3); logs (4); external converters (6).
+- **Rendered Markdown in the viewer**
+  ([docs/plans/markdown.md](docs/plans/markdown.md)): done, on `.md` and
+  `.markdown`. Still open: the help's small parser could move to the same
+  parser one day (it also feeds the man page); icons with Nerd Fonts were left
+  out on purpose, because they add nothing to the rendering itself.
 - **Batch over files and records** ([docs/plans/batch.md](docs/plans/batch.md)):
   Ctrl+B also on what the viewer read (tables with or without a filter, text
   lines), with escaping by context and structured and binary outputs. Done: the

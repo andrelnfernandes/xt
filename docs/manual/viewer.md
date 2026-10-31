@@ -8,7 +8,7 @@ Spreadsheets, CSV, DBF, SQLite and Parquet open as a table (see Table mode).
 |---|---|
 | ↑ ↓ PgUp PgDn Home End | scroll |
 | ← → | scroll sideways |
-| `H` | text or hex |
+| `H` | next mode: text and hex; in a Markdown file, rendered, text and hex |
 | `O` | next encoding (UTF-8, CP850, 1252, CP437, UTF-16) |
 | `C` | syntax colors on or off |
 | `W` | soft wrap on or off |
@@ -18,7 +18,7 @@ Spreadsheets, CSV, DBF, SQLite and Parquet open as a table (see Table mode).
 | Ctrl+B | a line of output per record or line shown ([Batch in the viewer](execute.md)) |
 | `E` | edit the file; back in Xylem, the viewer shows the new contents at the same place (binary files only with an editor in [`[editors]`](execute.md)) |
 | `D` | with Git on: what changed since the last commit, and back ([Git](git.md)) |
-| `T` | table or text, in a file that opened as a table |
+| `T` | table or text, in a file that opened as a table; rendered or source, in a Markdown file |
 | `U` | in the view of the tagged files (Ctrl+V): untag the file |
 | `y` or Ctrl+Insert | copy the file's path to the clipboard |
 | Esc | close |
@@ -42,6 +42,24 @@ shell, C, JavaScript, SQL, YAML, Markdown...), recognized by extension, by name
 stay readable on the current theme's background, and only the first 20,000
 lines are colored, and no line longer than 10,000 characters, so huge files
 never slow the viewer down.
+
+## Rendered Markdown
+
+`.md` and `.markdown` files open rendered, also in Autoview, inside archives and compressed (`x.md.gz`), and the frame says `RENDERED`. `T` shows the source at the same place, and comes back; `H` goes through rendered, text and hex.
+
+You see headings, bold, italic, strikethrough, code, code blocks with syntax colors (`C` turns them off), nested and numbered lists, task lists (`[x]`), quotes, rules and tables. Nothing is ever fetched, and no link opens anything:
+
+- A link shows its real address beside its text, as in `safe <https://example.com>`, so the text cannot pass for another address.
+- An image is a line of text: `[image] caption <photo.png>`.
+- A Mermaid diagram is a code block labelled `mermaid`.
+- Raw HTML and HTML comments stay visible as text.
+- The YAML block at the start of a file is a code block labelled `yaml`.
+
+The text always fits the window, so `W` does nothing here; ← → reach the columns of a table too wide for it. A search looks at the text on the screen, addresses included, and finds a phrase that wraps onto the next row. `g` and `#` count the lines of the source. Ctrl+B works on the source's lines, all of them. `&` goes to text mode and filters there.
+
+A file over 8 MiB opens as its source, with a note. Rendering also stops at the time limit (3 s, 100 ms in Autoview) or at its memory limit, and the header then says `(rendered only the start)`. A table shows at most 256 columns. Control characters show as `·`, including those written as entities like `&#27;`.
+
+Markdown itself hides a few things: link definitions that nothing uses, and table cells beyond the columns of the header. To see everything, `T` shows the source. Italic and strikethrough depend on the terminal and its font, so they also have a color of their own.
 
 ## Text direction controls
 
