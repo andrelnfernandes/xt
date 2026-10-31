@@ -16,6 +16,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
+use chrono::{DateTime, Datelike, Local, Utc};
 use regex::Regex;
 
 use super::records::{self, Budget, Cell, End, RecordSink};
@@ -35,7 +36,7 @@ const SCAN_TIME: Duration = Duration::from_secs(3);
 const PREVIEW_HEADER_LINES: usize = 3;
 /// A template is typed by hand; anything larger is not one.
 const MAX_TEMPLATE_BYTES: u64 = 1024 * 1024;
-const TEMPLATE_EXTENSION: &str = "tpl";
+pub const TEMPLATE_EXTENSION: &str = "tpl";
 
 /// How a value goes into the output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -249,22 +250,77 @@ fn escape_into(cell: &Cell<'_>, escape: Escape, out: &mut Vec<u8>) {
     }
 }
 
-/// A field about the open file, which every record shares: unlike `%N`, it goes
-/// through an escape, and a file's name can be as hostile as its contents.
-fn file_field(name: &str, file: &Path, size: u64) -> Option<Cell<'static>> {
-    let var = match name {
-        "#path" => "%F",
-        "#dir" => "%D",
-        "#name" => "%N",
-        "#base" => "%B",
-        "#ext" => "%E",
-        "#size" => return Some(Cell::Int(size as i64)),
-        _ => return None,
-    };
-    let value = shell::batch_line(var, file, size);
-    Some(Cell::Text(Cow::Owned(
-        String::from_utf8_lossy(&value).into_owned(),
-    )))
+/// What a mask can say about where it is used, fixed when it is read: all the
+/// records of a file get the same date.
+struct Context<'a> {
+    open: &'a Path,
+    size: u64,
+    out: &'a Path,
+    template: Option<&'a str>,
+    now: DateTime<Local>,
+}
+
+fn text_cell(text: impl Into<String>) -> Cell<'static> {
+    Cell::Text(Cow::Owned(text.into()))
+}
+
+impl Context<'_> {
+    /// A field that every record shares: unlike `%N`, it goes through an escape,
+    /// and a file's name can be as hostile as its contents.
+    fn field(&self, name: &str) -> Result<Option<Cell<'static>>, String> {
+        let now = &self.now;
+        let date = |format: &str| Some(text_cell(now.format(format).to_string()));
+        let from_file = |var: &str| {
+            let value = shell::batch_line(var, self.open, self.size);
+            Some(text_cell(String::from_utf8_lossy(&value)))
+        };
+        let unknown = || format!("Mask: cannot tell %{{{name}}} here");
+        Ok(match name {
+            "#path" => from_file("%F"),
+            "#dir" => from_file("%D"),
+            "#name" => from_file("%N"),
+            "#base" => from_file("%B"),
+            "#ext" => from_file("%E"),
+            "#size" => Some(Cell::Int(self.size as i64)),
+            "#date" => date("%Y-%m-%d"),
+            "#time" => date("%H:%M:%S"),
+            "#datetime" => date("%Y-%m-%dT%H:%M:%S%:z"),
+            "#utc" => Some(text_cell(
+                now.with_timezone(&Utc)
+                    .format("%Y-%m-%dT%H:%M:%SZ")
+                    .to_string(),
+            )),
+            "#year" => date("%Y"),
+            "#month" => date("%m"),
+            "#day" => date("%d"),
+            // ISO: Monday is 1.
+            "#weekday" => Some(Cell::Int(i64::from(now.weekday().number_from_monday()))),
+            // In English, so that a script does not change with the machine's language.
+            "#weekday_name" => Some(text_cell(now.format("%A").to_string().to_lowercase())),
+            "#epoch" => Some(Cell::Int(now.timestamp())),
+            "#user" => {
+                let user = std::env::var("USER").or_else(|_| std::env::var("USERNAME"));
+                Some(text_cell(user.map_err(|_| unknown())?))
+            }
+            "#host" => Some(text_cell(
+                crate::platform::system().host.ok_or_else(unknown)?,
+            )),
+            "#template" => Some(text_cell(self.template.ok_or_else(unknown)?)),
+            "#output" => Some(text_cell(self.out.to_string_lossy())),
+            _ => None,
+        })
+    }
+}
+
+/// A variable of the process, which a mask has to name. It is there as it was
+/// when the file was generated; `$NAME` in a script is read when that runs.
+fn environment_field(name: &str) -> Result<Cell<'static>, String> {
+    if name.is_empty() {
+        return Err("Mask: %{$} has no variable name".into());
+    }
+    let value =
+        std::env::var_os(name).ok_or_else(|| format!("Mask: no environment variable {name}"))?;
+    Ok(text_cell(value.to_string_lossy()))
 }
 
 /// Where a mask's text is in SQL, to know what is inside a string. A line starts
@@ -311,16 +367,20 @@ enum Part {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Mask {
     parts: Vec<Part>,
+    /// The variables of the process it reads.
+    environment: Vec<String>,
 }
 
 impl Mask {
     /// `%{name}` and `%{name:escape}` are fields of the record; `%f %d %n %b
     /// %e %s` are the open file's, as in the Batch of tagged files; `%%` is a `%`.
-    pub fn parse(text: &str, default: Escape, file: &Path, size: u64) -> Result<Self, String> {
+    /// `%{$NAME}` is a variable of the process, and `%{#...}` what `Context` knows.
+    fn parse_in(text: &str, default: Escape, context: &Context<'_>) -> Result<Self, String> {
         if text.trim().is_empty() {
-            return Err("Batch cancelled: empty line mask".into());
+            return Err("Mask: empty. Type what to write for each record, or :template".into());
         }
         let mut parts = Vec::new();
+        let mut environment = Vec::new();
         let mut literal = Vec::new();
         let mut rest = text;
         let mut sql = SqlText::default();
@@ -345,7 +405,15 @@ impl Mask {
                 if name.is_empty() {
                     return Err("Mask: %{} has no field name".into());
                 }
-                if let Some(value) = file_field(name, file, size) {
+                let shared = match name.strip_prefix('$') {
+                    Some(variable) => {
+                        let value = environment_field(variable)?;
+                        environment.push(variable.to_string());
+                        Some(value)
+                    }
+                    None => context.field(name)?,
+                };
+                if let Some(value) = shared {
                     escape_into(&value, escape, &mut literal);
                     rest = &inner[close + 1..];
                     continue;
@@ -368,7 +436,7 @@ impl Mask {
                 if sql.in_string && c != '%' {
                     in_string.get_or_insert_with(|| var.clone());
                 }
-                literal.extend(shell::batch_line(&var, file, size));
+                literal.extend(shell::batch_line(&var, context.open, context.size));
                 rest = &after[c.len_utf8()..];
             } else {
                 literal.push(b'%');
@@ -396,7 +464,7 @@ impl Mask {
                  write %{var} for a %, or a field like %{{#name}} for its value"
             ));
         }
-        Ok(Mask { parts })
+        Ok(Mask { parts, environment })
     }
 
     /// The first field that `names` has no answer for.
@@ -407,19 +475,22 @@ impl Mask {
         })
     }
 
-    /// The first field of a record, if it has any.
-    fn record_field(&self) -> Option<&str> {
+    /// The first field that has no answer outside a record.
+    fn record_field(&self, count_too: bool) -> Option<&str> {
         self.parts.iter().find_map(|part| match part {
-            Part::Field { name, .. } => Some(name.as_str()),
-            Part::Literal(_) => None,
+            Part::Field { name, .. } if count_too || name != TOTAL_COUNT => Some(name.as_str()),
+            _ => None,
         })
     }
 
-    /// The mask's text alone, for what no record goes into.
-    fn literal(&self, newline: &[u8], out: &mut Vec<u8>) {
+    /// A header or footer: its text, and how many records there were.
+    fn edge(&self, count: u64, newline: &[u8], out: &mut Vec<u8>) {
         for part in &self.parts {
-            if let Part::Literal(bytes) = part {
-                literal_into(bytes, newline, out);
+            match part {
+                Part::Literal(bytes) => literal_into(bytes, newline, out),
+                Part::Field { escape, .. } => {
+                    escape_into(&Cell::Int(count as i64), *escape, out);
+                }
             }
         }
     }
@@ -554,13 +625,91 @@ fn template_name(text: &str) -> Option<&str> {
     valid.then_some(name)
 }
 
-fn template_dir() -> Option<PathBuf> {
+pub fn template_dir() -> Option<PathBuf> {
     Some(crate::platform::config_dir()?.join("batch"))
 }
 
+/// The most templates the prompt offers.
+const MAX_LISTED_TEMPLATES: usize = 100;
+
+/// Longest line of a template on the screen: longer ones continue below, so
+/// that scrolling reaches all of them.
+const TEMPLATE_VIEW_CHARS: usize = 200;
+
+/// A template the prompt offers.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TemplateInfo {
+    pub name: String,
+    /// What its first comment says. The file wrote this: it informs, and only
+    /// reading the template shows what it really does.
+    pub about: String,
+}
+
 /// The templates there are, for the prompt.
-pub fn template_names() -> Vec<String> {
-    template_dir().map_or_else(Vec::new, |dir| names_in(&dir))
+pub fn template_list() -> Vec<TemplateInfo> {
+    let Some(dir) = template_dir() else {
+        return Vec::new();
+    };
+    names_in(&dir)
+        .into_iter()
+        .take(MAX_LISTED_TEMPLATES)
+        .map(|name| {
+            let about =
+                read_template(&name, Some(&dir)).map_or(String::new(), |t| template_about(&t));
+            TemplateInfo { name, about }
+        })
+        .collect()
+}
+
+/// The first sentence of the comment a template starts with.
+fn template_about(text: &str) -> String {
+    let text = text.strip_prefix('\u{FEFF}').unwrap_or(text);
+    let comment: Vec<&str> = text
+        .lines()
+        .map_while(|line| line.strip_prefix("%%#"))
+        .map(str::trim)
+        .collect();
+    let comment = comment.join(" ");
+    let first = comment
+        .find(". ")
+        .map_or(comment.as_str(), |at| &comment[..=at]);
+    screen_safe(first.trim())
+}
+
+/// What a file wrote, made safe for the screen.
+fn screen_safe(text: &str) -> String {
+    text.chars()
+        .map(|c| {
+            if c.is_control() || crate::bidi::is_bidi(c) || c == '\u{2028}' || c == '\u{2029}' {
+                '·'
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
+/// The lines of a template, to be read on the screen. Everything in the file
+/// is shown, comments too.
+pub fn template_lines(name: &str) -> Result<Vec<String>, String> {
+    let text = read_template(name, template_dir().as_deref())?;
+    Ok(view_lines(&text))
+}
+
+fn view_lines(text: &str) -> Vec<String> {
+    let text = text.strip_prefix('\u{FEFF}').unwrap_or(text);
+    let mut lines = Vec::new();
+    for line in text.lines() {
+        let line: Vec<char> = screen_safe(&line.replace('\t', "    ")).chars().collect();
+        if line.is_empty() {
+            lines.push(String::new());
+        }
+        lines.extend(
+            line.chunks(TEMPLATE_VIEW_CHARS)
+                .map(|c| c.iter().collect::<String>()),
+        );
+    }
+    lines
 }
 
 fn names_in(dir: &Path) -> Vec<String> {
@@ -645,31 +794,36 @@ fn template_sections(text: &str) -> Result<[Option<String>; 3], String> {
     Ok(sections)
 }
 
-/// Header or footer: only the template's text and the open file's fields.
+/// In a footer, `%{count}` is how many records were written.
+const TOTAL_COUNT: &str = "count";
+
+/// Header or footer: no fields of a record. The header is written before any
+/// record is read, so only the footer knows how many there are.
 fn template_edge(
     section: Option<String>,
     default: Escape,
-    open: &Path,
-    size: u64,
+    context: &Context<'_>,
+    is_header: bool,
 ) -> Result<Option<Mask>, String> {
     let Some(text) = section.filter(|s| !s.trim().is_empty()) else {
         return Ok(None);
     };
-    let mask = Mask::parse(&text, default, open, size)?;
-    if let Some(field) = mask.record_field() {
-        return Err(format!(
+    let mask = Mask::parse_in(&text, default, context)?;
+    match mask.record_field(is_header) {
+        Some(TOTAL_COUNT) => Err(format!("%{{{TOTAL_COUNT}}} is only known in the footer")),
+        Some(field) => Err(format!(
             "%{{{field}}} is a field of a record, outside the record"
-        ));
+        )),
+        None => Ok(Some(mask)),
     }
-    Ok(Some(mask))
 }
 
-fn parse_template(text: &str, default: Escape, open: &Path, size: u64) -> Result<Output, String> {
+fn parse_template(text: &str, default: Escape, context: &Context<'_>) -> Result<Output, String> {
     let [header, record, footer] = template_sections(text)?;
     Ok(Output::Template {
-        header: template_edge(header, default, open, size)?,
-        record: Mask::parse(&record.unwrap_or_default(), default, open, size)?,
-        footer: template_edge(footer, default, open, size)?,
+        header: template_edge(header, default, context, true)?,
+        record: Mask::parse_in(&record.unwrap_or_default(), default, context)?,
+        footer: template_edge(footer, default, context, false)?,
     })
 }
 
@@ -722,9 +876,17 @@ impl Output {
         size: u64,
         templates: Option<&Path>,
     ) -> Result<Self, String> {
+        let mut context = Context {
+            open,
+            size,
+            out,
+            template: None,
+            now: Local::now(),
+        };
         if let Some(name) = template_name(text) {
             let body = read_template(name, templates)?;
-            return parse_template(&body, Escape::for_file(out), open, size)
+            context.template = Some(name);
+            return parse_template(&body, Escape::for_file(out), &context)
                 .map_err(|e| format!("Template {name}: {e}"));
         }
         let format = Format::for_file(out);
@@ -757,7 +919,30 @@ impl Output {
                 title,
             });
         }
-        Mask::parse(text, Escape::for_file(out), open, size).map(Output::Lines)
+        Mask::parse_in(text, Escape::for_file(out), &context).map(Output::Lines)
+    }
+
+    /// The variables of the process it reads, without repeating them.
+    fn environment(&self) -> Vec<String> {
+        let masks: Vec<&Mask> = match self {
+            Output::Lines(mask) => vec![mask],
+            Output::Template {
+                header,
+                record,
+                footer,
+            } => [header.as_ref(), Some(record), footer.as_ref()]
+                .into_iter()
+                .flatten()
+                .collect(),
+            Output::Records { .. } => Vec::new(),
+        };
+        let mut names: Vec<String> = masks
+            .iter()
+            .flat_map(|mask| mask.environment.iter().cloned())
+            .collect();
+        names.sort();
+        names.dedup();
+        names
     }
 
     /// The first field the records do not have.
@@ -786,7 +971,7 @@ impl Output {
             ..
         } = self
         {
-            header.literal(newline, out);
+            header.edge(0, newline, out);
         }
         let Output::Records {
             format,
@@ -829,14 +1014,14 @@ impl Output {
         }
     }
 
-    /// What ends the file.
-    fn end(&self, newline: &[u8], out: &mut Vec<u8>) {
+    /// What ends the file, after `count` records.
+    fn end(&self, count: u64, newline: &[u8], out: &mut Vec<u8>) {
         if let Output::Template {
             footer: Some(footer),
             ..
         } = self
         {
-            footer.literal(newline, out);
+            footer.edge(count, newline, out);
         }
         let Output::Records { format, .. } = self else {
             return;
@@ -1132,6 +1317,36 @@ impl Source {
         }
     }
 
+    /// A mask that works on this source, for the prompt to show.
+    pub fn example(&self, columns: &[String]) -> String {
+        match self {
+            Source::Table { .. } => {
+                let simple: Vec<String> = columns
+                    .iter()
+                    .filter(|c| c.chars().all(|c| c.is_alphanumeric() || c == '_'))
+                    .filter(|c| !c.is_empty())
+                    .take(2)
+                    .map(|c| format!("%{{{c}}}"))
+                    .collect();
+                if simple.is_empty() {
+                    "%{a}".to_string()
+                } else {
+                    simple.join(" ")
+                }
+            }
+            Source::Text { regex, .. } => {
+                let group = regex.as_ref().and_then(|regex| {
+                    let named = regex.capture_names().flatten().next();
+                    match named {
+                        Some(name) => Some(name.to_string()),
+                        None => (regex.captures_len() > 1).then(|| "1".to_string()),
+                    }
+                });
+                format!("%{{#line}}: %{{{}}}", group.as_deref().unwrap_or("line"))
+            }
+        }
+    }
+
     /// Reads the source, stopping when `deliver` says so or `budget` runs out.
     fn run(
         &self,
@@ -1234,6 +1449,9 @@ pub struct Preview {
     /// The viewer read only part of the file, so the rest will not be written.
     pub cut: bool,
     pub stats: Stats,
+    /// The variables of the process it reads: a template from someone else
+    /// could send a secret away when its script runs.
+    pub environment: Vec<String>,
     /// What to write, with its fields known.
     pub output: Output,
 }
@@ -1312,6 +1530,7 @@ pub fn preview(source: &Source, output: impl Into<Output>) -> Result<Preview, St
         complete: end == End::Complete,
         cut: source.cut(),
         stats,
+        environment: output.environment(),
         output,
     })
 }
@@ -1440,7 +1659,7 @@ fn write_file(
         return Err(format!("Cannot write {}: {e}", file.display()));
     }
     line.clear();
-    output.end(newline, &mut line);
+    output.end(records, newline, &mut line);
     out.write_all(&line)
         .map_err(|e| format!("Cannot write {}: {e}", file.display()))?;
     let flushed: Result<File, _> = out.into_inner();
@@ -1454,9 +1673,29 @@ fn write_file(
 }
 
 #[cfg(test)]
+#[path = "batch_demo.rs"]
+mod demo;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use proptest::prelude::*;
+
+    impl Mask {
+        fn parse(text: &str, default: Escape, file: &Path, size: u64) -> Result<Self, String> {
+            Self::parse_in(text, default, &test_context(file, size))
+        }
+    }
+
+    fn test_context(open: &Path, size: u64) -> Context<'_> {
+        Context {
+            open,
+            size,
+            out: Path::new("/o/out.txt"),
+            template: None,
+            now: Local::now(),
+        }
+    }
 
     fn mask(text: &str, default: Escape) -> Mask {
         Mask::parse(text, default, Path::new("/d/a.csv"), 10).unwrap()
@@ -2184,6 +2423,112 @@ mod tests {
     }
 
     #[test]
+    fn a_footer_knows_how_many_records_were_written() {
+        let template = "%%record\n%{id}\n%%footer\n-- %{count} records\n";
+        let text = through_template(template, "id\n1\n2\n3\n", "out.txt", ":t");
+        assert_eq!(text, "1\n2\n3\n-- 3 records\n".replace('\n', NEWLINE));
+        // A number, whatever the file: no quotes in SQL.
+        let text = through_template(template, "id\n1\n", "out.sql", ":t");
+        assert!(text.ends_with(&format!("-- 1 records{NEWLINE}")), "{text}");
+    }
+
+    #[test]
+    fn a_column_called_count_is_still_a_column_in_a_record() {
+        let template = "%%record\n%{count}\n%%footer\n%{count}\n";
+        let text = through_template(template, "count\n7\n8\n", "out.txt", ":t");
+        assert_eq!(text, "7\n8\n2\n".replace('\n', NEWLINE));
+    }
+
+    #[test]
+    fn the_date_is_the_same_in_every_field_and_comes_in_each_form() {
+        use chrono::TimeZone;
+        let moment = Utc.with_ymd_and_hms(2026, 10, 30, 17, 5, 9).unwrap();
+        let context = Context {
+            now: moment.with_timezone(&Local),
+            ..test_context(Path::new("/d/a.csv"), 1)
+        };
+        let value = |field: &str| {
+            let m = Mask::parse_in(&format!("%{{{field}:raw}}"), Escape::Line, &context).unwrap();
+            match m.parts.as_slice() {
+                [Part::Literal(bytes)] => String::from_utf8(bytes.clone()).unwrap(),
+                other => panic!("{other:?}"),
+            }
+        };
+        let now = &context.now;
+        assert_eq!(value("#utc"), "2026-10-30T17:05:09Z");
+        assert_eq!(value("#epoch"), "1793379909");
+        assert_eq!(value("#date"), now.format("%Y-%m-%d").to_string());
+        assert_eq!(value("#time"), now.format("%H:%M:%S").to_string());
+        let datetime = now.format("%Y-%m-%dT%H:%M:%S%:z").to_string();
+        assert_eq!(value("#datetime"), datetime);
+        assert_eq!(value("#year"), now.format("%Y").to_string());
+        assert_eq!(value("#month"), now.format("%m").to_string());
+        assert_eq!(value("#day"), now.format("%d").to_string());
+        // Fridays in UTC; the local date may be another day, around midnight.
+        let weekday = now.weekday();
+        assert_eq!(value("#weekday"), weekday.number_from_monday().to_string());
+        assert_eq!(
+            value("#weekday_name"),
+            now.format("%A").to_string().to_lowercase()
+        );
+        assert_eq!(value("#output"), "/o/out.txt");
+    }
+
+    #[test]
+    fn a_shared_field_goes_through_the_escape() {
+        let in_sql = Mask::parse("%{#date}", Escape::Sql, Path::new("a"), 0).unwrap();
+        let [Part::Literal(bytes)] = in_sql.parts.as_slice() else {
+            panic!("{:?}", in_sql.parts);
+        };
+        assert!(bytes.starts_with(b"'") && bytes.ends_with(b"'"));
+
+        let path = std::env::var("PATH").unwrap();
+        let in_shell = Mask::parse("%{$PATH}", Escape::Shell, Path::new("a"), 0).unwrap();
+        assert_eq!(
+            in_shell.parts,
+            [Part::Literal(format!("'{path}'").into_bytes())]
+        );
+    }
+
+    #[test]
+    fn the_environment_is_read_by_name_and_told() {
+        let m = Mask::parse("%{$PATH:raw}", Escape::Line, Path::new("a"), 0).unwrap();
+        assert_eq!(m.environment, ["PATH"]);
+
+        let error = |text: &str| Mask::parse(text, Escape::Line, Path::new("a"), 0).unwrap_err();
+        assert_eq!(
+            error("%{$XY_NO_SUCH_VARIABLE}"),
+            "Mask: no environment variable XY_NO_SUCH_VARIABLE"
+        );
+        assert_eq!(error("%{$}"), "Mask: %{$} has no variable name");
+
+        let template =
+            "%%header\n%{$PATH:raw}\n%%record\n%{id}%{$HOME:raw}\n%%footer\n%{$PATH:raw}\n";
+        let tmp = crate::testing::tempdir();
+        let path = tmp.path().join("in.csv");
+        fs::write(&path, "id\n1\n").unwrap();
+        fs::write(tmp.path().join("t.tpl"), template).unwrap();
+        if std::env::var_os("HOME").is_some() {
+            let parsed =
+                Output::parse_in(":t", Path::new("x.txt"), &path, 0, Some(tmp.path())).unwrap();
+            let found = preview(&table_source(&path, None), parsed).unwrap();
+            assert_eq!(found.environment, ["HOME", "PATH"]);
+        }
+        let csv = csv_rows(1);
+        let source = table_source(&csv.path().join("in.csv"), None);
+        let found = preview(&source, mask("%{id}", Escape::Line)).unwrap();
+        assert!(found.environment.is_empty());
+    }
+
+    #[test]
+    fn the_template_name_is_known_only_in_a_template() {
+        let error = Mask::parse("%{#template}", Escape::Line, Path::new("a"), 0).unwrap_err();
+        assert_eq!(error, "Mask: cannot tell %{#template} here");
+        let text = through_template("%{#template}-%{id}\n", "id\n1\n", "out.txt", ":t");
+        assert_eq!(text.trim_end(), "t-1");
+    }
+
+    #[test]
     fn a_wrong_template_says_what_is_wrong() {
         let error = template_error;
         assert_eq!(error(""), "Template t: it has no record");
@@ -2201,6 +2546,10 @@ mod tests {
         assert_eq!(
             error("%%footer\n%{id}\n%%record\na\n"),
             "Template t: %{id} is a field of a record, outside the record"
+        );
+        assert_eq!(
+            error("%%header\n%{count}\n%%record\na\n"),
+            "Template t: %{count} is only known in the footer"
         );
         assert_eq!(
             error("%{a:nope}\n"),
@@ -2241,6 +2590,28 @@ mod tests {
     }
 
     #[test]
+    fn a_template_says_what_it_does_in_its_first_comment() {
+        let about =
+            template_about("%%# One UPDATE per record. Write it\n%%# to a .sql.\n%%record\n");
+        assert_eq!(about, "One UPDATE per record.");
+        let about = template_about("%%# Reads well\n%%# on two lines\n%%record\n%%# not this\n");
+        assert_eq!(about, "Reads well on two lines");
+        assert_eq!(template_about("%%record\n%%# too late\n"), "");
+        // The file wrote it: nothing in it may act on the screen.
+        let about = template_about("%%# safe\u{1b}[2J\u{202e}text\n");
+        assert_eq!(about, "safe·[2J·text");
+    }
+
+    #[test]
+    fn a_template_on_the_screen_hides_nothing() {
+        let long = "x".repeat(TEMPLATE_VIEW_CHARS + 1);
+        let lines = view_lines(&format!("%%# a\n\n\tb\u{1b}\n{long}\n"));
+        assert_eq!(lines[..3], ["%%# a", "", "    b·"]);
+        assert_eq!(lines[3].chars().count(), TEMPLATE_VIEW_CHARS);
+        assert_eq!(lines[4], "x", "a long line continues below");
+    }
+
+    #[test]
     fn the_templates_there_are_come_sorted() {
         let tmp = crate::testing::tempdir();
         assert!(names_in(&tmp.path().join("none")).is_empty());
@@ -2277,7 +2648,8 @@ mod tests {
 
         #[test]
         fn a_template_never_panics(text in "(%%|%|\\{|\\}|header|record|footer|\\n|.){0,40}") {
-            let _ = parse_template(&text, Escape::Shell, Path::new("/a/b"), 1);
+            let open = Path::new("/a/b");
+            let _ = parse_template(&text, Escape::Shell, &test_context(open, 1));
         }
 
         /// Whatever the text, each escape gives its format valid output.

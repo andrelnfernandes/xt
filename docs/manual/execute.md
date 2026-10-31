@@ -105,6 +105,8 @@ and execute permission (run it with `X`). An existing file is not overwritten.
 
 With a table or text open in the [viewer](viewer.md), **Ctrl+B** writes one line per record, from the whole file: past the 50,000 rows of the screen, with values whole and exactly as in the file. It respects the filter in use (the SQL filter on a table, the [line filter](filter.md) on text). A table is read again when it runs; text comes as the viewer read it, up to the size limit, and the preview warns when that is not all of the file. It asks for the file, then the mask, and shows the first lines before writing: **Enter** writes, **Esc** gives up. While writing, Esc cancels and removes the incomplete file. An existing file is not overwritten.
 
+While you type the mask, a box above it shows a mask that works on this file, its fields and the templates you have, each with the first sentence of its opening comment (`%%#`). **↑↓** choose a template, **F3** shows it whole before you use it and **PgUp**/**PgDn** go through the history. The description was written by whoever wrote the template: read a template from someone else with F3 before using it. A mistake in the mask keeps the prompt open with what you typed and says what is wrong.
+
 | Field | Value |
 |---|---|
 | `%{name}` `%{A}` `%{2}` | a column of a table, by name, letter or position |
@@ -113,6 +115,10 @@ With a table or text open in the [viewer](viewer.md), **Ctrl+B** writes one line
 | `%{#}` | the record's number among those written: 1, 2, 3... |
 | `%{#line}` | the line's number in the file (text only) |
 | `%{#path}` `%{#dir}` `%{#name}` `%{#base}` `%{#ext}` `%{#size}` | the open file, with an escape like any field; `%N` and the others above have none, so prefer these in a page or a script |
+| `%{$NAME}` | a variable of the environment, such as `%{$PATH}`, as it is now; the preview lists those read, and one that does not exist is an error |
+| `%{#date}` `%{#time}` `%{#datetime}` `%{#utc}` | now, local (`#datetime` with its time zone) or UTC: the same in all records |
+| `%{#year}` `%{#month}` `%{#day}` `%{#weekday}` `%{#weekday_name}` `%{#epoch}` | parts of it: weekday 1 is Monday, the name is in English, epoch in seconds since 1970 |
+| `%{#user}` `%{#host}` `%{#template}` `%{#output}` | who generates it, on which machine, with which template, and the file written |
 | `%f %d %n %b %e %s` | the open file, as in Batch above |
 | `%%` | a `%` |
 
@@ -146,6 +152,8 @@ In a `.json`, `.jsonl`, `.ndjson`, `.csv`, `.tsv`, `.xml`, `.html` or `.htm` fil
 
 ### Templates
 
+Files to try all of this are in [demo/](https://github.com/andrelnfernandes/xylem/tree/main/demo) in the repository: the same customers in every format, and ready templates.
+
 For text around the records, save a template as `~/.config/xylem/batch/name.tpl` and type `:name` as the mask; the prompt lists the ones it finds (the first four).
 
 ```
@@ -160,6 +168,10 @@ For text around the records, save a template as `~/.config/xylem/batch/name.tpl`
 ```
 
 `%%header` and `%%footer` are optional and take only the template's text and the open file's fields. `%%record` is written once per record and may have several lines; with no sections, the whole file is the record. Escapes follow the output file, as in a mask, so a template for a page should be written to a `.html`. A section that does not exist, a repeated one, or a field of a record in the header or footer is an error in the preview. The preview shows the last 3 lines of the header. With no records, nothing is written.
+
+Inside a footer, `%{count}` is how many records were written. A header cannot have it, since it is written before they are read.
+
+In a `.sh`, `%{$HOME}` writes the value of now, while `$HOME` is read when the script runs. A template from someone else is their script: it could write `%{$SECRET:url}` into a command, so look at what the preview says it reads.
 
 ## History
 

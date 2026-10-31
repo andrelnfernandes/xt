@@ -10,6 +10,7 @@
 //! ```
 
 use std::ops::Range;
+use std::path::Path;
 use std::time::SystemTime;
 
 use chrono::{DateTime, Local};
@@ -34,6 +35,7 @@ use crate::pane::{Count, FileDisplay, FileRef};
 use crate::platform;
 use crate::settings::{self, Settings};
 use crate::term::{self, Terminal};
+use crate::viewer::table::TableGrid;
 use crate::viewer::{self, ViewMode, Viewer};
 
 const STATS_WIDTH: u16 = 28;
@@ -1527,6 +1529,31 @@ fn prompt_lines(frame: &mut Frame, prompt: &app::Prompt, area: Rect) -> Vec<Line
         ]
     } else if prompt.is_bookmark_set() {
         vec![("0-9, a-z", "assign key"), ("Esc", "cancel")]
+    } else if let Some(guide) = prompt.batch_guide() {
+        if guide.reading.is_some() {
+            vec![
+                ("↑↓ PgUp PgDn", "scroll"),
+                ("Enter", "use it"),
+                ("F3 Esc", "back"),
+            ]
+        } else if guide.templates.is_empty() {
+            vec![
+                ("Enter", "preview"),
+                ("Esc", "cancel"),
+                ("Ctrl+U", "clear"),
+                ("↑↓", "history"),
+                ("F1", "help"),
+            ]
+        } else {
+            vec![
+                ("Enter", "preview"),
+                ("Esc", "cancel"),
+                ("↑↓", "template"),
+                ("F3", "read it"),
+                ("PgUp PgDn", "history"),
+                ("F1", "help"),
+            ]
+        }
     } else if prompt.is_rename_tagged() {
         vec![
             ("Enter", "rename"),
@@ -2180,21 +2207,20 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
         ViewMode::Text => " TEXT ".to_string(),
         ViewMode::Hex => " HEX ".to_string(),
         ViewMode::Rendered => " RENDERED ".to_string(),
-        ViewMode::Table => {
-            if let Some(t) = &v.table {
-                if t.sheets.len() > 1 {
-                    format!(" TABLE [{}/{}] ", t.current_sheet + 1, t.sheets.len())
-                } else {
-                    " TABLE ".to_string()
-                }
-            } else {
-                " TABLE ".to_string()
-            }
-        }
+        ViewMode::Table => v
+            .table
+            .as_ref()
+            .map_or_else(|| " TABLE ".to_string(), table_frame_title),
     };
     match &app.batch_preview {
         Some(preview) => draw_batch_preview(frame, preview, body),
         None => draw_viewer_body(frame, v, mode, body),
+    }
+    if let Some(guide) = app.prompt.as_ref().and_then(app::Prompt::batch_guide) {
+        match &guide.reading {
+            Some(reading) => draw_template_reading(frame, reading, body),
+            None => draw_batch_guide(frame, guide, body),
+        }
     }
 
     let total = v.line_count().max(1);
@@ -2280,8 +2306,12 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
                     .unwrap_or_default();
                 let wrap_badge = if v.wrap { "[Wrap] " } else { "" };
                 let num_badge = if v.line_numbers { "[#] " } else { "" };
+                let sheets = match (&v.mode, &v.table) {
+                    (ViewMode::Table, Some(t)) => sheet_keys(t, &v.path),
+                    _ => String::new(),
+                };
                 Line::from(format!(
-                    "{:9}{wrap_badge}{num_badge}{language}{position}  ({percent}%)",
+                    "{:9}{wrap_badge}{num_badge}{language}{position}  ({percent}%){sheets}",
                     ""
                 ))
             }
@@ -2289,6 +2319,194 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
         vec![first, second]
     };
     frame.render_widget(Paragraph::new(lines), menu);
+}
+
+/// The most of a sheet's name that the frame shows.
+const SHEET_NAME_CHARS: usize = 40;
+
+/// The frame of a table: with more than one sheet, which one this is. The names
+/// come from the file, and were made safe for the screen when it was read.
+fn table_frame_title(t: &TableGrid) -> String {
+    if t.sheets.len() < 2 {
+        return " TABLE ".to_string();
+    }
+    let name = t.sheets.get(t.current_sheet).map_or("", String::as_str);
+    let mut shown: String = name.chars().take(SHEET_NAME_CHARS).collect();
+    if name.chars().count() > SHEET_NAME_CHARS {
+        shown.push('…');
+    }
+    format!(
+        " TABLE [{}/{}: {shown}] ",
+        t.current_sheet + 1,
+        t.sheets.len()
+    )
+}
+
+/// The keys that change the sheet, when there is another one to go to.
+fn sheet_keys(t: &TableGrid, path: &Path) -> String {
+    if t.sheets.len() < 2 {
+        return String::new();
+    }
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_default();
+    let what = if matches!(ext.as_str(), "sqlite" | "sqlite3" | "db") {
+        "table"
+    } else {
+        "sheet"
+    };
+    format!("  ·  [ ] other {what}")
+}
+
+/// The most templates the guide of a Batch shows at a time.
+const GUIDE_TEMPLATES: usize = 12;
+
+/// Above the mask prompt of a Batch, over the end of what is open: what to type
+/// there, with what works on this file, and the templates to choose from.
+fn draw_batch_guide(frame: &mut Frame, guide: &app::BatchGuide, area: Rect) {
+    let t = theme();
+    let error = Style::new().fg(t.error);
+    let code = Style::new().fg(t.key);
+    let dim = Style::new().fg(t.dim);
+    let width = usize::from(area.width.saturating_sub(2)).max(1);
+
+    let mut lines = Vec::new();
+    for warning in [&guide.problem, &guide.open_template].into_iter().flatten() {
+        lines.push(Line::styled(warning.clone(), error));
+        lines.push(Line::raw(""));
+    }
+    lines.push(Line::raw(
+        "A mask says what to write for each record, for example:",
+    ));
+    lines.push(Line::styled(format!("    {}", guide.example), code));
+    lines.push(Line::raw(format!("Fields here: {}", guide.fields)));
+    if guide.whole {
+        lines.push(Line::raw("Empty: whole records. @a,b: only those fields."));
+    }
+    lines.push(Line::raw(""));
+    if guide.templates.is_empty() {
+        lines.push(Line::raw("Or a template, which writes a whole file:"));
+        let dir = guide
+            .template_dir
+            .as_ref()
+            .map_or("the configuration folder".to_string(), |d| {
+                d.display().to_string()
+            });
+        lines.push(Line::styled(
+            format!("    none yet: put name.tpl files in {dir}"),
+            dim,
+        ));
+    } else {
+        lines.push(Line::raw(
+            "Or a template, which writes a whole file (↑↓ choose, F3 read it):",
+        ));
+    }
+    let end = Line::raw("Enter shows the first lines before anything is written.");
+    // A line that wraps at words can take one more than its length says.
+    let rows = |lines: &[Line]| -> usize {
+        lines
+            .iter()
+            .map(|l| match l.width() {
+                w if w <= width => 1,
+                w => w.div_ceil(width) + 1,
+            })
+            .sum()
+    };
+
+    // The list takes what the rest leaves, and keeps the chosen one in sight.
+    let others = rows(&lines) + 2 + 2;
+    let room = usize::from(area.height).saturating_sub(others).max(1);
+    let shown = guide.templates.len().min(GUIDE_TEMPLATES).min(room);
+    let selected = guide.selected.unwrap_or(0);
+    let start = (selected + 1).saturating_sub(shown);
+    let name_width = guide
+        .templates
+        .iter()
+        .map(|i| i.name.chars().count() + 1)
+        .max()
+        .unwrap_or(0)
+        .min(24);
+    for (i, template) in guide.templates.iter().enumerate().skip(start).take(shown) {
+        let chosen = guide.selected == Some(i);
+        let name = format!(":{}", template.name);
+        let mark = if chosen { "> " } else { "  " };
+        let row = format!("  {mark}{}  ", fit(&name, name_width));
+        let about = width.saturating_sub(row.chars().count());
+        let style = if chosen {
+            code.add_modifier(Modifier::BOLD)
+        } else {
+            code
+        };
+        lines.push(Line::from(vec![
+            Span::styled(row, style),
+            Span::styled(fit(&template.about, about), dim),
+        ]));
+    }
+    if guide.templates.len() > shown {
+        lines.push(Line::styled(
+            format!(
+                "    {} of {} (↑↓ for the others)",
+                shown,
+                guide.templates.len()
+            ),
+            dim,
+        ));
+    }
+    lines.push(Line::raw(""));
+    lines.push(end);
+
+    let height = u16::try_from(rows(&lines) + 2)
+        .unwrap_or(u16::MAX)
+        .min(area.height);
+    let box_area = Rect {
+        y: area.bottom() - height,
+        height,
+        ..area
+    };
+    frame.render_widget(Clear, box_area);
+    let title = format!(" Batch into {} ", guide.file);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .wrap(ratatui::widgets::Wrap { trim: false })
+            .block(panel(title, true)),
+        box_area,
+    );
+}
+
+/// A template, whole, as the file has it: what it says about itself is only a
+/// comment, and this is what it will do.
+fn draw_template_reading(frame: &mut Frame, reading: &app::TemplateReading, area: Rect) {
+    let t = theme();
+    let lines: Vec<Line> = reading
+        .lines
+        .iter()
+        .skip(reading.top)
+        .take(usize::from(area.height))
+        .map(|line| {
+            if line.starts_with("%%#") {
+                Line::styled(line.clone(), Style::new().fg(t.dim))
+            } else if line.starts_with("%%") {
+                Line::styled(line.clone(), Style::new().fg(t.key))
+            } else {
+                Line::raw(line.clone())
+            }
+        })
+        .collect();
+    let title = format!(
+        " Template :{} (line {} of {}) ",
+        reading.name,
+        reading.top + 1,
+        reading.lines.len().max(1)
+    );
+    frame.render_widget(Clear, area);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .wrap(ratatui::widgets::Wrap { trim: false })
+            .block(panel(title, true)),
+        area,
+    );
 }
 
 /// What a Batch of the viewer would write, for the user to look at first.
@@ -2310,6 +2528,15 @@ fn draw_batch_preview(frame: &mut Frame, preview: &app::BatchPreview, area: Rect
     }
     if let Some(warning) = found.stats.warning() {
         lines.push(Line::styled(warning, Style::new().fg(t.error)));
+    }
+    if !found.environment.is_empty() {
+        lines.push(Line::styled(
+            format!(
+                "Reads from the environment: {}",
+                found.environment.join(", ")
+            ),
+            Style::new().fg(t.error),
+        ));
     }
     lines.push(Line::raw(""));
     lines.extend(found.lines.iter().map(|l| Line::raw(l.clone())));
@@ -3141,6 +3368,29 @@ mod tests {
             .unwrap();
         let buf = term.backend().buffer();
         (0..width).map(|x| buf[(x, 0)].symbol()).collect()
+    }
+
+    #[test]
+    fn a_table_with_sheets_says_which_one_and_how_to_change_it() {
+        let mut t = TableGrid::new(String::new(), Vec::new(), Vec::new());
+        t.sheets = vec!["only".into()];
+        assert_eq!(table_frame_title(&t), " TABLE ");
+        assert_eq!(sheet_keys(&t, Path::new("a.xlsx")), "");
+
+        t.sheets = vec!["customers".into(), "clients".into()];
+        t.current_sheet = 1;
+        assert_eq!(table_frame_title(&t), " TABLE [2/2: clients] ");
+        assert_eq!(sheet_keys(&t, Path::new("a.xlsx")), "  ·  [ ] other sheet");
+        assert_eq!(sheet_keys(&t, Path::new("a.DB")), "  ·  [ ] other table");
+
+        // A long name does not take the frame.
+        t.sheets[1] = "é".repeat(50);
+        let title = table_frame_title(&t);
+        assert_eq!(
+            title.chars().filter(|&c| c == 'é').count(),
+            SHEET_NAME_CHARS
+        );
+        assert!(title.ends_with("…] "), "{title}");
     }
 
     #[test]

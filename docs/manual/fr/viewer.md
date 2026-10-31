@@ -130,7 +130,7 @@ Le séparateur du CSV (virgule, point-virgule, tabulation ou barre verticale) es
 | `T` | aller au texte du fichier et revenir |
 | `H` | du tableau au texte, puis à l'hexadécimal, puis retour au tableau |
 
-Le cadre affiche `TABLE [2/5]` s'il y a plusieurs feuilles ou tables, et la ligne du bas la position du curseur : `Cell B7 (Row 7 of 120)`. La dernière ligne de la grille donne le contenu entier de la cellule et le filtre en cours. La recherche (`F`, `B`, `/`) ne regarde pas dans la grille et n'y trouve rien ; elle fonctionne en mode texte.
+Le cadre affiche `TABLE [2/5: nom]` s'il y a plusieurs feuilles ou tables, et la ligne du bas la position du curseur : `Cell B7 (Row 7 of 120)`. La dernière ligne de la grille donne le contenu entier de la cellule et le filtre en cours. La recherche (`F`, `B`, `/`) ne regarde pas dans la grille et n'y trouve rien ; elle fonctionne en mode texte.
 
 ### Le filtre SQL
 

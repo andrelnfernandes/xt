@@ -126,7 +126,7 @@ The CSV separator (comma, semicolon, tab or vertical bar) is detected from the s
 | `T` | to the file's text and back |
 | `H` | from the table to text, then hex, then back to the table |
 
-The frame shows `TABLE [2/5]` when there is more than one sheet or table, and the bottom line where the cursor is: `Cell B7 (Row 7 of 120)`. The last line of the grid has the whole contents of the cell and the filter in use. Searching (`F`, `B`, `/`) does not look inside the grid and finds nothing there; it works in text mode.
+The frame shows `TABLE [2/5: name]` when there is more than one sheet or table, and the bottom line where the cursor is: `Cell B7 (Row 7 of 120)`. The last line of the grid has the whole contents of the cell and the filter in use. Searching (`F`, `B`, `/`) does not look inside the grid and finds nothing there; it works in text mode.
 
 ### The SQL filter
 

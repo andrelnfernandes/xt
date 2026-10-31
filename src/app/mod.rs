@@ -43,7 +43,7 @@ use crate::viewer::{self, Action as ViewerAction, SearchFrom, Viewer};
 
 mod actions;
 mod batch_cmd;
-pub use batch_cmd::BatchPreview;
+pub use batch_cmd::{BatchGuide, BatchPreview, TemplateReading};
 mod commands;
 mod context_help;
 mod git_cmd;

@@ -268,6 +268,9 @@ impl App {
                 prompt.label = transfer_label(*kind, sources, true, *paths, *mode);
                 return;
             }
+            if prompt.batch_mask_key(key) {
+                return;
+            }
             match prompt.input.handle_key(key) {
                 LineEvent::Submit => {
                     let prompt = self.prompt.take().unwrap();

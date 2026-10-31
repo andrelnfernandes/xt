@@ -218,7 +218,9 @@ mod tests {
             // What `run` does, without needing the environment variable.
             let answer = dir.join("answer");
             let mut inbox = Inbox::open(&answer).unwrap();
-            fs::write(dir.join("question"), "andre@host's password: ").unwrap();
+            let tmp = dir.join("question.tmp");
+            fs::write(&tmp, "andre@host's password: ").unwrap();
+            fs::rename(&tmp, dir.join("question")).unwrap();
             let mut got = Vec::new();
             let deadline = Instant::now() + Duration::from_secs(10);
             while !inbox.poll(&answer, &mut got) {

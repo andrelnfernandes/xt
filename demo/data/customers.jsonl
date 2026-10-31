@@ -1,0 +1,9 @@
+{"active":true,"balance":1234.5,"city":"São Paulo","code":"007","email":"ana@example.com","id":1,"joined":"2024-01-15","name":"Ana Souza","plan":"pro"}
+{"active":true,"balance":0.0,"city":"Dublin","code":"042","email":"patrick@example.org","id":2,"joined":"2024-02-03","name":"Patrick O'Neil","plan":"free"}
+{"active":false,"balance":-87.25,"city":"Rio de Janeiro","code":"108","email":"bruno@example.net","id":3,"joined":"2024-03-20","name":"Bruno \"Bê\" Lima","plan":"pro"}
+{"active":true,"balance":9876.0,"city":"Zürich, ZH","code":"0815","email":"zoe@example.com","id":4,"joined":"2024-05-09","name":"Zoë Müller","plan":"team"}
+{"active":true,"balance":42.0,"city":"Beijing","code":"1000","email":"lilei@example.com","id":5,"joined":"2024-06-30","name":"Li Lei","plan":"team"}
+{"active":false,"balance":0.0,"city":"</td><td>","code":"2001","email":"html@example.com","id":6,"joined":"2024-07-01","name":"<script>alert(1)</script>","plan":"free"}
+{"active":false,"balance":0.0,"city":"`id`; echo injected","code":"2002","email":"shell@example.com","id":7,"joined":"2024-07-02","name":"$(echo injected)","plan":"free"}
+{"active":false,"balance":0.0,"city":"back\\slash'","code":"2003","email":"sql@example.com","id":8,"joined":"2024-07-03","name":"Robert'); DROP TABLE customers;--","plan":"free"}
+{"active":false,"balance":0.0,"city":"+1+1","code":"2004","email":"formula@example.com","id":9,"joined":"2024-07-04","name":"=HYPERLINK(\"http://example.com\")","plan":"free"}

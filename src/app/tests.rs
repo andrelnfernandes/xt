@@ -2896,7 +2896,9 @@ fn batch_in_the_viewer_writes_the_filtered_records() {
     let out = tmp.path().join("out.sh");
     ctrl_b(&mut app);
     answer_prompt(&mut app, out.to_str().unwrap());
-    assert!(app.prompt.as_ref().unwrap().label.contains("id, name, #"));
+    let guide = app.prompt.as_ref().unwrap().batch_guide().unwrap();
+    assert!(guide.fields.contains("id, name, #"), "{}", guide.fields);
+    assert_eq!(guide.example, "%{id} %{name}");
     answer_prompt(&mut app, "echo %{#} %{name}");
 
     // Nothing is written before the preview is accepted.
@@ -2972,14 +2974,106 @@ fn batch_refuses_what_it_cannot_do_safely() {
     ctrl_b(&mut app);
     answer_prompt(&mut app, out.to_str().unwrap());
     answer_prompt(&mut app, "%{nope}");
-    assert_eq!(note(&app), "Mask: no field named nope");
     assert!(app.batch_preview.is_none());
+    assert!(!out.exists());
+    // The mask comes back to be corrected, saying what is wrong with it.
+    let prompt = app.prompt.as_ref().expect("the prompt stays open");
+    assert_eq!(prompt.input.text, "%{nope}");
+    assert_eq!(
+        prompt.batch_guide().unwrap().problem.as_deref(),
+        Some("Mask: no field named nope")
+    );
+    answer_prompt(&mut app, "");
+    let prompt = app.prompt.as_ref().expect("an empty mask asks again");
+    let problem = prompt.batch_guide().unwrap().problem.clone().unwrap();
+    assert!(problem.contains(":template"), "{problem}");
+    press(&mut app, KeyCode::Esc);
+    assert!(app.prompt.is_none());
 
     press(&mut app, KeyCode::Char('h'));
     press(&mut app, KeyCode::Char('h'));
     ctrl_b(&mut app);
     assert!(note(&app).contains("text and tables"));
     assert!(app.prompt.is_none());
+}
+
+#[test]
+fn batch_says_what_works_on_the_open_file() {
+    let (tmp, mut app) = sample();
+    let path = tmp.path().join("log.txt");
+    std::fs::write(&path, "ip 1.2.3.4\n").unwrap();
+    app.viewer = Some(Viewer::open(path, viewer::LoadOptions::view(1 << 20)).unwrap());
+    let guide = |app: &mut App| {
+        ctrl_b(app);
+        let out = tmp.path().join("out.txt");
+        answer_prompt(app, out.to_str().unwrap());
+        let prompt = app.prompt.as_ref().unwrap();
+        let guide = prompt.batch_guide().unwrap();
+        let found = (guide.example.clone(), guide.open_template.clone());
+        press(app, KeyCode::Esc);
+        found
+    };
+    assert_eq!(guide(&mut app), ("%{#line}: %{line}".to_string(), None));
+
+    press(&mut app, KeyCode::Char('&'));
+    press(&mut app, KeyCode::F(4));
+    answer_prompt(&mut app, r"ip (?P<addr>\S+)");
+    assert_eq!(guide(&mut app).0, "%{#line}: %{addr}");
+
+    // A template opened by mistake is data to the Batch: it says so.
+    let path = tmp.path().join("report.tpl");
+    std::fs::write(&path, "%%record\n%{a}\n").unwrap();
+    app.viewer = Some(Viewer::open(path, viewer::LoadOptions::view(1 << 20)).unwrap());
+    let warning = guide(&mut app).1.expect("a warning");
+    assert!(warning.contains("open the data"), "{warning}");
+}
+
+#[test]
+fn batch_arrows_choose_a_template_and_leave_typing_alone() {
+    let (tmp, mut app) = sample();
+    let path = tmp.path().join("a.txt");
+    std::fs::write(&path, "x\n").unwrap();
+    app.viewer = Some(Viewer::open(path, viewer::LoadOptions::view(1 << 20)).unwrap());
+    ctrl_b(&mut app);
+    let out = tmp.path().join("out.txt");
+    answer_prompt(&mut app, out.to_str().unwrap());
+    // Not the templates of whoever runs the tests.
+    {
+        let prompt = app.prompt.as_mut().unwrap();
+        let PromptKind::ViewerBatchMask { guide, .. } = &mut prompt.kind else {
+            panic!("the mask prompt");
+        };
+        guide.templates = ["a", "b"]
+            .map(|name| viewer::batch::TemplateInfo {
+                name: name.to_string(),
+                about: String::new(),
+            })
+            .to_vec();
+    }
+    let text = |app: &App| app.prompt.as_ref().unwrap().input.text.clone();
+    let selected = |app: &App| app.prompt.as_ref().unwrap().batch_guide().unwrap().selected;
+
+    press(&mut app, KeyCode::Down);
+    assert_eq!((text(&app).as_str(), selected(&app)), (":a", Some(0)));
+    press(&mut app, KeyCode::Down);
+    press(&mut app, KeyCode::Down);
+    assert_eq!((text(&app).as_str(), selected(&app)), (":b", Some(1)));
+    press(&mut app, KeyCode::Up);
+    press(&mut app, KeyCode::Up);
+    assert_eq!((text(&app).as_str(), selected(&app)), ("", None));
+
+    // A mask being typed is not a choice, and the arrows do not replace it.
+    press(&mut app, KeyCode::Char('z'));
+    press(&mut app, KeyCode::Down);
+    assert_eq!((text(&app).as_str(), selected(&app)), ("z", None));
+    // Typing the name of one is the same as choosing it.
+    press(&mut app, KeyCode::Backspace);
+    press(&mut app, KeyCode::Char(':'));
+    press(&mut app, KeyCode::Char('b'));
+    assert_eq!(selected(&app), Some(1));
+    press(&mut app, KeyCode::Esc);
+    assert!(app.prompt.is_none());
+    assert!(app.viewer.is_some());
 }
 
 #[test]

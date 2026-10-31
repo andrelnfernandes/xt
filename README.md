@@ -251,6 +251,7 @@ native speakers: if you read one of these languages, [suggestions are welcome](d
 - `src/keymap.rs` — default keys and configuration overrides
 - `src/help.rs` — the help (F1): topics, links, and the man page
 - `docs/manual/` — the manual: the help's topics, in Markdown
+- [`demo/`](demo/README.md) — files in every format and Batch templates to try
 - `src/filetype.rs` — what a file is, for the Type display mode
 - `src/ui.rs` — screen drawing (ratatui)
 - `src/viewer.rs` — text/hex viewer
