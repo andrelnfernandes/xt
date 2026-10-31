@@ -618,7 +618,7 @@ impl App {
                             t.cursor_row = row - 1;
                             t.scroll_row = (row - 1).saturating_sub(v.page / 2);
                         }
-                    } else if v.mode == ViewMode::Text {
+                    } else if matches!(v.mode, ViewMode::Text | ViewMode::Rendered) {
                         match clean.parse::<usize>() {
                             Ok(line) if line > 0 => v.goto_line(line),
                             _ => v.note = Some(format!("Invalid line number: {text}")),

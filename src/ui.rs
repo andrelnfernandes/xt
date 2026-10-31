@@ -2125,6 +2125,12 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
             ));
         }
     }
+    if v.rendered_cut() {
+        title.push(Span::styled(
+            "  (rendered only the start)",
+            Style::new().fg(theme().error),
+        ));
+    }
     if v.mode == ViewMode::Table
         && let Some(cut) = v.table.as_ref().and_then(|t| t.cut.as_ref())
     {
@@ -2173,6 +2179,7 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
     let mode = match v.mode {
         ViewMode::Text => " TEXT ".to_string(),
         ViewMode::Hex => " HEX ".to_string(),
+        ViewMode::Rendered => " RENDERED ".to_string(),
         ViewMode::Table => {
             if let Some(t) = &v.table {
                 if t.sheets.len() > 1 {
@@ -2195,6 +2202,11 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
         ViewMode::Text => format!(
             "Line {} of {}",
             fmt_num(v.top_line() as u64 + 1),
+            fmt_num(v.total_lines().max(1) as u64)
+        ),
+        ViewMode::Rendered => format!(
+            "Line {} of {}",
+            fmt_num(v.rendered_line() as u64 + 1),
             fmt_num(v.total_lines().max(1) as u64)
         ),
         ViewMode::Hex => format!("Offset {:08X}", v.top * viewer::HEX_WIDTH),
@@ -2230,6 +2242,9 @@ fn draw_viewer(frame: &mut Frame, app: &mut App) {
         let mut words = vec![
             "Find", "Backward", "Hex", "Colors", "Wrap", "#Num", "Goto", "Edit", "cOdepage",
         ];
+        if v.can_render() {
+            words.insert(3, "Text");
+        }
         if diff {
             words.push("Diff");
         }
@@ -2388,7 +2403,7 @@ fn draw_viewer_body(frame: &mut Frame, v: &mut Viewer, title: String, area: Rect
     }
     let mark = highlight(true).add_modifier(Modifier::BOLD);
     let digits = v.total_lines().to_string().len().max(1);
-    let show_numbers = v.line_numbers && v.mode == ViewMode::Text;
+    let show_numbers = v.line_numbers && matches!(v.mode, ViewMode::Text | ViewMode::Rendered);
     let t = theme();
     let lines: Vec<Line> = v
         .styled(inner.height as usize)
@@ -2412,11 +2427,12 @@ fn draw_viewer_body(frame: &mut Frame, v: &mut Viewer, title: String, area: Rect
                 }
                 spans.push(Span::styled("│ ", Style::new().fg(t.border)));
             }
-            for (text, color, marked) in row.segments {
+            for (text, color, marked, modifier) in row.segments {
+                let plain = Style::new().add_modifier(modifier);
                 spans.push(match (marked, color) {
                     (true, _) => Span::styled(text, mark),
-                    (false, Some(c)) => Span::styled(text, Style::new().fg(c)),
-                    (false, None) => Span::raw(text),
+                    (false, Some(c)) => Span::styled(text, plain.fg(c)),
+                    (false, None) => Span::styled(text, plain),
                 });
             }
             Line::from(spans)
