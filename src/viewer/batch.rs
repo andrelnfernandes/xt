@@ -36,7 +36,7 @@ const SCAN_TIME: Duration = Duration::from_secs(3);
 const PREVIEW_HEADER_LINES: usize = 3;
 /// A template is typed by hand; anything larger is not one.
 const MAX_TEMPLATE_BYTES: u64 = 1024 * 1024;
-const TEMPLATE_EXTENSION: &str = "tpl";
+pub const TEMPLATE_EXTENSION: &str = "tpl";
 
 /// How a value goes into the output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -377,7 +377,7 @@ impl Mask {
     /// `%{$NAME}` is a variable of the process, and `%{#...}` what `Context` knows.
     fn parse_in(text: &str, default: Escape, context: &Context<'_>) -> Result<Self, String> {
         if text.trim().is_empty() {
-            return Err("Batch cancelled: empty line mask".into());
+            return Err("Mask: empty. Type what to write for each record, or :template".into());
         }
         let mut parts = Vec::new();
         let mut environment = Vec::new();
@@ -625,13 +625,91 @@ fn template_name(text: &str) -> Option<&str> {
     valid.then_some(name)
 }
 
-fn template_dir() -> Option<PathBuf> {
+pub fn template_dir() -> Option<PathBuf> {
     Some(crate::platform::config_dir()?.join("batch"))
 }
 
+/// The most templates the prompt offers.
+const MAX_LISTED_TEMPLATES: usize = 100;
+
+/// Longest line of a template on the screen: longer ones continue below, so
+/// that scrolling reaches all of them.
+const TEMPLATE_VIEW_CHARS: usize = 200;
+
+/// A template the prompt offers.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TemplateInfo {
+    pub name: String,
+    /// What its first comment says. The file wrote this: it informs, and only
+    /// reading the template shows what it really does.
+    pub about: String,
+}
+
 /// The templates there are, for the prompt.
-pub fn template_names() -> Vec<String> {
-    template_dir().map_or_else(Vec::new, |dir| names_in(&dir))
+pub fn template_list() -> Vec<TemplateInfo> {
+    let Some(dir) = template_dir() else {
+        return Vec::new();
+    };
+    names_in(&dir)
+        .into_iter()
+        .take(MAX_LISTED_TEMPLATES)
+        .map(|name| {
+            let about =
+                read_template(&name, Some(&dir)).map_or(String::new(), |t| template_about(&t));
+            TemplateInfo { name, about }
+        })
+        .collect()
+}
+
+/// The first sentence of the comment a template starts with.
+fn template_about(text: &str) -> String {
+    let text = text.strip_prefix('\u{FEFF}').unwrap_or(text);
+    let comment: Vec<&str> = text
+        .lines()
+        .map_while(|line| line.strip_prefix("%%#"))
+        .map(str::trim)
+        .collect();
+    let comment = comment.join(" ");
+    let first = comment
+        .find(". ")
+        .map_or(comment.as_str(), |at| &comment[..=at]);
+    screen_safe(first.trim())
+}
+
+/// What a file wrote, made safe for the screen.
+fn screen_safe(text: &str) -> String {
+    text.chars()
+        .map(|c| {
+            if c.is_control() || crate::bidi::is_bidi(c) || c == '\u{2028}' || c == '\u{2029}' {
+                '·'
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
+/// The lines of a template, to be read on the screen. Everything in the file
+/// is shown, comments too.
+pub fn template_lines(name: &str) -> Result<Vec<String>, String> {
+    let text = read_template(name, template_dir().as_deref())?;
+    Ok(view_lines(&text))
+}
+
+fn view_lines(text: &str) -> Vec<String> {
+    let text = text.strip_prefix('\u{FEFF}').unwrap_or(text);
+    let mut lines = Vec::new();
+    for line in text.lines() {
+        let line: Vec<char> = screen_safe(&line.replace('\t', "    ")).chars().collect();
+        if line.is_empty() {
+            lines.push(String::new());
+        }
+        lines.extend(
+            line.chunks(TEMPLATE_VIEW_CHARS)
+                .map(|c| c.iter().collect::<String>()),
+        );
+    }
+    lines
 }
 
 fn names_in(dir: &Path) -> Vec<String> {
@@ -1239,6 +1317,36 @@ impl Source {
         }
     }
 
+    /// A mask that works on this source, for the prompt to show.
+    pub fn example(&self, columns: &[String]) -> String {
+        match self {
+            Source::Table { .. } => {
+                let simple: Vec<String> = columns
+                    .iter()
+                    .filter(|c| c.chars().all(|c| c.is_alphanumeric() || c == '_'))
+                    .filter(|c| !c.is_empty())
+                    .take(2)
+                    .map(|c| format!("%{{{c}}}"))
+                    .collect();
+                if simple.is_empty() {
+                    "%{a}".to_string()
+                } else {
+                    simple.join(" ")
+                }
+            }
+            Source::Text { regex, .. } => {
+                let group = regex.as_ref().and_then(|regex| {
+                    let named = regex.capture_names().flatten().next();
+                    match named {
+                        Some(name) => Some(name.to_string()),
+                        None => (regex.captures_len() > 1).then(|| "1".to_string()),
+                    }
+                });
+                format!("%{{#line}}: %{{{}}}", group.as_deref().unwrap_or("line"))
+            }
+        }
+    }
+
     /// Reads the source, stopping when `deliver` says so or `budget` runs out.
     fn run(
         &self,
@@ -1563,6 +1671,10 @@ fn write_file(
         cut: source.cut(),
     })
 }
+
+#[cfg(test)]
+#[path = "batch_demo.rs"]
+mod demo;
 
 #[cfg(test)]
 mod tests {
@@ -2475,6 +2587,28 @@ mod tests {
             assert_eq!(template_name(mask), None, "{mask}");
         }
         assert!(matches!(output(": %{id}", "x.sh"), Output::Lines(_)));
+    }
+
+    #[test]
+    fn a_template_says_what_it_does_in_its_first_comment() {
+        let about =
+            template_about("%%# One UPDATE per record. Write it\n%%# to a .sql.\n%%record\n");
+        assert_eq!(about, "One UPDATE per record.");
+        let about = template_about("%%# Reads well\n%%# on two lines\n%%record\n%%# not this\n");
+        assert_eq!(about, "Reads well on two lines");
+        assert_eq!(template_about("%%record\n%%# too late\n"), "");
+        // The file wrote it: nothing in it may act on the screen.
+        let about = template_about("%%# safe\u{1b}[2J\u{202e}text\n");
+        assert_eq!(about, "safe·[2J·text");
+    }
+
+    #[test]
+    fn a_template_on_the_screen_hides_nothing() {
+        let long = "x".repeat(TEMPLATE_VIEW_CHARS + 1);
+        let lines = view_lines(&format!("%%# a\n\n\tb\u{1b}\n{long}\n"));
+        assert_eq!(lines[..3], ["%%# a", "", "    b·"]);
+        assert_eq!(lines[3].chars().count(), TEMPLATE_VIEW_CHARS);
+        assert_eq!(lines[4], "x", "a long line continues below");
     }
 
     #[test]

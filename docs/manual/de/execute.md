@@ -115,6 +115,8 @@ Sie sie mit `X`). Eine bereits vorhandene Datei wird nicht überschrieben.
 
 Bei einer im [Betrachter](viewer.md) geöffneten Tabelle oder einem Text schreibt **Ctrl+B** eine Zeile pro Datensatz aus der ganzen Datei: über die 50.000 Zeilen des Bildschirms hinaus, mit vollständigen Werten, genau wie in der Datei. Der aktive Filter gilt (der SQL-Filter bei Tabellen, der [Zeilenfilter](filter.md) bei Text). Eine Tabelle wird dafür neu gelesen; Text kommt so, wie der Betrachter ihn gelesen hat, bis zum Größenlimit, und die Vorschau warnt, wenn das nicht die ganze Datei ist. Es fragt nach der Datei, dann nach der Maske, und zeigt vor dem Schreiben die ersten Zeilen: **Enter** schreibt, **Esc** gibt auf. Während des Schreibens bricht Esc ab und entfernt die unvollständige Datei. Eine vorhandene Datei wird nicht überschrieben.
 
+Während Sie die Maske eingeben, zeigt ein Kasten darüber eine Maske, die mit dieser Datei funktioniert, ihre Felder und Ihre Vorlagen, jede mit dem ersten Satz ihres einleitenden Kommentars (`%%#`). **↑↓** wählen eine Vorlage, **F3** zeigt sie vor der Verwendung vollständig an und **PgUp**/**PgDn** blättern durch den Verlauf. Die Beschreibung stammt vom Autor der Vorlage: Lesen Sie eine fremde Vorlage mit F3, bevor Sie sie verwenden. Bei einem Fehler in der Maske bleibt die Eingabe mit dem Getippten offen und nennt das Problem.
+
 | Feld | Wert |
 |---|---|
 | `%{name}` `%{A}` `%{2}` | eine Tabellenspalte, nach Name, Buchstabe oder Position |
@@ -159,6 +161,8 @@ Die Werte stammen aus einer möglicherweise feindlichen Datei und können in etw
 Lassen Sie bei einer Datei `.json`, `.jsonl`, `.ndjson`, `.csv`, `.tsv`, `.xml`, `.html` oder `.htm` die Maske **leer**, um ganze Datensätze nach den Regeln des Formats zu schreiben: ein JSON-Array von Objekten, ein Objekt pro Zeile, eine Tabelle mit Kopfzeile, ein `<record>` pro Datensatz oder eine Seite mit einer Tabelle. Um nur einige Felder zu schreiben, beginnen Sie die Maske mit `@`: `@id, name, #`. Text liefert `line_number`, `line` und die Gruppen des Filters. Die Felder werden in den ersten 1.000 Datensätzen ermittelt: Ein JSON-Lines-Schlüssel, der erst später auftaucht, bleibt außen vor, und die Abschlussmeldung weist darauf hin.
 
 ### Vorlagen
+
+Dateien zum Ausprobieren liegen im Repository unter [demo/](https://github.com/andrelnfernandes/xylem/tree/main/demo): dieselben Kunden in jedem Format und fertige Vorlagen.
 
 Für Text um die Datensätze herum speichern Sie eine Vorlage als `~/.config/xylem/batch/name.tpl` und geben `:name` als Maske ein; die Eingabezeile listet die gefundenen auf (die ersten vier).
 

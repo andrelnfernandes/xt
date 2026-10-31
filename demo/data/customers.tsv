@@ -1,0 +1,10 @@
+id	code	name	email	city	plan	balance	active	joined
+1	007	Ana Souza	ana@example.com	São Paulo	pro	1234.5	true	2024-01-15
+2	042	Patrick O'Neil	patrick@example.org	Dublin	free	0	true	2024-02-03
+3	108	"Bruno ""Bê"" Lima"	bruno@example.net	Rio de Janeiro	pro	-87.25	false	2024-03-20
+4	0815	Zoë Müller	zoe@example.com	Zürich, ZH	team	9876	true	2024-05-09
+5	1000	Li Lei	lilei@example.com	Beijing	team	42	true	2024-06-30
+6	2001	<script>alert(1)</script>	html@example.com	</td><td>	free	0	false	2024-07-01
+7	2002	$(echo injected)	shell@example.com	`id`; echo injected	free	0	false	2024-07-02
+8	2003	Robert'); DROP TABLE customers;--	sql@example.com	back\slash'	free	0	false	2024-07-03
+9	2004	"=HYPERLINK(""http://example.com"")"	formula@example.com	+1+1	free	0	false	2024-07-04

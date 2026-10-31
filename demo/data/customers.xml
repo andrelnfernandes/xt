@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<customers>
+  <customer id="1">
+    <code>007</code>
+    <name>Ana Souza</name>
+    <email>ana@example.com</email>
+    <city>São Paulo</city>
+    <plan>pro</plan>
+    <balance>1234.5</balance>
+    <active>true</active>
+    <joined>2024-01-15</joined>
+  </customer>
+  <customer id="2">
+    <code>042</code>
+    <name>Patrick O&#39;Neil</name>
+    <email>patrick@example.org</email>
+    <city>Dublin</city>
+    <plan>free</plan>
+    <balance>0</balance>
+    <active>true</active>
+    <joined>2024-02-03</joined>
+  </customer>
+  <customer id="3">
+    <code>108</code>
+    <name>Bruno &quot;Bê&quot; Lima</name>
+    <email>bruno@example.net</email>
+    <city>Rio de Janeiro</city>
+    <plan>pro</plan>
+    <balance>-87.25</balance>
+    <active>false</active>
+    <joined>2024-03-20</joined>
+  </customer>
+  <customer id="4">
+    <code>0815</code>
+    <name>Zoë Müller</name>
+    <email>zoe@example.com</email>
+    <city>Zürich, ZH</city>
+    <plan>team</plan>
+    <balance>9876</balance>
+    <active>true</active>
+    <joined>2024-05-09</joined>
+  </customer>
+  <customer id="5">
+    <code>1000</code>
+    <name>Li Lei</name>
+    <email>lilei@example.com</email>
+    <city>Beijing</city>
+    <plan>team</plan>
+    <balance>42</balance>
+    <active>true</active>
+    <joined>2024-06-30</joined>
+  </customer>
+  <customer id="6">
+    <code>2001</code>
+    <name>&lt;script&gt;alert(1)&lt;/script&gt;</name>
+    <email>html@example.com</email>
+    <city>&lt;/td&gt;&lt;td&gt;</city>
+    <plan>free</plan>
+    <balance>0</balance>
+    <active>false</active>
+    <joined>2024-07-01</joined>
+  </customer>
+  <customer id="7">
+    <code>2002</code>
+    <name>$(echo injected)</name>
+    <email>shell@example.com</email>
+    <city>`id`; echo injected</city>
+    <plan>free</plan>
+    <balance>0</balance>
+    <active>false</active>
+    <joined>2024-07-02</joined>
+  </customer>
+  <customer id="8">
+    <code>2003</code>
+    <name>Robert&#39;); DROP TABLE customers;--</name>
+    <email>sql@example.com</email>
+    <city>back\slash&#39;</city>
+    <plan>free</plan>
+    <balance>0</balance>
+    <active>false</active>
+    <joined>2024-07-03</joined>
+  </customer>
+  <customer id="9">
+    <code>2004</code>
+    <name>=HYPERLINK(&quot;http://example.com&quot;)</name>
+    <email>formula@example.com</email>
+    <city>+1+1</city>
+    <plan>free</plan>
+    <balance>0</balance>
+    <active>false</active>
+    <joined>2024-07-04</joined>
+  </customer>
+</customers>

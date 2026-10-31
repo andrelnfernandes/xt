@@ -110,7 +110,7 @@ O separador do CSV (vírgula, ponto e vírgula, tabulação ou barra vertical) �
 | `T` | vai para o texto do arquivo e volta |
 | `H` | da tabela para o texto, depois hexadecimal, depois de volta à tabela |
 
-A moldura mostra `TABLE [2/5]` quando há mais de uma aba ou tabela, e a linha de baixo mostra onde está o cursor: `Cell B7 (Row 7 of 120)`. A última linha da grade traz o conteúdo inteiro da célula e o filtro em uso. A busca (`F`, `B`, `/`) não olha dentro da grade e nada encontra ali; ela funciona no modo texto.
+A moldura mostra `TABLE [2/5: nome]` quando há mais de uma aba ou tabela, e a linha de baixo mostra onde está o cursor: `Cell B7 (Row 7 of 120)`. A última linha da grade traz o conteúdo inteiro da célula e o filtro em uso. A busca (`F`, `B`, `/`) não olha dentro da grade e nada encontra ali; ela funciona no modo texto.
 
 ### O filtro SQL
 

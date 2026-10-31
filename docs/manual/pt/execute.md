@@ -110,6 +110,8 @@ não é sobrescrito.
 
 Com uma tabela ou um texto aberto no [visualizador](viewer.md), **Ctrl+B** escreve uma linha por registro, a partir do arquivo inteiro: além das 50.000 linhas da tela, com os valores inteiros e exatamente como estão no arquivo. Ele respeita o filtro em uso (o filtro SQL na tabela, o [filtro de linhas](filter.md) no texto). A tabela é relida na hora; o texto sai como o visualizador leu, até o limite de tamanho, e a prévia avisa quando isso não é o arquivo inteiro. Ele pede o arquivo, depois a máscara, e mostra as primeiras linhas antes de gravar: **Enter** grava, **Esc** desiste. Durante a gravação, Esc cancela e remove o arquivo incompleto. Um arquivo existente não é sobrescrito.
 
+Enquanto você digita a máscara, um quadro acima dela mostra uma máscara que funciona neste arquivo, os campos dele e os templates que você tem, cada um com a primeira frase do comentário inicial (`%%#`). **↑↓** escolhem um template, **F3** o mostra inteiro antes de usar e **PgUp**/**PgDn** percorrem o histórico. A descrição foi escrita por quem fez o template: leia com F3 um template de outra pessoa antes de usá-lo. Um erro na máscara mantém o prompt aberto com o que você digitou e diz o que está errado.
+
 | Campo | Valor |
 |---|---|
 | `%{nome}` `%{A}` `%{2}` | uma coluna da tabela, por nome, letra ou posição |
@@ -154,6 +156,8 @@ Os valores vêm de um arquivo que pode ser hostil e podem ir para algo que você
 Em um arquivo `.json`, `.jsonl`, `.ndjson`, `.csv`, `.tsv`, `.xml`, `.html` ou `.htm`, deixe a máscara **vazia** para gravar registros inteiros, com as regras do formato: um array JSON de objetos, um objeto por linha, uma tabela com linha de cabeçalho, um `<record>` por registro ou uma página com uma tabela. Para gravar só alguns campos, comece a máscara com `@`: `@id, nome, #`. O texto dá `line_number`, `line` e os grupos do filtro. Os campos são descobertos nos primeiros 1.000 registros: uma chave de JSON Lines que só apareça depois fica de fora, e a mensagem final avisa.
 
 ### Templates
+
+Arquivos para testar tudo isso estão em [demo/](https://github.com/andrelnfernandes/xylem/tree/main/demo) no repositório: os mesmos clientes em todos os formatos, e templates prontos.
 
 Para ter texto em volta dos registros, salve um template em `~/.config/xylem/batch/nome.tpl` e digite `:nome` como máscara; o prompt lista os que encontrar (os quatro primeiros).
 

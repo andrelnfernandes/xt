@@ -115,6 +115,8 @@ En minuscules, ils sont protégés par des guillemets, prêts pour le shell
 
 Avec un tableau ou un texte ouvert dans la [visionneuse](viewer.md), **Ctrl+B** écrit une ligne par enregistrement, à partir du fichier entier : au-delà des 50 000 lignes de l'écran, avec les valeurs entières et telles qu'elles sont dans le fichier. Il respecte le filtre en cours (le filtre SQL sur un tableau, le [filtre de lignes](filter.md) sur le texte). Un tableau est relu à ce moment-là ; le texte sort tel que la visionneuse l'a lu, jusqu'à la limite de taille, et l'aperçu avertit quand ce n'est pas tout le fichier. Il demande le fichier, puis le masque, et affiche les premières lignes avant d'écrire : **Entrée** écrit, **Échap** renonce. Pendant l'écriture, Échap annule et supprime le fichier incomplet. Un fichier existant n'est pas écrasé.
 
+Pendant la saisie du masque, un cadre au-dessus montre un masque qui fonctionne sur ce fichier, ses champs et les modèles dont vous disposez, chacun avec la première phrase de son commentaire initial (`%%#`). **↑↓** choisissent un modèle, **F3** l'affiche en entier avant de l'utiliser et **PgUp**/**PgDn** parcourent l'historique. La description vient de l'auteur du modèle : lisez avec F3 un modèle d'une autre personne avant de l'utiliser. Une erreur dans le masque laisse l'invite ouverte avec ce que vous avez tapé et indique ce qui ne va pas.
+
 | Champ | Valeur |
 |---|---|
 | `%{nom}` `%{A}` `%{2}` | une colonne du tableau, par nom, lettre ou position |
@@ -159,6 +161,8 @@ Les valeurs viennent d'un fichier qui peut être hostile et peuvent aller dans c
 Dans un fichier `.json`, `.jsonl`, `.ndjson`, `.csv`, `.tsv`, `.xml`, `.html` ou `.htm`, laissez le masque **vide** pour écrire des enregistrements entiers, selon les règles du format : un tableau JSON d'objets, un objet par ligne, un tableau avec une ligne d'en-tête, un `<record>` par enregistrement ou une page avec un tableau. Pour n'écrire que certains champs, commencez le masque par `@` : `@id, nom, #`. Le texte donne `line_number`, `line` et les groupes du filtre. Les champs sont découverts dans les 1 000 premiers enregistrements : une clé JSON Lines qui n'apparaît qu'ensuite est laissée de côté, et le message final le signale.
 
 ### Modèles
+
+Les fichiers pour essayer tout cela sont dans [demo/](https://github.com/andrelnfernandes/xylem/tree/main/demo) dans le dépôt : les mêmes clients dans tous les formats, et des modèles prêts à l'emploi.
 
 Pour avoir du texte autour des enregistrements, enregistrez un modèle sous `~/.config/xylem/batch/nom.tpl` et tapez `:nom` comme masque ; l'invite liste ceux qu'elle trouve (les quatre premiers).
 

@@ -82,3 +82,9 @@ as a link is what `cp -a` and `rsync -l` do).
   Next: conditions and sums in templates (5b, steps 2 and 3),
   binary outputs (6) and tagging records (7). Records into `.bat`/`.cmd` wait for item 2
   of Security; the filter on screen sees 50,000 rows, while Ctrl+B sees them all.
+- **HTML rendered in the viewer**, after the Markdown mode: study a way to show
+  `.html` acceptably, not perfectly: whoever wants a faithful page opens it in the
+  browser. `pulldown-cmark` does not read HTML. First candidates: `html2text`, or
+  `html5ever` directly to share the Markdown mode's drawing. Nothing runs or is
+  downloaded (no JavaScript, CSS or images), links show their real address, and H
+  still reaches the source: without CSS, text a page hides does appear.

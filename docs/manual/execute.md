@@ -105,6 +105,8 @@ and execute permission (run it with `X`). An existing file is not overwritten.
 
 With a table or text open in the [viewer](viewer.md), **Ctrl+B** writes one line per record, from the whole file: past the 50,000 rows of the screen, with values whole and exactly as in the file. It respects the filter in use (the SQL filter on a table, the [line filter](filter.md) on text). A table is read again when it runs; text comes as the viewer read it, up to the size limit, and the preview warns when that is not all of the file. It asks for the file, then the mask, and shows the first lines before writing: **Enter** writes, **Esc** gives up. While writing, Esc cancels and removes the incomplete file. An existing file is not overwritten.
 
+While you type the mask, a box above it shows a mask that works on this file, its fields and the templates you have, each with the first sentence of its opening comment (`%%#`). **↑↓** choose a template, **F3** shows it whole before you use it and **PgUp**/**PgDn** go through the history. The description was written by whoever wrote the template: read a template from someone else with F3 before using it. A mistake in the mask keeps the prompt open with what you typed and says what is wrong.
+
 | Field | Value |
 |---|---|
 | `%{name}` `%{A}` `%{2}` | a column of a table, by name, letter or position |
@@ -149,6 +151,8 @@ The values come from a file that may be hostile and may go into something you ru
 In a `.json`, `.jsonl`, `.ndjson`, `.csv`, `.tsv`, `.xml`, `.html` or `.htm` file, leave the mask **empty** to write whole records, with the rules of the format: a JSON array of objects, an object per line, a table with a header row, a `<record>` per record, or a page with a table. To write only some fields, start the mask with `@`: `@id, name, #`. Text gives `line_number`, `line` and the groups of the filter. Fields are found in the first 1,000 records: a JSON Lines key that appears only later is left out, and the final message says so.
 
 ### Templates
+
+Files to try all of this are in [demo/](https://github.com/andrelnfernandes/xylem/tree/main/demo) in the repository: the same customers in every format, and ready templates.
 
 For text around the records, save a template as `~/.config/xylem/batch/name.tpl` and type `:name` as the mask; the prompt lists the ones it finds (the first four).
 

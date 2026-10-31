@@ -111,7 +111,7 @@ Das CSV-Trennzeichen (Komma, Semikolon, Tabulator oder senkrechter Strich) wird 
 | `T` | zum Text der Datei und zurück |
 | `H` | von der Tabelle zum Text, dann Hex, dann zurück zur Tabelle |
 
-Der Rahmen zeigt `TABLE [2/5]`, wenn es mehrere Blätter oder Tabellen gibt, und die untere Zeile die Position des Cursors: `Cell B7 (Row 7 of 120)`. Die letzte Zeile des Rasters enthält den ganzen Zellinhalt und den aktiven Filter. Die Suche (`F`, `B`, `/`) schaut nicht in das Raster und findet dort nichts; sie funktioniert im Textmodus.
+Der Rahmen zeigt `TABLE [2/5: Name]`, wenn es mehrere Blätter oder Tabellen gibt, und die untere Zeile die Position des Cursors: `Cell B7 (Row 7 of 120)`. Die letzte Zeile des Rasters enthält den ganzen Zellinhalt und den aktiven Filter. Die Suche (`F`, `B`, `/`) schaut nicht in das Raster und findet dort nichts; sie funktioniert im Textmodus.
 
 ### Der SQL-Filter
 

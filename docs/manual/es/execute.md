@@ -112,6 +112,8 @@ Un archivo existente no se sobrescribe.
 
 Con una tabla o un texto abierto en el [visor](viewer.md), **Ctrl+B** escribe una línea por registro, a partir del archivo entero: más allá de las 50 000 filas de la pantalla, con los valores enteros y tal como están en el archivo. Respeta el filtro en uso (el filtro SQL en la tabla, el [filtro de líneas](filter.md) en el texto). La tabla se vuelve a leer en ese momento; el texto sale como lo leyó el visor, hasta el límite de tamaño, y la vista previa avisa cuando eso no es todo el archivo. Pide el archivo, luego la máscara, y muestra las primeras líneas antes de escribir: **Enter** escribe, **Esc** desiste. Durante la escritura, Esc cancela y elimina el archivo incompleto. Un archivo existente no se sobrescribe.
 
+Mientras escribe la máscara, un recuadro encima muestra una máscara que funciona en este archivo, sus campos y las plantillas que tiene, cada una con la primera frase de su comentario inicial (`%%#`). **↑↓** eligen una plantilla, **F3** la muestra entera antes de usarla y **PgUp**/**PgDn** recorren el historial. La descripción la escribió quien hizo la plantilla: lea con F3 una plantilla de otra persona antes de usarla. Un error en la máscara mantiene el prompt abierto con lo que escribió e indica qué está mal.
+
 | Campo | Valor |
 |---|---|
 | `%{nombre}` `%{A}` `%{2}` | una columna de la tabla, por nombre, letra o posición |
@@ -156,6 +158,8 @@ Los valores vienen de un archivo que puede ser hostil y pueden ir a algo que vas
 En un archivo `.json`, `.jsonl`, `.ndjson`, `.csv`, `.tsv`, `.xml`, `.html` o `.htm`, deja la máscara **vacía** para escribir registros enteros, con las reglas del formato: un array JSON de objetos, un objeto por línea, una tabla con fila de cabecera, un `<record>` por registro o una página con una tabla. Para escribir solo algunos campos, empieza la máscara con `@`: `@id, nombre, #`. El texto da `line_number`, `line` y los grupos del filtro. Los campos se descubren en los primeros 1000 registros: una clave de JSON Lines que solo aparezca después queda fuera, y el mensaje final lo avisa.
 
 ### Plantillas
+
+Los archivos para probar todo esto están en [demo/](https://github.com/andrelnfernandes/xylem/tree/main/demo) en el repositorio: los mismos clientes en todos los formatos, y plantillas listas.
 
 Para tener texto alrededor de los registros, guarda una plantilla en `~/.config/xylem/batch/nombre.tpl` y escribe `:nombre` como máscara; el prompt lista las que encuentre (las cuatro primeras).
 

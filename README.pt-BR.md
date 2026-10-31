@@ -261,6 +261,7 @@ nativos: se você lê um desses idiomas, [sugestões são bem-vindas](docs/manua
 - `src/keymap.rs` — teclas padrão e trocas da configuração
 - `src/help.rs` — a ajuda (F1): tópicos, links e a página de manual
 - `docs/manual/` — o manual: os tópicos da ajuda, em Markdown (em inglês)
+- [`demo/`](demo/README.pt-BR.md) — arquivos em todos os formatos e templates de Batch para testar
 - `src/filetype.rs` — o que um arquivo é, para o modo de exibição Tipo
 - `src/ui.rs` — desenho da tela (ratatui)
 - `src/viewer.rs` — visualizador texto/hex

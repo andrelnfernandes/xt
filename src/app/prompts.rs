@@ -73,6 +73,7 @@ pub(crate) enum PromptKind {
     ViewerBatchFile,
     ViewerBatchMask {
         file: PathBuf,
+        guide: BatchGuide,
     },
     /// Line filter in the viewer's text mode (F2, F3 and F4 change the options).
     ViewerLineFilter {
@@ -180,6 +181,14 @@ impl Prompt {
     /// (text/regex).
     pub fn is_line_filter(&self) -> bool {
         matches!(self.kind, PromptKind::ViewerLineFilter { .. })
+    }
+
+    /// What the screen explains about the mask being typed.
+    pub fn batch_guide(&self) -> Option<&BatchGuide> {
+        match &self.kind {
+            PromptKind::ViewerBatchMask { guide, .. } => Some(guide),
+            _ => None,
+        }
     }
 
     pub fn is_bookmark_jump(&self) -> bool {
@@ -661,7 +670,7 @@ impl App {
                 self.viewer_batch_file(&text);
                 Ok(())
             }
-            PromptKind::ViewerBatchMask { file } => {
+            PromptKind::ViewerBatchMask { file, .. } => {
                 self.viewer_batch_mask(file, &text);
                 Ok(())
             }

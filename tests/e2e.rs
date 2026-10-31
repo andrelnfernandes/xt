@@ -245,6 +245,40 @@ fn batch_rename_with_a_mask() {
 }
 
 #[test]
+fn batch_in_the_viewer_chooses_and_reads_a_template_on_the_screen() {
+    let (home, project) = sample();
+    std::fs::write(project.join("0.txt"), "<x>\n").unwrap();
+    let templates = home.path().join(".config/xylem/batch");
+    std::fs::create_dir_all(&templates).unwrap();
+    std::fs::write(
+        templates.join("page.tpl"),
+        "%%# Makes a page. Long text here.\n%%record\n<p>%{line}</p>\n",
+    )
+    .unwrap();
+    let out = project.join("out.html");
+    let xy = Xy::start(home.path(), &[project.to_str().unwrap()]);
+    xy.wait_for("b.txt");
+    xy.press("\r"); // file window, on 0.txt
+    xy.press("v");
+    xy.wait_for("<x>");
+    xy.press("\x02"); // Ctrl+B
+    xy.wait_for("BATCH: write to file");
+    xy.press("\x15");
+    xy.press(&format!("{}\r", out.display()));
+    xy.wait_for("Makes a page.");
+    xy.press("\x1b[B"); // Down
+    xy.wait_for("> :page");
+    xy.press("\x1bOR"); // F3
+    xy.wait_for("Template :page");
+    xy.wait_for("<p>%{line}</p>");
+    xy.press("\r"); // Enter uses it: the preview
+    xy.wait_for("<p>&lt;x&gt;</p>");
+    xy.press("\r");
+    xy.wait_for("Wrote 1 records");
+    assert_eq!(std::fs::read_to_string(&out).unwrap(), "<p>&lt;x&gt;</p>\n");
+}
+
+#[test]
 fn batch_in_the_viewer_uses_a_template_of_the_configuration() {
     let (home, project) = sample();
     std::fs::write(project.join("0.txt"), "<x>\n").unwrap();
@@ -265,6 +299,7 @@ fn batch_in_the_viewer_uses_a_template_of_the_configuration() {
     xy.wait_for("BATCH: write to file");
     xy.press("\x15");
     xy.press(&format!("{}\r", out.display()));
+    xy.wait_for("A mask says what to write");
     xy.wait_for(":page");
     xy.press(":page\r");
     xy.wait_for("<p>&lt;x&gt;</p>");
@@ -318,6 +353,29 @@ fn a_repository_runs_its_filters_only_in_a_folder_added_to_the_trusted_ones() {
     xy.wait_for("No commits yet");
     xy.press("\x1b");
     xy.quit();
+}
+
+#[test]
+fn a_database_says_which_table_is_open_and_how_to_change_it() {
+    let (home, project) = sample();
+    let db = project.join("0.db");
+    rusqlite::Connection::open(&db)
+        .unwrap()
+        .execute_batch(
+            "CREATE TABLE first (a); INSERT INTO first VALUES (1);
+             CREATE TABLE second (b); INSERT INTO second VALUES (2);",
+        )
+        .unwrap();
+    let xy = Xy::start(home.path(), &[project.to_str().unwrap()]);
+    xy.wait_for("b.txt");
+    xy.press("\r"); // file window, on 0.db
+    xy.press("v");
+    xy.wait_for("TABLE [1/2: first]");
+    xy.wait_for("[ ] other table");
+    xy.press("]");
+    xy.wait_for("TABLE [2/2: second]");
+    xy.press("[");
+    xy.wait_for("TABLE [1/2: first]");
 }
 
 #[test]
