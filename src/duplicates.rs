@@ -1192,21 +1192,19 @@ mod tests {
         }
     }
 
+    /// The path under `dir`, always with `/`, so the tests read the same on
+    /// Windows.
+    fn relative(path: &Path, dir: &Path) -> String {
+        path.strip_prefix(dir)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/")
+    }
+
     fn names(dir: &Path, groups: &[Group]) -> Vec<Vec<String>> {
         groups
             .iter()
-            .map(|g| {
-                g.items
-                    .iter()
-                    .map(|i| {
-                        i.path
-                            .strip_prefix(dir)
-                            .unwrap()
-                            .to_string_lossy()
-                            .into_owned()
-                    })
-                    .collect()
-            })
+            .map(|g| g.items.iter().map(|i| relative(&i.path, dir)).collect())
             .collect()
     }
 
@@ -1470,13 +1468,7 @@ mod tests {
             .items
             .iter()
             .filter(|i| !i.tagged)
-            .map(|i| {
-                i.path
-                    .strip_prefix(p)
-                    .unwrap()
-                    .to_string_lossy()
-                    .into_owned()
-            })
+            .map(|i| relative(&i.path, p))
             .collect()
     }
 

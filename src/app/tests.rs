@@ -3243,13 +3243,21 @@ fn a_copy_changed_after_the_analysis_is_left_alone() {
     assert!(tmp.path().join("photos-copy/trip.jpg").exists());
 }
 
+/// The copy in `duplicates_sample`, as the system writes a path.
+fn copy_path() -> String {
+    Path::new("photos-copy")
+        .join("trip.jpg")
+        .display()
+        .to_string()
+}
+
 #[test]
 fn the_list_is_written_and_never_over_a_file() {
     let (tmp, mut app) = duplicates_sample();
     press(&mut app, KeyCode::Char('e'));
     press(&mut app, KeyCode::Enter);
     let text = std::fs::read_to_string(tmp.path().join("duplicates.txt")).unwrap();
-    assert!(text.contains("photos-copy/trip.jpg"));
+    assert!(text.contains(&copy_path()));
     let before = text.len();
     press(&mut app, KeyCode::Char('e'));
     press(&mut app, KeyCode::Enter);
@@ -3299,7 +3307,7 @@ fn the_duplicates_view_is_drawn() {
         .collect();
     assert!(text.contains("Duplicate files:"));
     assert!(text.contains("to free"));
-    assert!(text.contains("photos-copy/trip.jpg"));
+    assert!(text.contains(&copy_path()));
     assert!(text.contains(" T "));
     assert!(text.contains("all but one"));
     assert!(text.contains("DUPLICATE"), "the panel on the right");
