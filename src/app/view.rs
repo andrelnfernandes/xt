@@ -293,7 +293,7 @@ impl App {
             ViewerAction::GotoLine => {
                 let Some(v) = &self.viewer else { return };
                 let label = match v.mode {
-                    ViewMode::Text => {
+                    ViewMode::Text | ViewMode::Rendered => {
                         let total = v.total_lines().max(1);
                         format!("GOTO line (1-{total}): ")
                     }

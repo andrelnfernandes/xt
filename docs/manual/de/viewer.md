@@ -9,7 +9,7 @@ Tabellenkalkulationen, CSV, DBF, SQLite und Parquet öffnen sich als Tabelle (si
 |---|---|
 | ↑ ↓ PgUp PgDn Home End | scrollen |
 | ← → | seitlich scrollen |
-| `H` | Text oder Hex |
+| `H` | nächster Modus: Text und Hex; bei einer Markdown-Datei gerendert, Text und Hex |
 | `O` | nächste Kodierung (UTF-8, CP850, 1252, CP437, UTF-16) |
 | `C` | Syntaxfarben ein oder aus |
 | `W` | Zeilenumbruch ein oder aus |
@@ -19,7 +19,7 @@ Tabellenkalkulationen, CSV, DBF, SQLite und Parquet öffnen sich als Tabelle (si
 | Ctrl+B | eine Ausgabezeile pro angezeigtem Datensatz oder Zeile ([Batch im Betrachter](execute.md)) |
 | `E` | Datei bearbeiten; zurück in Xylem zeigt der Betrachter den neuen Inhalt an derselben Stelle (Binärdateien nur mit einem Editor unter [`[editors]`](execute.md)) |
 | `D` | bei aktiviertem Git: Änderungen seit dem letzten Commit und zurück ([Git](git.md)) |
-| `T` | Tabelle oder Text, bei einer Datei, die sich als Tabelle geöffnet hat |
+| `T` | Tabelle oder Text, bei einer Datei, die sich als Tabelle geöffnet hat; gerendert oder Quelltext, bei einer Markdown-Datei |
 | `U` | in der Ansicht der markierten Dateien (Ctrl+V): Markierung der Datei aufheben |
 | `y` oder Ctrl+Insert | Dateipfad in die Zwischenablage kopieren |
 | Esc | schließen |
@@ -45,6 +45,24 @@ Standardeinstellung ist `syntax_highlight` (Seite 2 der
 aktuellen Themas gut lesbar, und es werden nur die ersten 20.000 Zeilen
 eingefärbt und keine Zeile mit mehr als 10.000 Zeichen, sodass auch riesige
 Dateien den Betrachter niemals ausbremsen.
+
+## Gerendertes Markdown
+
+`.md`- und `.markdown`-Dateien öffnen sich gerendert, auch in Autoview, in Archiven und komprimiert (`x.md.gz`), und der Rahmen zeigt `RENDERED`. `T` zeigt den Quelltext an derselben Stelle und wechselt zurück; `H` geht durch gerendert, Text und Hex.
+
+Zu sehen sind Überschriften, Fett, Kursiv, Durchgestrichen, Code, Codeblöcke mit Syntaxfarben (`C` schaltet sie aus), verschachtelte und nummerierte Listen, Aufgabenlisten (`[x]`), Zitate, Trennlinien und Tabellen. Nichts wird je heruntergeladen, und kein Link öffnet etwas:
+
+- Ein Link zeigt seine echte Adresse neben dem Text, etwa `sicher <https://example.com>`, damit der Text nicht als andere Adresse durchgeht.
+- Ein Bild ist eine Textzeile: `[image] Beschriftung <foto.png>`.
+- Ein Mermaid-Diagramm ist ein Codeblock mit der Beschriftung `mermaid`.
+- HTML und HTML-Kommentare bleiben als Text sichtbar.
+- Der YAML-Block am Anfang einer Datei ist ein Codeblock mit der Beschriftung `yaml`.
+
+Der Text passt immer ins Fenster, daher bewirkt `W` hier nichts; ← → erreichen die Spalten einer zu breiten Tabelle. Die Suche betrachtet den Text auf dem Bildschirm, einschließlich der Adressen, und findet auch einen Satz, der in der nächsten Reihe weitergeht. `g` und `#` zählen die Zeilen des Quelltexts. Ctrl+B arbeitet auf den Zeilen des Quelltexts, auf allen. `&` wechselt in den Textmodus und filtert dort.
+
+Eine Datei über 8 MiB öffnet sich als Quelltext, mit einem Hinweis. Das Rendern stoppt auch am Zeitlimit (3 s, 100 ms in Autoview) oder an seinem Speicherlimit, und die Kopfzeile zeigt dann `(rendered only the start)`. Eine Tabelle zeigt höchstens 256 Spalten. Steuerzeichen erscheinen als `·`, auch solche, die als Entitäten wie `&#27;` geschrieben sind.
+
+Markdown selbst verbirgt einiges: Linkdefinitionen, die nichts verwendet, und Tabellenzellen jenseits der Spalten der Kopfzeile. Um alles zu sehen, zeigt `T` den Quelltext. Kursiv und Durchgestrichen hängen vom Terminal und seiner Schrift ab, daher haben sie auch eine eigene Farbe.
 
 ## Steuerzeichen für die Schreibrichtung
 
