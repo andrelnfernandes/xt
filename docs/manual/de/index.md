@@ -34,6 +34,7 @@ Stelle finden, schlagen Sie bitte eine Verbesserung vor: `https://github.com/and
 - [Markierte Dateien durchsuchen](search.md): Ctrl+S und Ctrl+V
 - [Informationen](info.md): Info, Avail, Statistiken und Verzeichnisgrößen
 - [Speicherplatzbelegung](usage.md): wohin der Platz geht (Alt+W)
+- [Duplikate](duplicates.md): Dateien und Ordner mit gleichem Inhalt (Alt+Y)
 
 ## Arbeiten mit Dateien
 

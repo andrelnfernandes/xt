@@ -131,6 +131,8 @@ pub struct Pane {
     pub kbyte: Kbyte,
     /// Alt+W: the Usage view, in place of the tree and the files.
     pub usage: Option<crate::usage::UsageView>,
+    /// Alt+Y: the Duplicates view, in place of the tree and the files.
+    pub duplicates: Option<crate::duplicates::DuplicatesView>,
     /// Alt+F: how the file window displays the list.
     pub display: FileDisplay,
     /// File window columns as of the last draw (multi-column modes),
@@ -207,6 +209,7 @@ impl Pane {
             sort: Sort::default(),
             kbyte: Kbyte::default(),
             usage: None,
+            duplicates: None,
             display: FileDisplay::default(),
             file_cols: 1,
             tree_page: 1,

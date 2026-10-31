@@ -326,3 +326,32 @@ DUPLICATES  /home/andre/gdrive      38 grupos · 112 arquivos · 6,4 GiB a liber
 - **D3 (opcional):** ignorar por padrão pastas como `.git` e `node_modules`;
   exportar a lista; achar pastas inteiras duplicadas (mesmo conjunto de
   arquivos), que é onde backups repetidos mais ocupam.
+
+## Como ficou (2026-10-31)
+
+D1, D3 e D2 foram feitos juntos, com estas mudanças em relação ao plano acima:
+
+- **Comparação por SHA-256 em rodadas**, em vez de comparar os arquivos byte a
+  byte em paralelo sem hash. Com arquivos hostis, um grupo pode ter milhares de
+  membros: blocos em memória e arquivos abertos cresceriam com ele. Por rodadas
+  (as duas pontas, depois 8 MiB por vez), cada grupo usa um arquivo aberto de
+  cada vez e 32 bytes por arquivo, e continua parando cedo. `sha2` é Rust puro.
+- **Thread própria**, não passos no laço principal: um arquivo que trava (rede,
+  FUSE) não trava a tela. Abre sem seguir links (`O_NOFOLLOW`, `O_NONBLOCK`) e
+  confere tamanho e data pelo arquivo aberto.
+- **Pastas iguais (D3):** nomes, conteúdo de cada arquivo (pequenos inclusive) e
+  destino dos links. Os arquivos pequenos só são lidos nas pastas que ainda podem
+  ser iguais pelos nomes e tamanhos. Uma pasta com algo não comparado dentro
+  (ilegível, outro disco, arquivo especial, pasta ignorada) nunca é cópia: dois
+  clones têm os mesmos arquivos, mas `.git` diferentes. Só as de cima aparecem.
+- **Antes de apagar**, além de tamanho e data: precisa ficar uma cópia intacta, e
+  fora de qualquer pasta marcada. Com A = B e A/sub = C, marcar A e C perderia
+  A/sub; esse grupo é recusado.
+- **D2:** `lsjson --hash`, usando o hash mais forte que o serviço der (o Drive dá
+  SHA-256, SHA-1 e MD5), em vez de só `--hash-type md5`, que dá para forjar. Caminhos
+  que saem da pasta listada são recusados. Nomes repetidos numa pasta contam uma
+  vez, porque pela montagem não dá para dizer qual é qual.
+- **Lixeira do Drive:** o Xylem mostra o `rclone cleanup`, mas não roda: ele esvazia
+  a lixeira inteira, não só o que saiu daqui.
+- **Fora, por ora:** SSH (a escrita remota é a fase 3 de máquinas remotas, e sem
+  ela a tela só listaria) e pastas inteiras na nuvem.

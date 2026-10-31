@@ -43,6 +43,7 @@ arrow-cast = { version = "60.1", default-features = false }
 arrow-schema = "60.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0"
+sha2 = "0.11"
 sevenz-rust2 = { version = "0.24", default-features = false, features = ["bzip2", "ppmd", "deflate"] }
 syntect = { version = "5.3.0", default-features = false, features = ["default-syntaxes", "default-themes", "regex-fancy", "parsing"] }
 tar = "0.4.46"

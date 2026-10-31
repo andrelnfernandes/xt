@@ -63,9 +63,11 @@ as a link is what `cp -a` and `rsync -l` do).
 - **Disk usage, phases 3 and 4** ([docs/plans/usage.md](docs/plans/usage.md);
   phases 1 and 2 are in 0.4.0): actions inside the Usage view (tag, delete,
   prune, viewer); optional treemap, grouping by type, export.
-- **Duplicate files** (same plan, "Duplicados"): D1 local (size, first and
-  last bytes, then contents), D2 through rclone using the MD5 that Google
-  Drive already has, D3 extras (whole duplicated folders).
+- **Duplicate files** ([docs/plans/usage.md](docs/plans/usage.md), "Duplicados";
+  [the manual](docs/manual/duplicates.md)): done on local folders, whole folders
+  included, and through rclone by the service's hashes. Still open: over SSH
+  (needs writing on the remote machine, phase 3 above, to be of use); whole
+  folders in the cloud.
 - **Xylem in its own window**, further ahead: see "For later" in the README.
 - Postponed by choice: macros, chown, Graft, macOS.
 - **New file viewers** ([docs/plans/viewers.md](docs/plans/viewers.md)):

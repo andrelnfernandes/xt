@@ -10,6 +10,8 @@ pub struct Prompt {
 
 pub(crate) enum PromptKind {
     Filespec,
+    /// Duplicates: where to write the list.
+    ExportDuplicates,
     Transfer {
         kind: OpKind,
         sources: Vec<Source>,
@@ -91,6 +93,7 @@ impl PromptKind {
     fn history_key(&self) -> Option<&'static str> {
         Some(match self {
             PromptKind::Filespec => "filespec",
+            PromptKind::ExportDuplicates => "destination",
             PromptKind::Transfer { .. } => "destination",
             PromptKind::Log => "log",
             PromptKind::Treespec { .. } => "treespec",
@@ -299,6 +302,13 @@ pub(crate) enum ConfirmKind {
         sources: Vec<Source>,
         to_trash: bool,
     },
+    /// Duplicates: folders equal to another that stays.
+    DeleteFolders {
+        dirs: Vec<PathBuf>,
+        to_trash: bool,
+    },
+    /// Duplicates: the branch is on a network, and reading it costs.
+    ReadThroughNetwork(NodeId),
     DeleteDir {
         id: NodeId,
         to_trash: bool,
@@ -598,6 +608,7 @@ impl App {
             }
             // Navigation already happened while typing; outside the tree,
             // it becomes a Log.
+            PromptKind::ExportDuplicates => self.export_duplicates(&text),
             PromptKind::Treespec { .. } => match self.treespec_target(&text) {
                 Some(_) => Ok(()),
                 None => self.log(&text),
@@ -899,6 +910,22 @@ impl App {
                     self.start_op(Operation::delete(sources, to_trash));
                 }
             }
+            ConfirmKind::DeleteFolders { dirs, to_trash } => {
+                if choice == 't' && !to_trash {
+                    return self.ask_delete_folders(dirs, true);
+                }
+                if choice == 'p' && to_trash {
+                    return self.ask_delete_folders(dirs, false);
+                }
+                if yes {
+                    self.delete_folders(dirs, to_trash);
+                }
+            }
+            ConfirmKind::ReadThroughNetwork(id) => {
+                if yes {
+                    self.duplicates_compare(id);
+                }
+            }
             ConfirmKind::DeleteDir { id, to_trash } => {
                 if choice == 't' && !to_trash {
                     return self.ask_delete_dir_with(id, true);
@@ -961,6 +988,16 @@ impl App {
         let Some(sources) = self.sources_or_warn(tagged) else {
             return;
         };
+        self.prompt_transfer_of(kind, sources, tagged, paths);
+    }
+
+    pub(crate) fn prompt_transfer_of(
+        &mut self,
+        kind: OpKind,
+        sources: Vec<Source>,
+        tagged: bool,
+        paths: bool,
+    ) {
         let mode = self.options.copy_paths;
         let label = transfer_label(kind, &sources, tagged, paths, mode);
         // With the screen split, the natural destination is the other window.

@@ -127,6 +127,12 @@ impl App {
             }
             return;
         }
+        if let Some(job) = &self.duplicates_job {
+            if key.code == KeyCode::Esc {
+                job.cancel();
+            }
+            return;
+        }
         if self.archive_job.is_some() {
             if key.code == KeyCode::Esc
                 && let Some(job) = self.archive_job.take()
@@ -327,6 +333,10 @@ impl App {
             self.usage_key(key);
             return;
         }
+        if self.duplicates.is_some() {
+            self.duplicates_key(key);
+            return;
+        }
         // Shift+letter (and digits): jumps to the next name starting with
         // it, as in ZTreeWin.
         if let KeyCode::Char(c) = key.code
@@ -504,6 +514,7 @@ impl App {
                 self.ask_kbyte(k);
             }
             Command::Usage => self.open_usage(),
+            Command::Duplicates => self.open_duplicates(),
             Command::OpenWith { tagged } => self.open_with(tagged),
             Command::CompareBranch => self.ask_compare(true),
             Command::Parent => {

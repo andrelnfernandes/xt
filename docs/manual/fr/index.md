@@ -33,6 +33,7 @@ proposez une amélioration : `https://github.com/andrelnfernandes/xylem/issues`.
 - [Rechercher dans les fichiers marqués](search.md) : Ctrl+S et Ctrl+V
 - [Informations](info.md) : Info, Avail, statistiques et tailles des répertoires
 - [Utilisation du disque](usage.md) : où va l'espace (Alt+W)
+- [Doublons](duplicates.md): fichiers et dossiers au même contenu (Alt+Y)
 
 ## Travailler avec les fichiers
 

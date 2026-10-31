@@ -79,6 +79,7 @@ Byte-Größe der Dateien. Die untere Zeile zeigt immer beide Werte an.
 | `A` | Platz auf dem Datenträger oder scheinbare Größe |
 | `C` | Dateianzahl ein- oder ausblenden |
 | `S` | nach Größe, Name, Dateianzahl oder Datum sortieren |
+| `D` | im gezeigten Ordner nach [Duplikaten](duplicates.md) suchen |
 | F3 | angezeigten Ordner neu einlesen |
 | Esc oder Alt+W | schließen |
 

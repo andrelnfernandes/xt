@@ -136,6 +136,17 @@ pub fn disk_space(path: &Path) -> Option<DiskSpace> {
 }
 
 /// The mounted file systems, from `/proc/self/mounts`.
+/// Opens `path` for reading without following a link, and without waiting if
+/// it turned into a pipe.
+pub fn open_no_follow(path: &Path) -> io::Result<fs::File> {
+    use nix::fcntl::OFlag;
+    use std::os::unix::fs::OpenOptionsExt;
+    fs::OpenOptions::new()
+        .read(true)
+        .custom_flags((OFlag::O_NOFOLLOW | OFlag::O_NONBLOCK).bits())
+        .open(path)
+}
+
 pub fn mounts() -> Vec<Mount> {
     let text = fs::read_to_string("/proc/self/mounts").unwrap_or_default();
     text.lines()

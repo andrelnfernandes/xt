@@ -174,6 +174,7 @@ pub const TOPICS: &[(&str, &str)] = &[
     ("search", include_str!("../docs/manual/search.md")),
     ("info", include_str!("../docs/manual/info.md")),
     ("usage", include_str!("../docs/manual/usage.md")),
+    ("duplicates", include_str!("../docs/manual/duplicates.md")),
     ("terminal", include_str!("../docs/manual/terminal.md")),
     ("remote", include_str!("../docs/manual/remote.md")),
     ("cloud", include_str!("../docs/manual/cloud.md")),

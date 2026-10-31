@@ -283,6 +283,16 @@ pub fn disk_space(path: &Path) -> Option<DiskSpace> {
 }
 
 /// The drives (`C:\`, `D:\`...).
+/// Opens `path` for reading without following a link: a link opens as itself,
+/// which the caller's look at the metadata then turns down.
+pub fn open_no_follow(path: &Path) -> io::Result<fs::File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)
+}
+
 pub fn mounts() -> Vec<Mount> {
     // SAFETY: no arguments; returns a bit mask, A = bit 0.
     let mask = unsafe { GetLogicalDrives() };

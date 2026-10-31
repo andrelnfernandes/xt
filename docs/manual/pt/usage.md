@@ -74,6 +74,7 @@ ambos.
 | `A` | alterna entre espaço no disco e aparente |
 | `C` | mostra ou oculta o número de arquivos |
 | `S` | ordena por tamanho, nome, número de arquivos ou data |
+| `D` | procura [duplicados](duplicates.md) na pasta listada |
 | F3 | relê a pasta listada |
 | Esc ou Alt+W | fecha |
 
