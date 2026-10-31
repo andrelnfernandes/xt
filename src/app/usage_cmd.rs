@@ -59,6 +59,11 @@ impl App {
                 self.select_node(dir);
                 self.focus = Focus::Tree;
             }
+            KeyCode::Char('d' | 'D') => {
+                let dir = view.dir;
+                self.usage = None;
+                self.duplicates_of(dir);
+            }
             KeyCode::Char('a' | 'A') => view.apparent = !view.apparent,
             KeyCode::Char('c' | 'C') => view.counts = !view.counts,
             KeyCode::Char('s' | 'S') => {

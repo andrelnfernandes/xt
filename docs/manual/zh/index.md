@@ -18,6 +18,7 @@ Xylem 将不可信的文件视为恶意文件：绝不应因文件内容或文�
 - [搜索已标记的文件](search.md)：Ctrl+S 与 Ctrl+V
 - [信息](info.md)：Info、Avail、统计信息与目录大小
 - [磁盘用量](usage.md)：查看空间去向（Alt+W）
+- [重复文件](duplicates.md): 内容相同的文件和文件夹 (Alt+Y)
 
 ## 文件操作
 

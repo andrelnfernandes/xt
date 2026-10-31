@@ -46,6 +46,7 @@ mod batch_cmd;
 pub use batch_cmd::{BatchGuide, BatchPreview, TemplateReading};
 mod commands;
 mod context_help;
+mod duplicates_cmd;
 mod git_cmd;
 mod prompts;
 mod remote_cmd;
@@ -104,6 +105,8 @@ pub(crate) enum AfterLog {
     Prune(NodeId),
     /// Opens the Usage view of this branch.
     Usage(NodeId),
+    /// Looks for duplicates in this branch.
+    Duplicates(NodeId),
 }
 
 /// Which menu the footer shows: the normal one or the Ctrl/Alt commands one.
@@ -141,6 +144,14 @@ pub struct App {
     pub tagged_view: Option<TaggedView>,
     /// F7: the contents of the selected file next to the list.
     pub autoview: Option<Viewer>,
+    /// Alt+Y: the analysis running.
+    pub duplicates_job: Option<crate::duplicates::Finder>,
+    /// Where that analysis started.
+    duplicates_root: Option<PathBuf>,
+    /// In the cloud, the node of that folder, to read it if the hashes fail.
+    duplicates_id: Option<NodeId>,
+    /// Why the hashes failed, for the question before reading.
+    duplicates_why: Option<String>,
     /// F5: archive being created.
     pub archive_job: Option<ArchiveJob>,
     /// Ongoing Copy/Move/Delete.
@@ -263,6 +274,10 @@ impl App {
             line_filter: LineFilterSpec::default(),
             tagged_view: None,
             autoview: None,
+            duplicates_job: None,
+            duplicates_root: None,
+            duplicates_id: None,
+            duplicates_why: None,
             archive_job: None,
             op: None,
             open_after: None,
@@ -409,6 +424,7 @@ impl App {
             || self.batch_job.is_some()
             || self.search_job.is_some()
             || self.archive_job.is_some()
+            || self.duplicates_job.is_some()
             || self.op.as_ref().is_some_and(|op| op.conflict.is_none())
     }
 
@@ -421,6 +437,10 @@ impl App {
     pub fn tick(&mut self, budget: Duration) {
         if self.batch_job.is_some() {
             self.batch_tick(budget);
+            return;
+        }
+        if self.duplicates_job.is_some() {
+            self.duplicates_tick(budget);
             return;
         }
         if let Some(job) = &mut self.archive_job {
@@ -487,6 +507,11 @@ impl App {
             }
             AfterLog::Refresh => pane.refresh_files(),
             AfterLog::Usage(id) => pane.usage = Some(crate::usage::UsageView::new(id)),
+            AfterLog::Duplicates(id) => {
+                self.job = None;
+                self.duplicates_logged(id);
+                return;
+            }
         }
         self.job = None;
     }
@@ -513,6 +538,11 @@ impl App {
             self.last_trashed = op.trashed.clone();
         }
         self.rescan_everywhere(&op.touched_dirs());
+        for pane in &mut self.panes {
+            if let Some(view) = &mut pane.duplicates {
+                view.drop_missing();
+            }
+        }
         // After a Prune, the cursor goes to the parent directory.
         if let Some(root) = self.pruning.take()
             && let Some(parent) = root.parent()
@@ -520,6 +550,11 @@ impl App {
             self.goto(parent);
         }
         self.message = Some(format!("{prefix}{}", op.summary()));
+        if let Some(note) = self.duplicates.as_ref().and_then(|v| v.after_delete())
+            && let Some(m) = &mut self.message
+        {
+            m.push_str(&note);
+        }
         if let Some(copies) = self.open_after.take() {
             let ready = copies.into_iter().filter(|c| c.exists()).collect();
             self.open_paths(ready, &op.errors);

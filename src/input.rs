@@ -67,6 +67,8 @@ pub enum Command {
     Kbyte,
     /// Alt+W: where the space of the branch goes.
     Usage,
+    /// Alt+Y: files and folders with the same contents.
+    Duplicates,
     /// Alt+Q: quits, leaving the shell in the current directory.
     QuitChangeDir,
     /// Alt+F: display mode of the file window.

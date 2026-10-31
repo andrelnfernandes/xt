@@ -285,6 +285,139 @@ fn draw_usage(frame: &mut Frame, pane: &mut Pane, active: bool, area: Rect) {
     );
 }
 
+/// "1 group", "2 groups".
+fn count(n: usize, what: &str) -> String {
+    let plural = if n == 1 { "" } else { "s" };
+    format!("{} {what}{plural}", fmt_num(n as u64))
+}
+
+/// Alt+Y: the groups of equal files or folders, and a line about them.
+fn draw_duplicates(frame: &mut Frame, pane: &mut Pane, active: bool, area: Rect) {
+    use crate::duplicates::Row;
+    use crate::usage;
+    let Some(view) = pane.duplicates.as_mut() else {
+        return;
+    };
+    let width = area.width.saturating_sub(2) as usize;
+    let rows = view.rows();
+    let counter = position(Some(view.at), rows.len());
+    let room = width.saturating_sub(17 + counter.width());
+    let path = view.root.to_string_lossy();
+    let what = if view.show_folders {
+        "folders"
+    } else {
+        "files"
+    };
+    let title = format!(" Duplicate {what}: {} ", fit_tail(&path, room));
+    let block = panel(title, active).title_top(counter);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let [list_area, footer] =
+        Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
+    view.page = list_area.height as usize;
+
+    // Only what is on screen is drawn: there may be many thousands of rows.
+    let height = view.page.max(1);
+    view.at = view.at.min(rows.len().saturating_sub(1));
+    if view.at < view.offset {
+        view.offset = view.at;
+    } else if view.at >= view.offset + height {
+        view.offset = view.at + 1 - height;
+    }
+    let dim = Style::new().fg(theme().dim);
+    let groups = view.groups();
+    let items: Vec<ListItem> = rows
+        .iter()
+        .skip(view.offset)
+        .take(height)
+        .map(|row| match *row {
+            Row::Group(g) => {
+                let group = &groups[g];
+                let text = format!(
+                    "── {} × {} ({} to free) ",
+                    group.items.len(),
+                    usage::size(group.items[0].size),
+                    usage::size(group.free),
+                );
+                let line = "─".repeat(width.saturating_sub(text.chars().count()));
+                ListItem::new(Line::from(Span::styled(format!("{text}{line}"), dim)))
+            }
+            Row::Item(g, i) => {
+                let item = &groups[g].items[i];
+                let mark = match (item.tagged, item.shared) {
+                    (true, _) => "T",
+                    (false, true) => "s",
+                    (false, false) => " ",
+                };
+                let date = item.modified.map(fmt_time).unwrap_or_default();
+                let path = item.path.strip_prefix(&view.root).unwrap_or(&item.path);
+                let mut name = path.to_string_lossy().into_owned();
+                if item.snapshot.is_some() {
+                    name.push('/');
+                }
+                ListItem::new(Line::from(vec![
+                    Span::styled(format!(" {mark} "), Style::new().fg(theme().key)),
+                    Span::raw(format!("{:>10}  ", usage::size(item.size))),
+                    Span::styled(format!("{date}  "), dim),
+                    Span::raw(name),
+                ]))
+            }
+        })
+        .collect();
+    let mut state = ratatui::widgets::ListState::default();
+    state.select(Some(view.at - view.offset));
+    let list = List::new(items).highlight_style(highlight(active));
+    frame.render_stateful_widget(list, list_area, &mut state);
+
+    let (tagged, bytes) = view.tagged();
+    let free: u64 = groups.iter().map(|g| g.free).sum();
+    let mut parts = vec![
+        count(groups.len(), "group"),
+        format!("{} to free", usage::size(free)),
+    ];
+    if tagged > 0 {
+        parts.push(format!(
+            "{} tagged, {}",
+            fmt_num(tagged),
+            usage::size(bytes)
+        ));
+    }
+    let other = if view.show_folders {
+        view.files.len()
+    } else {
+        view.folders.len()
+    };
+    if other > 0 {
+        let name = if view.show_folders {
+            "files"
+        } else {
+            "folders"
+        };
+        parts.push(format!("{} of {name} (G)", count(other, "group")));
+    }
+    let not_read = view.notes.unreadable + view.notes.changed;
+    if not_read > 0 {
+        parts.push(format!("{} not compared", fmt_num(not_read)));
+    }
+    if view.notes.no_hash > 0 {
+        parts.push(format!("{} without a hash", fmt_num(view.notes.no_hash)));
+    }
+    if let Some(cloud) = &view.cloud {
+        parts.push("by the service's hashes".into());
+        if view.notes.same_name > 0 {
+            parts.push(format!(
+                "{} names repeated in a folder: rclone dedupe {}",
+                fmt_num(view.notes.same_name),
+                cloud.spec
+            ));
+        }
+    }
+    frame.render_widget(
+        Line::from(Span::styled(fit(&parts.join(" · "), width), dim)),
+        footer,
+    );
+}
+
 /// One window: tree on top and files below, or just the files.
 /// With a split screen, the tree title shows the current directory.
 fn draw_pane(
@@ -298,6 +431,10 @@ fn draw_pane(
 ) {
     if pane.usage.is_some() {
         draw_usage(frame, pane, active, area);
+        return;
+    }
+    if pane.duplicates.is_some() {
+        draw_duplicates(frame, pane, active, area);
         return;
     }
     if pane.focus == Focus::Files {
@@ -1041,6 +1178,30 @@ fn draw_stats(frame: &mut Frame, app: &App, area: Rect) {
         statistics.push(Line::from(vec![Span::raw(format!("{k}{pad}")), bold(mode)]));
     }
 
+    // Alt+Y: the whole path and date of the item under the cursor.
+    if let Some(item) = app.duplicates.as_ref().and_then(|v| v.selected().cloned()) {
+        let mut lines = vec![Line::from(label("DUPLICATE".into()))];
+        let path = item.path.to_string_lossy().into_owned();
+        let chars: Vec<char> = path.chars().collect();
+        for part in chars.chunks(width.max(1)) {
+            lines.push(Line::from(bold(part.iter().collect::<String>())));
+        }
+        let text = |k: &str, v: String| {
+            let pad = width.saturating_sub(k.chars().count() + v.chars().count());
+            Line::from(vec![Span::raw(format!("{k}{}", " ".repeat(pad))), bold(v)])
+        };
+        if item.shared {
+            lines.push(Line::from("Shared with you: deleting it frees nothing"));
+        }
+        lines.push(text("Size", crate::usage::size(item.size)));
+        lines.push(text("On disk", crate::usage::size(item.disk)));
+        if let Some(m) = item.modified {
+            lines.push(text("Modified", fmt_time(m)));
+        }
+        frame.render_widget(Paragraph::new(lines), inner);
+        return;
+    }
+
     // Alt+W: what the row under the cursor takes, in place of the statistics.
     if let Some(row) = app.usage.as_ref().and_then(|u| u.shown.clone()) {
         use crate::usage;
@@ -1162,6 +1323,72 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
                 None => menu_line("", &[("", about)]),
             },
         ]
+    } else if let Some(job) = &app.duplicates_job {
+        use std::sync::atomic::Ordering;
+        let listing = job.progress.listing.load(Ordering::Relaxed);
+        let listed = job.progress.listed.load(Ordering::Relaxed);
+        let read = job.progress.read.load(Ordering::Relaxed);
+        let total = job.progress.total.load(Ordering::Relaxed).max(read);
+        let name = job
+            .progress
+            .current
+            .lock()
+            .map(|c| c.clone())
+            .unwrap_or_default();
+        let what = if listing {
+            format!(
+                "Asking the service for its hashes: {} files",
+                fmt_num(listed)
+            )
+        } else {
+            format!(
+                "Comparing {} of {}: ",
+                crate::usage::size(read),
+                crate::usage::size(total)
+            )
+        };
+        vec![
+            Line::from(vec![Span::styled(what, bold), Span::raw(name)]),
+            menu_line("", &[("Esc", "cancel")]),
+        ]
+    } else if app.duplicates.is_some()
+        && app.job.is_none()
+        && app.confirm.is_none()
+        && app.op.is_none()
+    {
+        vec![
+            menu_line(
+                "COPIES",
+                &[
+                    ("T", "tag"),
+                    ("K", "keep this"),
+                    ("A", "all but one"),
+                    ("F", "keep this folder"),
+                    ("U", "untag"),
+                    ("D", "delete"),
+                    ("M", "move"),
+                ],
+            ),
+            match &app.message {
+                Some(msg) => Line::from(Span::styled(
+                    format!("{:9}{msg}", ""),
+                    Style::new()
+                        .fg(theme().message)
+                        .add_modifier(Modifier::BOLD),
+                )),
+                None => menu_line(
+                    "",
+                    &[
+                        ("G", "files/folders"),
+                        ("V", "view"),
+                        ("E", "export"),
+                        ("\\", "to the tree"),
+                        ("F3", "again"),
+                        ("Esc", "close"),
+                    ],
+                ),
+            },
+        ]
     } else if app.usage.is_some() && app.job.is_none() {
         let about = "> another disk  ! unreadable  . incomplete  H hard link  @ link  e empty";
         vec![
@@ -1174,6 +1401,7 @@ fn draw_menu(frame: &mut Frame, app: &App, area: Rect) {
                     ("A", "disk/apparent"),
                     ("C", "files"),
                     ("S", "sort"),
+                    ("D", "duplicates"),
                     ("F3", "reread"),
                     ("Esc", "close"),
                 ],
@@ -1474,6 +1702,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                         "Rename",
                         "Sort",
                         "usage (W)",
+                        "duplicates (Y)",
                         "eXecute",
                     ]
                 } else {
@@ -1490,6 +1719,7 @@ fn idle_menu(app: &App) -> (Line<'static>, Line<'static>) {
                         "Rename",
                         "Sort",
                         "usage (W)",
+                        "duplicates (Y)",
                         "eXecute",
                     ]
                 },

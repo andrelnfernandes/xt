@@ -93,6 +93,11 @@ delete_to_trash = false
 # To confirm a Prune (Alt+P), type: "prune" (the word PRUNE),
 # "name" (the directory name) or "y".
 prune_confirmation = "prune"
+# Duplicates (Alt+Y): files smaller than this many bytes are not listed.
+duplicates_min_size = 1024
+# Duplicates: folders with these names are not looked into, and what holds them
+# is never called a copy of another folder.
+duplicates_ignore = [".git", "node_modules"]
 # Alt+C / Alt+M (copy/move tagged files with their paths): from where each
 # file's path is recreated at the destination (F7 changes it at the prompt):
 # "full" (from the root of the disk, as in ZTreeWin), "tree" (from the root
@@ -238,6 +243,10 @@ pub struct Options {
     pub delete_to_trash: bool,
     /// What to type to confirm a Prune.
     pub prune_confirmation: PruneConfirm,
+    /// Duplicates: files smaller than this are not listed.
+    pub duplicates_min_size: u64,
+    /// Duplicates: names of folders left out.
+    pub duplicates_ignore: Vec<String>,
     /// Alt+C / Alt+M: initial path mode.
     pub copy_paths: CopyPaths,
     pub history_skip_at: bool,
@@ -281,6 +290,8 @@ impl Default for Options {
             confirm_quit: true,
             delete_to_trash: false,
             prune_confirmation: PruneConfirm::Prune,
+            duplicates_min_size: 1024,
+            duplicates_ignore: vec![".git".into(), "node_modules".into()],
             copy_paths: CopyPaths::Full,
             history_skip_at: false,
             compare_ignore_2s: true,
@@ -332,6 +343,14 @@ impl Options {
             ("confirm_quit", Value::from(self.confirm_quit)),
             ("delete_to_trash", Value::from(self.delete_to_trash)),
             ("prune_confirmation", s(self.prune_confirmation.as_str())),
+            (
+                "duplicates_min_size",
+                Value::from(self.duplicates_min_size.min(i64::MAX as u64) as i64),
+            ),
+            (
+                "duplicates_ignore",
+                Value::Array(self.duplicates_ignore.iter().map(String::as_str).collect()),
+            ),
             ("copy_paths", s(self.copy_paths.as_str())),
             ("history_skip_at", Value::from(self.history_skip_at)),
             ("compare_ignore_2s", Value::from(self.compare_ignore_2s)),

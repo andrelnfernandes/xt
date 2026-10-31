@@ -23,6 +23,9 @@ impl App {
                 ConfirmKind::Sort(_) => "sort",
                 ConfirmKind::Kbyte(_) => "info",
                 ConfirmKind::OpenHidden { .. } => "files",
+                ConfirmKind::DeleteFolders { .. } | ConfirmKind::ReadThroughNetwork(_) => {
+                    "duplicates"
+                }
             };
         }
         if self.batch_preview.is_some() || self.batch_job.is_some() {
@@ -54,6 +57,7 @@ impl App {
             return match prompt.kind {
                 PromptKind::Transfer { .. } => "copy-move",
                 PromptKind::Filespec => "filespec",
+                PromptKind::ExportDuplicates => "duplicates",
                 PromptKind::Log | PromptKind::Treespec { .. } => "treespec",
                 PromptKind::Execute | PromptKind::BatchFile | PromptKind::BatchMask { .. } => {
                     "execute"
@@ -87,6 +91,9 @@ impl App {
         }
         if self.usage.is_some() {
             return "usage";
+        }
+        if self.duplicates.is_some() {
+            return "duplicates";
         }
         if self.remote.is_some() || self.connecting.is_some() {
             return "remote";

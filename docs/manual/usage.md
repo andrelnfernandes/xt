@@ -71,6 +71,7 @@ the bottom always shows both.
 | `A` | space on the disk or apparent |
 | `C` | show or hide the number of files |
 | `S` | sort by size, name, number of files or date |
+| `D` | look for [duplicates](duplicates.md) in the folder listed |
 | F3 | read the folder listed again |
 | Esc or Alt+W | close |
 

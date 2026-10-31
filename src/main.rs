@@ -9,6 +9,7 @@ mod charset;
 mod clipboard;
 mod config;
 mod decompress;
+mod duplicates;
 mod editors;
 mod filetype;
 mod git;

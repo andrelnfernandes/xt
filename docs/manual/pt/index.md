@@ -34,6 +34,7 @@ e encontrar um erro ou algo que soe estranho, sugira uma melhoria:
 - [Busca nos arquivos marcados](search.md): Ctrl+S e Ctrl+V
 - [Informações](info.md): Info, Avail, estatísticas e tamanhos de diretórios
 - [Uso do disco](usage.md): para onde vai o espaço (Alt+W)
+- [Duplicados](duplicates.md): arquivos e pastas com o mesmo conteúdo (Alt+Y)
 
 ## Trabalhando com arquivos
 

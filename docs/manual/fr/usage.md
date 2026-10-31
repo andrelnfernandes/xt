@@ -77,6 +77,7 @@ ligne du bas affiche toujours les deux.
 | `A` | espace sur le disque ou taille apparente |
 | `C` | afficher ou masquer le nombre de fichiers |
 | `S` | trier par taille, nom, nombre de fichiers ou date |
+| `D` | chercher les [doublons](duplicates.md) dans le dossier affiché |
 | F3 | relire le dossier affiché |
 | Esc ou Alt+W | fermer |
 

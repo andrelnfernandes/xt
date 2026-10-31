@@ -74,6 +74,7 @@ tamaño propio de los archivos. La línea inferior siempre muestra ambos.
 | `A` | espacio en disco o aparente |
 | `C` | mostrar u ocultar el número de archivos |
 | `S` | ordenar por tamaño, nombre, número de archivos o fecha |
+| `D` | buscar [duplicados](duplicates.md) en la carpeta listada |
 | F3 | volver a leer la carpeta listada |
 | Esc o Alt+W | cerrar |
 

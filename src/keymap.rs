@@ -273,6 +273,11 @@ const COMMANDS: &[(&str, Command, &str)] = &[
         "disk usage of the branch: folders and files by the space they take",
     ),
     (
+        "duplicates",
+        Command::Duplicates,
+        "files and folders with the same contents, and the space they waste",
+    ),
+    (
         "kbyte",
         Command::Kbyte,
         "show size or file count of each directory in the tree",
@@ -465,6 +470,7 @@ const DEFAULT_KEYS: &[(&str, Scope, &str)] = &[
     ("ctrl+f9", Tree, "invert_branch"),
     ("alt+k", Any, "kbyte"),
     ("alt+w", Any, "usage"),
+    ("alt+y", Any, "duplicates"),
     ("esc", Files, "back"),
     ("left", Files, "left"),
     ("right", Files, "right"),

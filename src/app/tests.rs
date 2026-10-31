@@ -3146,3 +3146,173 @@ fn o_on_a_hidden_bidi_name_opens_what_it_asked_about() {
         .collect();
     assert_eq!(opened, ["fatura\u{202E}fdp.sh"]);
 }
+
+/// Opens Duplicates on a folder with a copy of a large file, a copy of a whole
+/// folder, and a file with nothing like it.
+fn duplicates_sample() -> (tempfile::TempDir, App) {
+    let tmp = crate::testing::tempdir();
+    let p = tmp.path();
+    for dir in ["photos", "photos-copy"] {
+        create_dir_all(p.join(dir)).unwrap();
+        write(p.join(dir).join("trip.jpg"), vec![1u8; 5000]).unwrap();
+    }
+    write(p.join("alone.bin"), vec![2u8; 7000]).unwrap();
+    let mut app = App::new(p.to_path_buf());
+    alt(&mut app, 'y');
+    finish(&mut app);
+    (tmp, app)
+}
+
+fn finish(app: &mut App) {
+    while app.busy() {
+        app.tick(Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn alt_y_finds_files_and_folders() {
+    let (tmp, mut app) = duplicates_sample();
+    let view = app.duplicates.as_ref().expect("open");
+    assert_eq!(view.files.len(), 1);
+    assert_eq!(view.folders.len(), 1);
+    assert_eq!(
+        view.groups()[0].items[0].path,
+        tmp.path().join("photos/trip.jpg")
+    );
+    press(&mut app, KeyCode::Char('g'));
+    let view = app.duplicates.as_ref().unwrap();
+    assert!(view.show_folders);
+    assert_eq!(
+        view.groups()[0].items[1].path,
+        tmp.path().join("photos-copy")
+    );
+    press(&mut app, KeyCode::Esc);
+    assert!(app.duplicates.is_none());
+}
+
+#[test]
+fn alt_y_with_nothing_equal_says_so() {
+    let (_tmp, mut app) = sample();
+    alt(&mut app, 'y');
+    finish(&mut app);
+    assert!(app.duplicates.is_none());
+    assert!(app.message.as_deref().unwrap().contains("No duplicates"));
+}
+
+#[test]
+fn deleting_the_tagged_copy_leaves_the_other() {
+    let (tmp, mut app) = duplicates_sample();
+    press(&mut app, KeyCode::Char('a'));
+    press(&mut app, KeyCode::Char('d'));
+    assert!(app.confirm.is_some());
+    press(&mut app, KeyCode::Char('y'));
+    finish(&mut app);
+    let kept = [
+        tmp.path().join("photos/trip.jpg").exists(),
+        tmp.path().join("photos-copy/trip.jpg").exists(),
+    ];
+    assert_eq!(kept.iter().filter(|k| **k).count(), 1);
+    assert!(
+        app.duplicates.as_ref().unwrap().files.is_empty(),
+        "no group left"
+    );
+}
+
+#[test]
+fn deleting_a_copy_of_a_folder_takes_what_it_holds() {
+    let (tmp, mut app) = duplicates_sample();
+    press(&mut app, KeyCode::Char('g'));
+    press(&mut app, KeyCode::Down);
+    press(&mut app, KeyCode::Down);
+    press(&mut app, KeyCode::Char('k')); // Keeps photos-copy.
+    press(&mut app, KeyCode::Char('d'));
+    press(&mut app, KeyCode::Char('y'));
+    finish(&mut app);
+    assert!(!tmp.path().join("photos").exists());
+    assert!(tmp.path().join("photos-copy/trip.jpg").exists());
+}
+
+#[test]
+fn a_copy_changed_after_the_analysis_is_left_alone() {
+    let (tmp, mut app) = duplicates_sample();
+    press(&mut app, KeyCode::Char('a'));
+    write(tmp.path().join("photos/trip.jpg"), vec![9u8; 6000]).unwrap();
+    press(&mut app, KeyCode::Char('d'));
+    assert!(app.confirm.is_none());
+    assert!(app.message.as_deref().unwrap().contains("changed since"));
+    assert!(tmp.path().join("photos-copy/trip.jpg").exists());
+}
+
+#[test]
+fn the_list_is_written_and_never_over_a_file() {
+    let (tmp, mut app) = duplicates_sample();
+    press(&mut app, KeyCode::Char('e'));
+    press(&mut app, KeyCode::Enter);
+    let text = std::fs::read_to_string(tmp.path().join("duplicates.txt")).unwrap();
+    assert!(text.contains("photos-copy/trip.jpg"));
+    let before = text.len();
+    press(&mut app, KeyCode::Char('e'));
+    press(&mut app, KeyCode::Enter);
+    assert!(
+        app.message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Cannot write")
+    );
+    let after = std::fs::read_to_string(tmp.path().join("duplicates.txt")).unwrap();
+    assert_eq!(after.len(), before);
+}
+
+#[test]
+fn the_viewer_opens_over_the_duplicates_and_goes_back() {
+    let (_tmp, mut app) = duplicates_sample();
+    press(&mut app, KeyCode::Down);
+    press(&mut app, KeyCode::Enter);
+    assert!(app.viewer.is_some());
+    press(&mut app, KeyCode::Esc);
+    assert!(app.viewer.is_none());
+    assert!(app.duplicates.is_some());
+}
+
+#[test]
+fn f3_sees_what_changed_after_the_tree_read_it() {
+    let (tmp, mut app) = duplicates_sample();
+    write(tmp.path().join("alone-too.bin"), vec![2u8; 7000]).unwrap();
+    press(&mut app, KeyCode::F(3));
+    finish(&mut app);
+    assert_eq!(app.duplicates.as_ref().unwrap().files.len(), 2);
+}
+
+#[test]
+fn the_duplicates_view_is_drawn() {
+    use ratatui::{Terminal, backend::TestBackend};
+    let (_tmp, mut app) = duplicates_sample();
+    press(&mut app, KeyCode::Char('a'));
+    let mut term = Terminal::new(TestBackend::new(120, 24)).unwrap();
+    term.draw(|f| crate::ui::draw(f, &mut app)).unwrap();
+    let text: String = term
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|c| c.symbol())
+        .collect();
+    assert!(text.contains("Duplicate files:"));
+    assert!(text.contains("to free"));
+    assert!(text.contains("photos-copy/trip.jpg"));
+    assert!(text.contains(" T "));
+    assert!(text.contains("all but one"));
+    assert!(text.contains("DUPLICATE"), "the panel on the right");
+}
+
+#[test]
+fn usage_d_goes_to_the_duplicates_of_the_folder() {
+    let (_tmp, mut app) = duplicates_sample();
+    press(&mut app, KeyCode::Esc);
+    alt(&mut app, 'w');
+    finish(&mut app);
+    press(&mut app, KeyCode::Char('d'));
+    finish(&mut app);
+    assert!(app.usage.is_none());
+    assert!(app.duplicates.is_some());
+}
